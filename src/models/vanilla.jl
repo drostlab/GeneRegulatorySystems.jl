@@ -9,6 +9,7 @@ using ComponentArrays
 using Kronecker
 using Memoization
 using Query
+using StatsBase
 
 Base.@kwdef struct Link
     from::Int
@@ -45,6 +46,10 @@ end
 const AGGREGATIONS = Dict(
     "minimum" => minimum,
     "maximum" => maximum,
+    "mean" => mean,
+    "geometric_mean" => geomean,
+    "harmonic_mean" => harmmean,
+    "median" => median,
 )
 
 coerce(T::Type{<:Number}, x::Number) = convert(T, x)
