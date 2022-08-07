@@ -16,7 +16,7 @@ settings = @add_arg_table! ArgParseSettings() begin
         metavar = "EXPRERIMENT"
     
     "--sink", "-s"
-        default = "results/{TIMESTAMP}"
+        default = "results/{TIMESTAMP}/"
 
     "more_experiments"
         nargs = '*'
@@ -39,10 +39,10 @@ function main(;
     timestamp = Dates.now()
     sink = replace(sink, "{TIMESTAMP}" => timestamp)
 
-    mkpath(sink)
-    manifest = cp(
+    mkpath(dirname(sink))
+    cp(
         joinpath(Pkg.project().path |> dirname, "Manifest.toml"),
-        joinpath(sink, "$timestamp.manifest.toml")
+        string(sink, "Manifest.toml")
     )
 
     for experiment in experiments
@@ -51,12 +51,12 @@ function main(;
             get(specification, :name, nothing),
             experiment |> basename |> splitext |> first
         )
-        cp(experiment, joinpath(sink, "$name.json"), force = true)
+        cp(experiment, string(sink, "$name.json"))
         seed = get(specification, :seed, 1)
         model = GeneRegulatorySystems.Models.load(specification[:model])
         simulations = specification[:simulations]
 
-        @info "About to run '$name'" typeof(model) simulations=length(simulations) seed see=joinpath(sink, "$name.report.json")
+        @info "About to run '$name'" typeof(model) simulations=length(simulations) seed see=string(sink, "$name.result.json")
         for (i, simulation) in enumerate(simulations)
             tag = get(simulation, :tag, nothing)
             initial = @something(
@@ -81,21 +81,21 @@ function main(;
                 columns(transcript.rates)...,
             )
             if i == 1
-                Arrow.write(joinpath(sink, "$name.sample.arrow"), result, file = false)
+                Arrow.write(string(sink, "$name.sample.arrow"), result, file = false)
             else
-                Arrow.append(joinpath(sink, "$name.sample.arrow"), result)
+                Arrow.append(string(sink, "$name.sample.arrow"), result)
             end
         end
 
-        open(joinpath(sink, "$name.report.json"), "w") do file
+        open(string(sink, "$name.result.json"), "w") do file
             JSON.print(
                 file,
                 Dict(
                     :timestamp => timestamp,
-                    :experiment => "$name.json",
-                    :sample => "$name.sample.arrow",
+                    :experiment => string(basename(sink), "$name.json"),
+                    :sample => string(basename(sink), "$name.sample.arrow"),
                     :seed => seed,
-                    :environment => manifest,
+                    :environment => string(basename(sink), "Manifest.toml"),
                 ),
                 4,
             )
