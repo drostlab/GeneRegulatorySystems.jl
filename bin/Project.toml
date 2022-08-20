@@ -1,5 +1,17 @@
+name = "GeneRegulatorySystemsTools"
+uuid = "3a861a17-0c73-4c13-a211-183e815e3d53"
+authors = ["lmshk "]
+version = "0.1.0"
+
 [deps]
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 GeneRegulatorySystems = "321a2579-640d-4198-9790-c715c19becf3"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LibGit2 = "76f85450-5226-5b5a-8eaa-529ad045b433"
+PackageCompiler = "9b87118b-4619-50d2-8e1e-99f35a4d4d9d"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Scratch = "6c6a2e73-6563-6170-7368-637461726353"

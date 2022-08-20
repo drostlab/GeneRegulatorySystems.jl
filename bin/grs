@@ -1,0 +1,20 @@
+#!/bin/sh
+BIN=$(dirname $0)
+COMMAND=$1
+
+if [ -z "$COMMAND" ]; then
+    echo "usage: $0 <command> [<args>]"
+    echo
+    echo "Available commands:"
+    find "$BIN" -maxdepth 1 -type f -name "[!_]*.jl" -printf "\t%f\n" | sed 's/\.jl//'
+    exit 0
+fi
+
+shift
+
+if [ "$COMMAND" = "sysimage" ]; then
+    exec julia --project="$BIN" "$BIN/sysimage.jl" "$@"
+fi
+
+JULIA=$(julia --project="$BIN" --optimize=0 --compile=min "$BIN/sysimage.jl" --invocation)
+eval exec $JULIA "$BIN/$COMMAND.jl" "$@"
