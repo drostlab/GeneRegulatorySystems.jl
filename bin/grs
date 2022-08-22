@@ -5,9 +5,10 @@ COMMAND=$1
 if [ -z "$COMMAND" ]; then
     echo "usage: $0 <command> [<args>]"
     echo
-    echo "Available commands:"
-    find "$BIN" -maxdepth 1 -type f -name "[!_]*.jl" -printf "\t%f\n" \
-        | sed 's/\.jl//'
+    echo "commands:"
+    for SCRIPT in $(cd "$BIN"; echo *.jl); do
+        echo "  ${SCRIPT%.*}"
+    done
     exit 0
 fi
 
