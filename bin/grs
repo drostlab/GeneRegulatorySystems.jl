@@ -6,15 +6,27 @@ if [ -z "$COMMAND" ]; then
     echo "usage: $0 <command> [<args>]"
     echo
     echo "Available commands:"
-    find "$BIN" -maxdepth 1 -type f -name "[!_]*.jl" -printf "\t%f\n" | sed 's/\.jl//'
+    find "$BIN" -maxdepth 1 -type f -name "[!_]*.jl" -printf "\t%f\n" \
+        | sed 's/\.jl//'
     exit 0
 fi
 
 shift
 
 if [ "$COMMAND" = "sysimage" ]; then
-    exec julia --project="$BIN" "$BIN/sysimage.jl" "$@"
+    # We special-case the `sysimage` command to itself always use the default
+    # sysimage to avoid trouble in case of broken or stale sysimages, e.g.
+    # when recompiling. But we still would like it to be as fast as possible,
+    # so to reduce latency in the non-compiling branches, we tell Julia to
+    # reduce compilation. This especially applies to `sysimage invocation`,
+    # which gets called for all other commands to resolve the sysimage
+    # to use.
+    # However, since `sysimage compile` is a longer-running operation, we
+    # specifically exclude it from reduced Julia compilation.
+    case "$@" in
+        *compile*) exec julia --project="$BIN" "$BIN/sysimage.jl" "$@";;
+        *) exec julia --project="$BIN" --compile=min "$BIN/sysimage.jl" "$@";;
+    esac
 fi
 
-JULIA=$(julia --project="$BIN" --optimize=0 --compile=min "$BIN/sysimage.jl" --invocation)
-eval exec $JULIA "$BIN/$COMMAND.jl" "$@"
+eval exec $($0 sysimage invocation) "$BIN/$COMMAND.jl" "$@"

@@ -1,7 +1,7 @@
 using GeneRegulatorySystemsTools
 
 redirect_stdout(devnull) do
-    Sysimage.run(["--invocation"])
+    Sysimage.run(["invocation"])
 end
 
 mktempdir() do sink

@@ -15,70 +15,85 @@ const SCRATCHSPACE = Scratch.scratch_path(
     "sysimages",
 )
 
-settings() = @add_arg_table! ArgParseSettings() begin
-    "--compile"
-        help = "If given, compile a new sysimage."
-        action = :store_true
+resolve(location) = replace(
+    location,
+    "{SCRATCHSPACE}" => SCRATCHSPACE,
+    "{VERSION}" => GeneRegulatorySystemsTools.repository_version(),
+)
 
-    "--sink"
-        help = """
-            Where to place the resulting shared object;
-            scratchspace is "$SCRATCHSPACE",
-            version is "$(GeneRegulatorySystemsTools.repository_version())"
-            """
-        default = "{SCRATCHSPACE}/{VERSION}.so"
+function settings(; location = nothing)
+    default_location = "{SCRATCHSPACE}/{VERSION}.so"
+    location = resolve(@something location default_location)
+    epilog = """
+        sysimage location:
+        $(isfile(location) ? "(exists)" : "(does not exist)")
+        "$location"
+        """
 
-    "--workload"
-        help = """
-            The example execution that determines what to bake into the
-            sysimage.
-            """
-        default = "$(@__DIR__)/precompile_workload.jl"
+    s = ArgParseSettings(;
+        commands_are_required = false,
+        epilog,
+    )
 
-    "--invocation"
-        help = """
-            If given, write a shell command to standard output that starts
-            Julia with the appropriate sysimage.
-            """
-        action = :store_true
+    @add_arg_table! s begin
+        "--location", "-l"
+            help = "Where to expect or place the compiled shared object."
+            default = default_location
+
+        "compile"
+            help = "Compile a new sysimage."
+            action = :command
+
+        "invocation"
+            help = """
+                Write a shell command to standard output that starts Julia with
+                the appropriate sysimage.
+                """
+            action = :command
+    end
+
+    @add_arg_table! s["compile"] begin
+        "--workload", "-w"
+            help = """
+                The example execution that determines what to bake into the
+                sysimage.
+                """
+            default = "$(@__DIR__)/precompile_workload.jl"
+    end
+
+    s
 end
 
 function main(;
-    compile,
-    sink,
-    workload,
-    invocation,
+    _COMMAND_,
+    location,
+    invocation = nothing,
+    compile = nothing,
 )
-    compile || invocation || ArgParse.show_help(settings())
+    resolved_location = resolve(location)
 
-    location = replace(
-        sink,
-        "{SCRATCHSPACE}" => SCRATCHSPACE,
-        "{VERSION}" => GeneRegulatorySystemsTools.repository_version(),
-    )
-    
-    if compile
-        mkpath(dirname(location))
-        if startswith(sink, "{SCRATCHSPACE}/")
+    if _COMMAND_ == :invocation
+        command = "$(Base.julia_cmd().exec[1]) --project=\"$PROJECT\""
+        if isfile(resolved_location)
+            print("$command --sysimage=\"$resolved_location\"")
+        else
+            print(command)
+        end
+    elseif _COMMAND_ == :compile
+        mkpath(dirname(resolved_location))
+        if startswith(location, "{SCRATCHSPACE}/")
             Scratch.track_scratch_access(
                 Scratch.find_uuid(GeneRegulatorySystems),
                 "sysimages"
             )
         end
-        @info "About to compile sysimage" location Base.julia_cmd()
+        @info "About to compile sysimage" resolved_location Base.julia_cmd()
         @time PackageCompiler.create_sysimage(;
-            sysimage_path = location,
-            precompile_execution_file = workload
+            sysimage_path = resolved_location,
+            precompile_execution_file = compile[:workload]
         )
-    end
-
-    if invocation
-        command = "$(Base.julia_cmd().exec[1]) --project=\"$PROJECT\""
-        if isfile(location)
-            print("$command --sysimage=\"$location\"")
-        else
-            print(command)
-        end
+    else
+        ArgParse.show_help(settings(; location))
     end
 end
 
