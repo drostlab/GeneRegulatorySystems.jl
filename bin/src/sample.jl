@@ -46,10 +46,6 @@ function main(;
     sink = replace(sink, "{TIMESTAMP}" => timestamp)
 
     mkpath(dirname(sink))
-    cp(
-        joinpath(Pkg.project().path |> dirname, "Manifest.toml"),
-        string(sink, "Manifest.toml")
-    )
 
     for experiment in experiments
         specification = JSON.parsefile(experiment; dicttype = Dict{Symbol, Any})
@@ -64,7 +60,6 @@ function main(;
 
         @info "About to run '$name'" typeof(model) simulations=length(simulations) seed see=string(sink, "$name.result.json")
         for (i, simulation) in enumerate(simulations)
-            tag = get(simulation, :tag, nothing)
             initial = @something(
                 get(simulation, :initial, nothing),
                 get(specification, :initial, nothing),
@@ -102,7 +97,6 @@ function main(;
                     :sample => string(basename(sink), "$name.sample.arrow"),
                     :seed => seed,
                     :version => GeneRegulatorySystemsTools.repository_version(),
-                    :environment => string(basename(sink), "Manifest.toml"),
                 ),
                 4,
             )
