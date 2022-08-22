@@ -2,8 +2,17 @@
 BIN=$(dirname $0)
 COMMAND=$1
 
+# Check if `]instantiate` needs to be run for the current `bin/Manifest.toml`.
+# If so, run it and take note of the instantiated state (unless `bin` is
+# write-protected, which is not really a problem since `]instantiate` is
+# idempotent, though it will add latency).
+if ! cmp --silent "$BIN/Manifest.toml" "$BIN/Instantiated.toml"; then
+    julia --project="$BIN" -e'import Pkg; Pkg.instantiate(verbose = true)' && \
+        cp "$BIN/Manifest.toml" "$BIN/Instantiated.toml" 2>/dev/null
+fi
+
 if [ -z "$COMMAND" ]; then
-    echo "usage: $0 <command> [<args>]"
+    echo "usage: $0 <command> [args...]"
     echo
     echo "commands:"
     for SCRIPT in $(cd "$BIN"; echo *.jl); do
