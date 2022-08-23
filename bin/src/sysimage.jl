@@ -44,10 +44,10 @@ function settings(; location = nothing)
             help = "Compile a new sysimage."
             action = :command
 
-        "invocation"
+        "locate"
             help = """
-                Write a shell command to standard output that starts Julia with
-                the appropriate sysimage.
+                If it exists, write the location of the sysimage to standard
+                output, otherwise the location of the default sysimage.
                 """
             action = :command
     end
@@ -67,18 +67,17 @@ end
 function main(;
     _COMMAND_,
     location,
-    invocation = nothing,
+    locate = nothing,
     compile = nothing,
 )
     resolved_location = resolve(location)
 
-    if _COMMAND_ == :invocation
-        command = "$(Base.julia_cmd().exec[1]) --project=\"$PROJECT\""
+    if _COMMAND_ == :locate
         if isfile(resolved_location)
-            print("$command --sysimage=\"$resolved_location\"")
+            resolved_location
         else
-            print(command)
-        end
+            unsafe_string(Base.JLOptions().image_file)
+        end |> print
     elseif _COMMAND_ == :compile
         mkpath(dirname(resolved_location))
         if startswith(location, "{SCRATCHSPACE}/")

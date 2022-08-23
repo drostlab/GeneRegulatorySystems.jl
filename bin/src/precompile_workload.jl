@@ -1,9 +1,11 @@
 using GeneRegulatorySystemsTools
 
 redirect_stdout(devnull) do
-    Sysimage.run(["invocation"])
+    Sysimage.run([])
+    Sysimage.run(["locate"])
 end
 
+Sample.run([])
 mktempdir() do sink
     experiment = joinpath(
         @__DIR__() |> dirname |> dirname,
