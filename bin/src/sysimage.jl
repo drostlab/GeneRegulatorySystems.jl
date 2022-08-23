@@ -31,7 +31,9 @@ function settings(; location = nothing)
         """
 
     s = ArgParseSettings(;
+        prog = "sysimage",
         commands_are_required = false,
+        exit_after_help = false,
         epilog,
     )
 
@@ -92,12 +94,15 @@ function main(;
             precompile_execution_file = compile[:workload]
         )
     else
-        ArgParse.show_help(settings(; location))
+        ArgParse.show_help(settings(; location), exit_when_done = false)
     end
 end
 
 run(arguments = ARGS) = main(;
-    parse_args(arguments, settings(), as_symbols = true)...
+    @something(
+        parse_args(arguments, settings(), as_symbols = true),
+        return
+    )...
 )
 
 end # module

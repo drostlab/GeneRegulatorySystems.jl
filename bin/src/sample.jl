@@ -12,7 +12,10 @@ using ComponentArrays
 import GeneRegulatorySystems
 import JSON
 
-settings() = @add_arg_table! ArgParseSettings() begin
+settings() = @add_arg_table! ArgParseSettings(
+    prog = "sample",
+    exit_after_help = false
+) begin
     "--experiment", "-e"
         action = :append_arg
         arg_type = String
@@ -40,7 +43,10 @@ function main(;
     sink,
 )
     append!(experiments, more_experiments)
-    isempty(experiments) && ArgParse.show_help(settings())
+    if isempty(experiments)
+        ArgParse.show_help(settings(); exit_when_done = false)
+        return
+    end
 
     timestamp = Dates.now()
     sink = replace(sink, "{TIMESTAMP}" => timestamp)
@@ -105,7 +111,10 @@ function main(;
 end
 
 run(arguments = ARGS) = main(;
-    parse_args(arguments, settings(), as_symbols = true)...
+    @something(
+        parse_args(arguments, settings(), as_symbols = true),
+        return
+    )...
 )
 
 end # module
