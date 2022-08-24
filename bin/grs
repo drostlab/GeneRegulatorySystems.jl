@@ -2,16 +2,16 @@
 
 set -e
 
-BIN=$(dirname $0)
-COMMAND=$1
+BIN="$(dirname "$0")"
+COMMAND="$1"
 : ${JULIA:=julia}
 
 # Check if `]instantiate` needs to be run for the current `bin/Manifest.toml`.
 # If so, run it and take note of the instantiated state and instantiating Julia
 # version (unless `bin` is write-protected, which is not really a problem since
 # `]instantiate` is idempotent, though it will add latency).
-JULIA_VERSION=$("$JULIA" --version)
-INSTANTIATED_WITH=$(cat "$BIN"/instantiated_with.version 2>/dev/null || true)
+JULIA_VERSION="$("$JULIA" --version)"
+INSTANTIATED_WITH="$(cat "$BIN"/instantiated_with.version 2>/dev/null || true)"
 if
     [ "$JULIA_VERSION" != "$INSTANTIATED_WITH" ] || \
     ! cmp --silent "$BIN/Manifest.toml" "$BIN/Instantiated.toml"
@@ -28,7 +28,7 @@ then
 fi
 
 if [ -z "$COMMAND" ]; then
-    echo "usage: $0 <command> [args...]"
+    echo "usage: $(basename "$0") <command> [args...]"
     echo
     echo "commands:"
     for SCRIPT in $(cd "$BIN"; echo *.jl); do
@@ -51,16 +51,13 @@ if [ "$COMMAND" = "sysimage" ]; then
     # However, since `sysimage compile` is a longer-running operation, we
     # specifically exclude it from reduced Julia compilation.
     case "$@" in
-        *compile*)
-            exec "$JULIA" --project="$BIN" "$BIN/sysimage.jl" "$@"
-            ;;
-        *)
-            exec "$JULIA" --project="$BIN" --compile=min "$BIN/sysimage.jl" "$@"
-            ;;
+        *compile*) exec "$JULIA" --project="$BIN" "$BIN/sysimage.jl" "$@";;
+        *) exec "$JULIA" --project="$BIN" --compile=min \
+            "$BIN/sysimage.jl" "$@";;
     esac
 elif [ "$COMMAND" = "julia" ]; then
-    exec "$JULIA" --project="$BIN" --sysimage="$($0 sysimage locate)" "$@"
+    exec "$JULIA" --project="$BIN" --sysimage="$("$0" sysimage locate)" "$@"
 else
-    exec "$JULIA" --project="$BIN" --sysimage="$($0 sysimage locate)" \
+    exec "$JULIA" --project="$BIN" --sysimage="$("$0" sysimage locate)" \
         "$BIN/$COMMAND.jl" "$@"
 fi
