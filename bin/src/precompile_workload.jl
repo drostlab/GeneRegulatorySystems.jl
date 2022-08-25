@@ -1,20 +1,20 @@
-using GeneRegulatorySystemsTools
-
-@info "Precompiling command `$Sysimage`..."
-Sysimage.run([])
+include("sysimage.jl")
+@info "Precompiling command `$SysimageScript`..."
+SysimageScript.run([])
 redirect_stdout(devnull) do
-    Sysimage.run(["locate"])
+    SysimageScript.run(["locate"])
 end
 
-@info "Precompiling command `$Sample`..."
-Sample.run([])
+include("sample.jl")
+@info "Precompiling command `$SampleScript`..."
+SampleScript.run([])
 mktempdir() do sink
     experiment = joinpath(
         @__DIR__() |> dirname |> dirname,
         "examples",
         "complete.experiment.json"
     )
-    Sample.run(["--sink", "$sink/", "--experiment", experiment])
+    SampleScript.run(["--sink", "$sink/{TIMESTAMP}/", "--experiment", experiment])
 end
 
 @info "Finished executing example workload."

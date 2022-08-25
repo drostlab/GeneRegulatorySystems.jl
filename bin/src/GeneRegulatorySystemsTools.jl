@@ -14,9 +14,4 @@ repository_version() = LibGit2.format(
     )
 )
 
-include("sample.jl")
-include("sysimage.jl")
-
-export Sample, Sysimage
-
 end # module

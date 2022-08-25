@@ -1,2 +1,2 @@
-using GeneRegulatorySystemsTools
-Sysimage.run()
+include("src/sysimage.jl")
+SysimageScript.run()

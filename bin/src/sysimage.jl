@@ -1,6 +1,6 @@
-module Sysimage
+module SysimageScript
 
-import ..GeneRegulatorySystemsTools
+import GeneRegulatorySystemsTools
 
 import Pkg
 

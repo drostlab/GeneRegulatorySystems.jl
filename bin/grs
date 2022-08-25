@@ -23,6 +23,7 @@ then
         "$JULIA" --project="$BIN" \
             -e 'import Pkg; Pkg.instantiate(verbose = true)'
     )
+    echo "...done."
     cp "$BIN/Manifest.toml" "$BIN/Instantiated.toml" 2>/dev/null || true
     "$JULIA" --version 2>/dev/null >"$BIN/instantiated_with.version" || true
 fi

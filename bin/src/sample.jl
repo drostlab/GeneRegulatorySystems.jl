@@ -1,6 +1,6 @@
-module Sample
+module SampleScript
 
-import ..GeneRegulatorySystemsTools
+import GeneRegulatorySystemsTools
 
 import Dates
 import Pkg

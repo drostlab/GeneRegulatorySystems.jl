@@ -1,2 +1,2 @@
-using GeneRegulatorySystemsTools
-Sample.run()
+include("src/sample.jl")
+SampleScript.run()
