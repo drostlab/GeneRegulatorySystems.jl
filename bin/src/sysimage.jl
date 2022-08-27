@@ -39,18 +39,23 @@ function settings(; location = nothing)
 
     @add_arg_table! s begin
         "--location", "-l"
-            help = "Where to expect or place the compiled shared object."
+            help = "Where to expect or place the custom sysimage."
             default = default_location
 
         "compile"
-            help = "Compile a new sysimage."
+            help = "Compile a new custom sysimage."
             action = :command
 
         "locate"
             help = """
-                If it exists, write the location of the sysimage to standard
-                output, otherwise the location of the default sysimage.
+                If it exists, write the location of the custom sysimage to
+                standard output, otherwise the location of the default
+                sysimage.
                 """
+            action = :command
+
+        "delete"
+            help = "Delete the custom sysimage, if it exists."
             action = :command
     end
 
@@ -69,8 +74,9 @@ end
 function main(;
     _COMMAND_,
     location,
-    locate = nothing,
     compile = nothing,
+    locate = nothing,
+    delete = nothing,
 )
     resolved_location = resolve(location)
 
@@ -93,6 +99,10 @@ function main(;
             sysimage_path = resolved_location,
             precompile_execution_file = compile[:workload]
         )
+    elseif _COMMAND_ == :delete
+        if isfile(resolved_location)
+            rm(resolved_location)
+        end
     else
         ArgParse.show_help(settings(; location), exit_when_done = false)
     end
