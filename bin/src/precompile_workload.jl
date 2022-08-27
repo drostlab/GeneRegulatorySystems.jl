@@ -5,16 +5,21 @@ redirect_stdout(devnull) do
     SysimageScript.run(["locate"])
 end
 
-include("sample.jl")
-@info "Precompiling command `$SampleScript`..."
-SampleScript.run([])
-mktempdir() do sink
+include("simulate.jl")
+@info "Precompiling command `$SimulateScript`..."
+SimulateScript.run([])
+mktempdir() do location
     experiment = joinpath(
         @__DIR__() |> dirname |> dirname,
         "examples",
         "complete.experiment.json"
     )
-    SampleScript.run(["--sink", "$sink/{TIMESTAMP}/", "--experiment", experiment])
+    SimulateScript.run([
+        "--location",
+        "$location/{TIMESTAMP}/",
+        "--experiment",
+        experiment
+    ])
 end
 
 @info "Finished executing example workload."

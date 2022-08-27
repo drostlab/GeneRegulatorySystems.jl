@@ -14,4 +14,11 @@ repository_version() = LibGit2.format(
     )
 )
 
+path(name, kind::Symbol; prefix = "") = path(name, Val(kind); prefix)
+path(name, ::Val{:specification}; prefix) = "$prefix$name.json"
+path(name, ::Val{:simulations_result}; prefix) =
+    "$prefix$name.simulations.result.json"
+path(name, ::Val{:simulations_data}; prefix) =
+    "$prefix$name.simulations.stream.arrow"
+
 end # module
