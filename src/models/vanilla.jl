@@ -39,7 +39,7 @@ Base.@kwdef struct Parameters <: Models.Parameters
     ribosomes::Int
     proteasomes::Int
     links::Vector{Link}
-    aggregations::Union{Vector{Function}, Nothing} = nothing
+    aggregations::Union{<:Function, Vector{<:Function}, Nothing} = nothing
     rates::BaseRates
 end
 
@@ -55,9 +55,15 @@ const AGGREGATIONS = Dict(
 
 coerce(T::Type{<:Number}, x::Number) = convert(T, x)
 coerce(T::Type{<:Number}, x::AbstractString) = parse(T, x)
-coerce(T::Type{Union{S, Nothing}}, x) where {S} = coerce(S, x)
-coerce(T::Type{Vector{S}}, x::AbstractVector) where {S} = coerce.(S, x)
-coerce(T::Type{Function}, x::AbstractString) = AGGREGATIONS[x]
+coerce(::Type{Function}, x::AbstractString) = AGGREGATIONS[x]
+coerce(::Type{Vector{T}}, x::AbstractVector) where {T} = coerce.(T, x)
+coerce(
+    ::Type{Union{<:Function, Vector{<:Function}, Nothing}},
+    x::AbstractVector
+) =
+    coerce(Vector{Function}, x)
+coerce(::Type{Union{<:Function, Vector{<:Function}, Nothing}}, x) =
+    coerce(Function, x)
 coerce(T, x::AbstractDict{Symbol}) = T(; (
     key => coerce(fieldtype(T, key), value)
     for (key, value) in x
@@ -106,8 +112,10 @@ const KERNEL = AxisArray(
 @memoize links(θ::Parameters) =
     θ.links |> @groupby(_.to) |> @map(key(_) => collect(_)) |> Dict
 
-@memoize aggregations(θ::Parameters) =
-    @something θ.aggregations fill(minimum, θ.genes)
+@memoize aggregations(θ::Parameters) = _aggregations(θ.aggregations, θ.genes)
+_aggregations(::Nothing, genes) = _aggregations(minimum, genes)
+_aggregations(f::Function, genes) = fill(f, genes)
+_aggregations(fs, _) = fs
 
 function concentration(count; volume)
     # @David: units?

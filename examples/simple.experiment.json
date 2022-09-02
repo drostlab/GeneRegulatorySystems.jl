@@ -9,6 +9,7 @@
         "links": [
             {"from": 1, "to": 2, "repression": 0.00277}
         ],
+        "aggregations": "minimum",
         "rates": {
             "activation": [0.05, 0.05],
             "deactivation": [10.0, 10.0],
