@@ -48,6 +48,7 @@ const AGGREGATIONS = Dict(
     "maximum" => maximum,
     "mean" => mean,
     "geometric_mean" => geomean,
+    "complement_geometric_mean" => xs -> geommean(1.0 .- xs),
     "harmonic_mean" => harmmean,
     "median" => median,
 )
