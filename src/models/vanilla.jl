@@ -11,9 +11,9 @@ using Memoization
 using Query
 using StatsBase
 
-Base.@kwdef struct Link
-    from::Int
-    to::Int
+Base.@kwdef struct Link{Index}
+    from::Index
+    to::Index
     k::Float64 = -1.0
     repression::Float64 = Inf
     activation::Float64 = Inf
@@ -34,7 +34,7 @@ end
 
 Base.@kwdef struct Parameters <: Models.Parameters
     volume::Float64
-    genes::Int
+    genes::Union{AbstractRange{Int}, Vector{<:AbstractString}}
     polymerases::Int
     ribosomes::Int
     proteasomes::Int
@@ -53,19 +53,23 @@ const AGGREGATIONS = Dict(
     "median" => median,
 )
 
+
+coerce(::Type{Link}, ::Val{:from}, x::Union{Int, AbstractString}) = x
+coerce(::Type{Link}, ::Val{:to}, x::Union{Int, AbstractString}) = x
+coerce(::Type{Parameters}, ::Val{:genes}, x::Int) = 1:x
+coerce(::Type{Parameters}, ::Val{:genes}, xs::AbstractVector) =
+    collect(String, xs)
+coerce(::Type{Parameters}, ::Val{:aggregations}, x::AbstractString) =
+    AGGREGATIONS[x]
+coerce(T::Type{Parameters}, k::Val{:aggregations}, xs::AbstractVector) =
+    coerce.(T, k, xs)
+coerce(T::Type, ::Val{K}, x) where {K} = coerce(fieldtype(T, K), x)
+
 coerce(T::Type{<:Number}, x::Number) = convert(T, x)
 coerce(T::Type{<:Number}, x::AbstractString) = parse(T, x)
-coerce(::Type{Function}, x::AbstractString) = AGGREGATIONS[x]
 coerce(::Type{Vector{T}}, x::AbstractVector) where {T} = coerce.(T, x)
-coerce(
-    ::Type{Union{<:Function, Vector{<:Function}, Nothing}},
-    x::AbstractVector
-) =
-    coerce(Vector{Function}, x)
-coerce(::Type{Union{<:Function, Vector{<:Function}, Nothing}}, x) =
-    coerce(Function, x)
-coerce(T, x::AbstractDict{Symbol}) = T(; (
-    key => coerce(fieldtype(T, key), value)
+coerce(T::Type, x::AbstractDict{Symbol}) = T(; (
+    key => coerce(T, Val(key), value)
     for (key, value) in x
     if hasfield(T, key)
 )...)
@@ -107,14 +111,30 @@ const KERNEL = AxisArray(
     ],
 )
 
-@memoize reactions(θ::Parameters) = KERNEL ⊗ I(θ.genes)
+@memoize reactions(θ::Parameters) = KERNEL ⊗ I(length(θ.genes))
+
+normalize_links(xs::Vector{<:Link}, ::UnitRange{Int}) = Vector{Link{Int}}(xs)
+normalize_links(xs::Vector{<:Link}, genes::Vector{<:AbstractString}) = [
+    Link{Int}(;
+        from = findfirst(==(x.from), genes),
+        to = findfirst(==(x.to), genes),
+        x.k,
+        x.activation,
+        x.repression,
+    )
+    for x in xs
+]
 
 @memoize links(θ::Parameters) =
-    θ.links |> @groupby(_.to) |> @map(key(_) => collect(_)) |> Dict
+    normalize_links(θ.links, θ.genes) |>
+        @groupby(_.to) |>
+        @map(key(_) => collect(_)) |>
+        Dict
 
-@memoize aggregations(θ::Parameters) = _aggregations(θ.aggregations, θ.genes)
-_aggregations(::Nothing, genes) = _aggregations(minimum, genes)
-_aggregations(f::Function, genes) = fill(f, genes)
+@memoize aggregations(θ::Parameters) =
+    _aggregations(θ.aggregations, length(θ.genes))
+_aggregations(::Nothing, n) = _aggregations(minimum, n)
+_aggregations(f::Function, n) = fill(f, n)
 _aggregations(fs, _) = fs
 
 function concentration(count; volume)
@@ -125,20 +145,21 @@ end
 
 function Models.initialize(initial::AbstractDict{Symbol}, θ::Parameters)
     reaction_names, species_names = axisvalues(KERNEL)
+    n = length(θ.genes)
 
     state = ComponentVector(; (
         name => let
             counts = get(initial, name) do
-                fill(0, θ.genes)
+                fill(0, n)
             end
-            length(counts) == θ.genes || throw("invalid initial state")
+            length(counts) == n || throw("invalid initial state")
             counts
         end
         for name in species_names
     )...)
 
     rates = ComponentVector(; (
-        name => Array{Float64}(undef, θ.genes)
+        name => Array{Float64}(undef, n)
         for name in reaction_names
     )...)
 

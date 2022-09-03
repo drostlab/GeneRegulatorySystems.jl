@@ -33,9 +33,10 @@ end
 
 derive_seed(seed, i) = seed + i
 
-columns(xs) = (
-    Symbol(label) => getindex.(xs, i)
-    for (i, label) in zip(LinearIndices(first(xs)), labels(first(xs)))
+columns(xs; genes) = (
+    Symbol("$component[$(genes[i])]") => (row -> row[component][i]).(xs)
+    for component in keys(first(xs))
+    for i in eachindex(first(xs)[component])
 )
 
 function main(;
@@ -96,8 +97,8 @@ function main(;
             result = (;
                 :simulation => fill(i, length(transcript.ts)),
                 :t => transcript.ts,
-                columns(transcript.states)...,
-                columns(transcript.rates)...,
+                columns(transcript.states; model.genes)...,
+                columns(transcript.rates; model.genes)...,
             )
             if i == 1
                 Arrow.write(data_location, result, file = false)

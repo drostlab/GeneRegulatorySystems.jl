@@ -3,12 +3,12 @@
     "model": {
         "kind": "VanillaModel",
         "volume": 3000.0,
-        "genes": 2,
+        "genes": ["Gene 1", "Gene 2"],
         "polymerases": 50.0,
         "ribosomes": 5537.0,
         "proteasomes": 2215.0,
         "links": [
-            {"from": 1, "to": 2, "k": -1, "repression": 0.00277, "activation": "Inf"}
+            {"from": "Gene 1", "to": "Gene 2", "k": -1, "repression": 0.00277, "activation": "Inf"}
         ],
         "aggregations": ["minimum", "minimum"],
         "rates": {
