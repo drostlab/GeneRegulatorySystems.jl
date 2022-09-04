@@ -5,13 +5,12 @@ import GeneRegulatorySystemsTools
 import Pkg
 
 using ArgParse
-import GeneRegulatorySystems
 import PackageCompiler
 import Scratch
 
 const PROJECT = Pkg.project().path
 const SCRATCHSPACE = Scratch.scratch_path(
-    Scratch.find_uuid(GeneRegulatorySystems),
+    Scratch.find_uuid(GeneRegulatorySystemsTools),
     "sysimages",
 )
 
@@ -90,7 +89,7 @@ function main(;
         mkpath(dirname(resolved_location))
         if startswith(location, "{SCRATCHSPACE}/")
             Scratch.track_scratch_access(
-                Scratch.find_uuid(GeneRegulatorySystems),
+                Scratch.find_uuid(GeneRegulatorySystemsTools),
                 "sysimages"
             )
         end
