@@ -23,28 +23,18 @@
             "protein_decay": [0.000000136, 0.000000136]
         }
     },
-    "initial": {
-        "promoters": [0, 0],
-        "transcriptions": [0, 0],
-        "premrnas": [0, 0],
-        "mrnas": [0, 0],
-        "proteins": [100, 100]
-    },
-    "seed": "root-seed",
-    "in": [
-        {"take": {"to": 300.0}},
-        {"take": 500.0},
-        {"take": [600.0, 700.0, 800.0]},
-        {
-            "initial": {"proteins": [50, 150]},
-            "label": "4th cell",
-            "simulation_seed": "fixed-seed",
-            "take": {
-                "event_resolution": 10,
-                "from": 1000.0,
-                "step": 100.0,
-                "to": 5000.0
-            }
+    "each": {"start": 50, "step": 10, "stop": 200},
+    "as": "proteins",
+    "in": {
+        "initial": {
+            "proteins": [{"$": "proteins"}, {"$": "proteins"}]
+        },
+        "each": [200.0, 1000.0, 5000.0],
+        "as": "t",
+        "in": {
+            "take": {"$": "t"},
+            "label": "initial-$proteins-t$t",
+            "each": {"start": 1, "length": 5}
         }
-    ]
+    }
 }

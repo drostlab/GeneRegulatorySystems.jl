@@ -1,6 +1,6 @@
 module Gillespie
 
-import ..Simulation
+import ..Simulations
 import ...Models
 
 using Random
@@ -21,7 +21,7 @@ function simulate!(
     randomness,
     t,
     next_reaction,
-    take::Simulation.Take,
+    take::Simulations.Take,
     transcript,
 )
     function step!()
@@ -65,7 +65,7 @@ end
 function simulate(
     initial,
     θ::Models.Parameters;
-    takes::AbstractVector{Simulation.Take},
+    takes::AbstractVector{Simulations.Take},
     randomness::AbstractRNG
 )
     t = 0.0

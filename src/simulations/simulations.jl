@@ -1,4 +1,8 @@
-module Simulation
+module Simulations
+
+import ..Models
+
+using Random
 
 Base.@kwdef struct Take
     event_resolution::Int = 1
@@ -15,5 +19,17 @@ takes(x::Take) = [x]
 takes(x) = [Take(x)]
 
 include("gillespie.jl")
+
+simulate(
+    initial,
+    θ::Models.Parameters;
+    takes,
+    randomness::AbstractRNG = Xoshiro(0)
+) = Simulations.Gillespie.simulate(
+    initial,
+    θ;
+    takes = Simulations.takes(takes),
+    randomness
+)
 
 end

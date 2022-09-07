@@ -1,2 +1,2 @@
 include("src/scripts/sysimage.jl")
-SysimageScript.run()
+exit(something(SysimageScript.run(), 0))

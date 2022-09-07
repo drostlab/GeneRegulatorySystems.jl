@@ -14,11 +14,14 @@ repository_version() = LibGit2.format(
     )
 )
 
-path(name, kind::Symbol; prefix = "") = path(name, Val(kind); prefix)
-path(name, ::Val{:specification}; prefix) = "$prefix$name.json"
-path(name, ::Val{:simulations_result}; prefix) =
-    "$prefix$name.simulations.result.json"
-path(name, ::Val{:simulations_data}; prefix) =
-    "$prefix$name.simulations.stream.arrow"
+path(kind::Symbol, name = nothing; prefix = "") =
+    "$prefix$(filename(Val(kind), name))"
+
+filename(::Val{:specification}, ::Nothing) = "specification.json"
+filename(::Val{:simulations}, ::Nothing) = "simulations.arrow"
+filename(::Val{:takes}, name) =
+    "takes$(isempty(name) ? "" : "-$name").stream.arrow"
+
+include("specifications.jl")
 
 end # module

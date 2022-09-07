@@ -1,9 +1,8 @@
 module Models
 
 abstract type Parameters end
-
-load(specification::AbstractDict{Symbol, Any}) =
-    load(Val(Symbol(specification[:kind])), specification)
+Parameters(specification::AbstractDict{Symbol, Any}) =
+    Parameters(Val(Symbol(specification[:kind])), specification)
 
 initialize(initial, θ::Parameters) = throw("unimplemented")
 

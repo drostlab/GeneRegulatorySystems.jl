@@ -28,7 +28,7 @@
         }
     },
     "initial": {"proteins": [100, 100, 100]},
-    "simulations": [
+    "in": [
         {"take": {"to": 100000.0}},
         {"take": {"to": 1000000.0, "step": 1000.0}}
     ]

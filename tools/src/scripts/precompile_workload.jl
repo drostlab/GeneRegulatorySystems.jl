@@ -5,20 +5,24 @@ redirect_stdout(devnull) do
     SysimageScript.run(["locate"])
 end
 
-include("simulate.jl")
-@info "Precompiling command `$SimulateScript`..."
-SimulateScript.run([])
+include("experiment.jl")
+@info "Precompiling command `$ExperimentScript`..."
+ExperimentScript.run([])
+experiment_path(name) = joinpath(
+    @__DIR__() |> dirname |> dirname,
+    "examples",
+    name
+)
 mktempdir() do location
-    experiment = joinpath(
-        @__DIR__() |> dirname |> dirname,
-        "examples",
-        "complete.experiment.json"
-    )
-    SimulateScript.run([
+    experiments = experiment_path.([
+        "complete.experiment.json",
+        "templating.experiment.json",
+        "channels.experiment.json",
+    ])
+    ExperimentScript.run([
         "--location",
         "$location/{TIMESTAMP}/",
-        "--experiment",
-        experiment
+        experiments...,
     ])
 end
 

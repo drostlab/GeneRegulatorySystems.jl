@@ -53,7 +53,6 @@ const AGGREGATIONS = Dict(
     "median" => median,
 )
 
-
 coerce(::Type{Link}, ::Val{:from}, x::Union{Int, AbstractString}) = x
 coerce(::Type{Link}, ::Val{:to}, x::Union{Int, AbstractString}) = x
 coerce(::Type{Parameters}, ::Val{:genes}, x::Int) = 1:x
@@ -74,7 +73,7 @@ coerce(T::Type, x::AbstractDict{Symbol}) = T(; (
     if hasfield(T, key)
 )...)
 
-Models.load(::Val{:VanillaModel}, specification) =
+Models.Parameters(::Val{:VanillaModel}, specification) =
     coerce(Parameters, specification)
 
 const KERNEL = AxisArray(
