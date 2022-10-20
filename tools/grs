@@ -46,7 +46,7 @@ if [ "$COMMAND" = "sysimage" ]; then
     # sysimage to avoid trouble in case of broken or stale sysimages, e.g.
     # when recompiling. But we still would like it to be as fast as possible,
     # so to reduce latency in the non-compiling branches, we tell Julia to
-    # reduce compilation. This especially applies to `sysimage invocation`,
+    # reduce compilation. This especially applies to `sysimage locate`,
     # which gets called for all other commands to resolve the sysimage
     # to use.
     # However, since `sysimage compile` is a longer-running operation, we

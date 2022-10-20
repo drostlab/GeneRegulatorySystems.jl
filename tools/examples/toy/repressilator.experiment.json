@@ -1,4 +1,5 @@
 {
+    "label": "repressilator",
     "model": {
         "kind": "VanillaModel",
         "volume": 3000.0,

@@ -1,0 +1,43 @@
+{
+    "label": "2-repressilators",
+    "model": {
+        "kind": "VanillaModel",
+        "volume": 3000.0,
+        "genes": ["P1", "P2", "P3", "S1", "S2", "S3"],
+        "polymerases": 50.0,
+        "ribosomes": 5537.0,
+        "proteasomes": 2215.0,
+        "links": [
+            {"from": "P1", "to": "P1", "activation": 0.00111},
+            {"from": "P2", "to": "P2", "activation": 0.00111},
+            {"from": "P3", "to": "P3", "activation": 0.00111},
+            {"from": "P1", "to": "P2", "repression": 0.00222},
+            {"from": "P2", "to": "P3", "repression": 0.00222},
+            {"from": "P3", "to": "P1", "repression": 0.00222},
+            {"from": "S1", "to": "S1", "activation": 0.00111},
+            {"from": "S2", "to": "S2", "activation": 0.00111},
+            {"from": "S3", "to": "S3", "activation": 0.00111},
+            {"from": "S1", "to": "S2", "repression": 0.00222},
+            {"from": "S2", "to": "S3", "repression": 0.00222},
+            {"from": "S3", "to": "S1", "repression": 0.00222},
+            {"from": "P1", "to": "S1", "activation": 0.00111},
+            {"from": "P1", "to": "S2", "repression": 0.00222},
+            {"from": "P1", "to": "S3", "repression": 0.00222}
+        ],
+        "rates": {
+            "activation": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+            "deactivation": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+            "trigger": [0.33, 0.33, 0.33, 0.33, 0.33, 0.33],
+            "transcription": [0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
+            "splicing": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "translation": [0.0000009, 0.0000009, 0.0000009, 0.0000009, 0.0000009, 0.0000009],
+            "abortion": [0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
+            "premrna_decay": [0.01, 0.01, 0.01, 0.001, 0.001, 0.001],
+            "mrna_decay": [0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
+            "protein_decay": [0.000000136, 0.000000136, 0.000000136, 0.000000136, 0.000000136, 0.000000136]
+        }
+    },
+    "initial": {"proteins": [100, 100, 100, 100, 100, 100]},
+    "each": {"start": 1, "length": 5},
+    "take": {"to": 1000000.0, "step": 100.0}
+}

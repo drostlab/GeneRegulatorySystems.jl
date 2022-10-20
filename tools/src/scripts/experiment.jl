@@ -1,6 +1,7 @@
 module ExperimentScript
 
-import GeneRegulatorySystemsTools: repository_version, path, Specifications
+import ..Common: repository_version, path
+import ..Specifications
 
 import Dates
 using Random
@@ -36,10 +37,10 @@ end
 randomness(seed::AbstractString) =
     Xoshiro(reinterpret(UInt64, SHA.sha256(seed))...)
 
-columns(xs; genes) = (
-    Symbol("$component[$(genes[i])]") => (row -> row[component][i]).(xs)
-    for component in keys(first(xs))
-    for i in eachindex(first(xs)[component])
+columns(xs; groups) = (
+    Symbol("$kind[$(groups[i])]") => (row -> row[kind][i]).(xs)
+    for kind in keys(first(xs))
+    for i in eachindex(first(xs)[kind])
 )
 
 function map_paths(paths)
@@ -104,7 +105,7 @@ function prepare!(; location, specifications, seed)
                 file,
                 Dict(
                     :seed => seed,
-                    :in => length(wrapped) == 1 ? first(wrapped) : wrapped,
+                    :in => length(wrapped) == 1 ? only(wrapped) : wrapped,
                     :_version => repository_version(),
                     :_julia_version => "v$VERSION",
                     :_defaults => Dict(
@@ -146,7 +147,7 @@ function simulate!(; location)
         takes = GeneRegulatorySystems.Simulations.takes(experiment[:take])
         simulation_seed = experiment[:simulation_seed]
         channel = experiment[:channel]
-        trajectories_path = path(:takes, channel; prefix = location)
+        slices_path = path(:slices, channel; prefix = location)
 
         simulation = (;
             item = locate_definition(experiment, :item),
@@ -155,15 +156,15 @@ function simulate!(; location)
             label = experiment[:label],
             seed = experiment[:simulation_seed],
             channel,
-            takes = basename(trajectories_path),
+            slices = basename(slices_path),
         )
         push!(simulations, simulation)
         @info(
             "About to run simulation '$(simulation.item)'.",
+            label = simulation.label,
             model = simulation.model,
             initial = simulation.initial,
-            label = simulation.label,
-            takes = simulation.takes,
+            into = simulation.slices,
         )
 
         transcript = GeneRegulatorySystems.simulate(
@@ -173,17 +174,17 @@ function simulate!(; location)
             randomness = randomness(simulation_seed),
         )
 
-        trajectories = (;
+        slices = (;
             :simulation => fill(i, length(transcript.ts)),
             :t => transcript.ts,
-            columns(transcript.states; model.genes)...,
-            columns(transcript.rates; model.genes)...,
+            columns(transcript.states; groups = model.genes)...,
+            columns(transcript.rates; groups = model.genes)...,
         )
 
-        if isfile(trajectories_path)
-            Arrow.append(trajectories_path, trajectories)
+        if isfile(slices_path)
+            Arrow.append(slices_path, slices)
         else
-            Arrow.write(trajectories_path, trajectories, file = false)
+            Arrow.write(slices_path, slices, file = false)
         end
     end
     Arrow.write(

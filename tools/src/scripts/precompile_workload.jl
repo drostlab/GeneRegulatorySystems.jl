@@ -1,28 +1,30 @@
-include("sysimage.jl")
-@info "Precompiling command `$SysimageScript`..."
-SysimageScript.run([])
-redirect_stdout(devnull) do
-    SysimageScript.run(["locate"])
-end
+import Dates
 
-include("experiment.jl")
-@info "Precompiling command `$ExperimentScript`..."
-ExperimentScript.run([])
-experiment_path(name) = joinpath(
-    @__DIR__() |> dirname |> dirname,
-    "examples",
-    name
-)
+import GeneRegulatorySystemsTools: ExperimentScript, InspectScript
+
 mktempdir() do location
-    experiments = experiment_path.([
-        "complete.experiment.json",
-        "templating.experiment.json",
-        "channels.experiment.json",
-    ])
+    result_location = "$location/$(Dates.now())/"
+
+    @info "Precompiling command `$ExperimentScript`..."
+    ExperimentScript.run([])
     ExperimentScript.run([
         "--location",
-        "$location/{TIMESTAMP}/",
-        experiments...,
+        result_location,
+        joinpath(@__DIR__, "precompile_experiment.json"),
+    ])
+
+    @info "Precompiling command `$InspectScript`..."
+    InspectScript.run(["--help"])
+    @info "This step may take a couple of minutes..."
+    @info "(Empty windows will open briefly, do not close them manually.)"
+    InspectScript.run(["--no-wait-for-close", result_location])
+    InspectScript.run([
+        "--label-pattern",
+        "initial-.*-t200",
+        "--no-wait-for-close",
+        "--kinds",
+        "promoters,mrnas,log10(proteins)",
+        result_location,
     ])
 end
 

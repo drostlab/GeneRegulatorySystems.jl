@@ -1,6 +1,6 @@
 module SysimageScript
 
-import GeneRegulatorySystemsTools
+import ..Common: repository_version
 
 import Pkg
 
@@ -10,14 +10,14 @@ import Scratch
 
 const PROJECT = Pkg.project().path
 const SCRATCHSPACE = Scratch.scratch_path(
-    Scratch.find_uuid(GeneRegulatorySystemsTools),
+    Scratch.find_uuid(Module(:GeneRegulatorySystemsTools)),
     "sysimages",
 )
 
 resolve(location) = replace(
     location,
     "{SCRATCHSPACE}" => SCRATCHSPACE,
-    "{VERSION}" => GeneRegulatorySystemsTools.repository_version(),
+    "{VERSION}" => repository_version(),
 )
 
 function settings(; location = nothing)
@@ -89,7 +89,7 @@ function main(;
         mkpath(dirname(resolved_location))
         if startswith(location, "{SCRATCHSPACE}/")
             Scratch.track_scratch_access(
-                Scratch.find_uuid(GeneRegulatorySystemsTools),
+                Scratch.find_uuid(Module(:GeneRegulatorySystemsTools)),
                 "sysimages"
             )
         end

@@ -4,11 +4,12 @@
 if "GeneRegulatorySystemsTools" in (
     first(entry).name for entry in Base.loaded_modules
 )
-    import GeneRegulatorySystemsTools: ExperimentScript
+    import GeneRegulatorySystemsTools: InspectScript
 else
     include("src/common.jl")
     include("src/specifications.jl")
-    include("src/scripts/experiment.jl")
+    include("src/visualization.jl")
+    include("src/scripts/inspect.jl")
 end
 
-exit(something(ExperimentScript.run(), 0))
+exit(something(InspectScript.run(), 0))

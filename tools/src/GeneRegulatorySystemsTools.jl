@@ -1,27 +1,22 @@
+"""
+Contains all the tools in this package, including the script modules executed
+via `./grs`.
+
+The main purpose is to allow precompilation of these modules using
+`PackageCompiler`. However, since their very large dependencies (most notably
+Makie) slow down loading `GeneRegulatorySystemsTools`, it should normally only
+be imported if it is already loaded as part of the current sysimage. Otherwise,
+it may be better to load the tools and their dependencies selectively. The
+scripts executed via `./grs` do this conditionally, depending on whether
+`GeneRegulatorySystemsTools` is already loaded.
+"""
 module GeneRegulatorySystemsTools
 
-import LibGit2
-
-repository_version() = LibGit2.format(
-    LibGit2.GitDescribeResult(
-        LibGit2.GitRepo(@__DIR__() |> dirname |> dirname)
-    );
-    options = LibGit2.DescribeFormatOptions(;
-        dirty_suffix = Base.unsafe_convert(
-            Cstring,
-            Base.cconvert(Cstring, "-dirty")
-        )
-    )
-)
-
-path(kind::Symbol, name = nothing; prefix = "") =
-    "$prefix$(filename(Val(kind), name))"
-
-filename(::Val{:specification}, ::Nothing) = "specification.json"
-filename(::Val{:simulations}, ::Nothing) = "simulations.arrow"
-filename(::Val{:takes}, name) =
-    "takes$(isempty(name) ? "" : "-$name").stream.arrow"
-
+include("common.jl")
 include("specifications.jl")
+include("visualization.jl")
+
+include("scripts/experiment.jl")
+include("scripts/inspect.jl")
 
 end # module

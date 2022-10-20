@@ -224,14 +224,14 @@ function reify(
             locator.path,
             shadow = true,
         )
-    end
 
-    if haskey(context, :_defaults)
-        context = expand(
-            context;
-            definitions = context[:_defaults],
-            locator.path
-        )
+        if haskey(context, :_defaults)
+            context = expand(
+                context;
+                definitions = context[:_defaults],
+                locator.path
+            )
+        end
     end
 
     context

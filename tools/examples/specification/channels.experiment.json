@@ -29,6 +29,6 @@
         },
         "initial": {"proteins": [100, 200]},
         "take": {"to": 1000.0},
-        "each": {"start": 1, "length": 5}
+        "each": {"start": 1, "length": 3}
     }
 }

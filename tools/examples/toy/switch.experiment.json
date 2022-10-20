@@ -2,14 +2,16 @@
     "model": {
         "kind": "VanillaModel",
         "volume": 3000.0,
-        "genes": ["Gene 1", "Gene 2"],
+        "genes": 2,
         "polymerases": 50.0,
         "ribosomes": 5537.0,
         "proteasomes": 2215.0,
         "links": [
-            {"from": "Gene 1", "to": "Gene 2", "k": -1, "repression": 0.00277, "activation": "Inf"}
+            {"from": 1, "to": 1, "activation": 0.00111},
+            {"from": 2, "to": 2, "activation": 0.00111},
+            {"from": 1, "to": 2, "repression": 0.00222},
+            {"from": 2, "to": 1, "repression": 0.00222}
         ],
-        "aggregations": ["minimum", "minimum"],
         "rates": {
             "activation": [0.05, 0.05],
             "deactivation": [10.0, 10.0],
@@ -23,18 +25,18 @@
             "protein_decay": [0.000000136, 0.000000136]
         }
     },
-    "each": {"start": 50, "step": 10, "stop": 200},
-    "as": "proteins",
+    "each": {"start": 0, "step": 25, "stop": 100},
+    "as": "a",
     "in": {
-        "initial": {
-            "proteins": [{"$": "proteins"}, {"$": "proteins"}]
-        },
-        "each": [200.0, 1000.0, 5000.0],
-        "as": "t",
+        "each": {"start": 0, "step": 25, "stop": 100},
+        "as": "b",
         "in": {
-            "take": {"$": "t"},
-            "label": "initial-$proteins-t$t",
-            "each": {"start": 1, "length": 5}
+            "initial": {"proteins": [{"$": "a"}, {"$": "b"}]},
+            "take": {"to": 100000.0, "step": 100.0},
+            "in": {
+                "label": "switch-$a-$b",
+                "each": {"start": 1, "length": 3}
+            }
         }
     }
 }
