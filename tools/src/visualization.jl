@@ -269,7 +269,10 @@ function attach_model!(
             model.genes
         )
     )
-    graph = links |> keys .|> Graphs.Edge |> Graphs.DiGraph
+
+    graph = Graphs.DiGraph(length(model.genes))
+    Graphs.add_edge!.(Ref(graph), keys(links))
+
     # TODO: handle parallel edges?
 
     function edge_properties(edge)
@@ -289,14 +292,7 @@ function attach_model!(
         end
     end
 
-    GraphMakie.graphplot!(
-        axis,
-        graph,
-        node_size = 16,
-        node_color = [
-            get(group_colors, string(model.genes[i]), :gray)
-            for i in Graphs.vertices(graph)
-        ],
+    edge_attributes = Graphs.ne(graph) == 0 ? (;) : (
         elabels = (
             graph
             |> Graphs.edges
@@ -310,7 +306,7 @@ function attach_model!(
             .|> (e -> e.color)
         ),
         elabels_distance = 24,
-        elabels_textsize = 12,
+        elabels_fontsize = 12,
         edge_plottype = :beziersegments,
         edge_attr = (
             linestyle = (
@@ -328,8 +324,24 @@ function attach_model!(
         ),
         arrow_attr = (
             size = 16,
-            color = graph |> Graphs.edges .|> edge_properties .|> (e -> e.color),
+            color = (
+                graph
+                |> Graphs.edges
+                .|> edge_properties
+                .|> (e -> e.color)
+            ),
         ),
+    )
+
+    GraphMakie.graphplot!(
+        axis,
+        graph,
+        node_size = 16,
+        node_color = [
+            get(group_colors, string(model.genes[i]), :gray)
+            for i in Graphs.vertices(graph)
+        ];
+        edge_attributes...
     )
     # TODO: clean this up
 
