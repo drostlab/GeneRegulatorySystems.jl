@@ -90,7 +90,7 @@ function main(;
         if startswith(location, "{SCRATCHSPACE}/")
             Scratch.track_scratch_access(
                 Scratch.find_uuid(Module(:GeneRegulatorySystemsTools)),
-                "sysimages"
+                SCRATCHSPACE,
             )
         end
         @info "About to compile sysimage" resolved_location Base.julia_cmd()
