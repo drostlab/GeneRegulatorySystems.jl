@@ -1,0 +1,35 @@
+{
+    "label": "cascade",
+    "model": {
+        "kind": "VanillaModel",
+        "volume": 3000.0,
+        "genes": 4,
+        "polymerases": 50.0,
+        "ribosomes": 5537.0,
+        "proteasomes": 2215.0,
+        "links": [
+            {"from": 1, "to": 2, "repression": 0.01107},
+            {"from": 1, "to": 3, "repression": 0.001107},
+            {"from": 3, "to": 2, "repression": 0.00510},
+            {"from": 1, "to": 4, "repression": 0.001107},
+            {"from": 2, "to": 4, "repression": 0.01107},
+            {"from": 4, "to": 2, "repression": 0.01107}
+        ],
+        "rates": {
+            "activation": [0.00054, 0.00054, 0.00054, 0.00054],
+            "deactivation": [10.0, 0.0023, 0.0023, 0.0023],
+            "trigger": [0.0033, 0.033, 0.033, 0.033],
+            "transcription": [1.0, 1.0, 1.0, 1.0],
+            "splicing": [1.0, 1.0, 1.0, 1.0],
+            "translation": [0.00018, 0.0018, 0.0018, 0.0018],
+            "abortion": [0.001, 0.001, 0.001, 0.001],
+            "premrna_decay": [0.01, 0.01, 0.01, 0.01],
+            "mrna_decay": [0.0011, 0.0011, 0.0011, 0.0011],
+            "protein_decay": [0.00004514, 0.0004514, 0.0004514, 0.0004514]
+        }
+    },
+    "initial": {"proteins": [0, 0, 0, 0], "mrnas": [40, 0, 0, 0]},
+    "in": [
+        {"take": {"to": 8000.0}}
+    ]
+}
