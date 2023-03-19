@@ -6,6 +6,17 @@ BIN="$(dirname "$0")"
 COMMAND="$1"
 : ${JULIA:=julia}
 
+"$JULIA" --project="$BIN" -- - <<JULIA_VERSION_CHECK
+    import Pkg
+    REQUIRED = Pkg.Versions.semver_spec(
+        Pkg.TOML.parse(read(Pkg.project().path, String))["compat"]["julia"]
+    )
+    if !(VERSION in REQUIRED)
+        @error "Incompatible Julia version" CURRENT=VERSION REQUIRED
+        exit(1)
+    end
+JULIA_VERSION_CHECK
+
 # Check if `]instantiate` needs to be run for the current `bin/Manifest.toml`.
 # If so, run it and take note of the instantiated state and instantiating Julia
 # version (unless `bin` is write-protected, which is not really a problem since

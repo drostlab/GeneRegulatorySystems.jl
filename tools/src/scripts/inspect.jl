@@ -29,7 +29,7 @@ settings() = @add_arg_table! ArgParseSettings(
         default = "selector,trajectory,model,legend,info"
 
     "--kinds", "-k"
-        default = "promoters,mrnas,proteins"
+        default = "promoter,mrnas,proteins"
 
     "--resolution", "-r"
         default = "1280x720"
@@ -49,7 +49,7 @@ end
 Base.@kwdef struct PreparedData
     simulations::AbstractDataFrame
     slices::Union{AbstractDataFrame, Nothing}
-    model::Union{GeneRegulatorySystems.Models.Parameters, Nothing}
+    model::Union{GeneRegulatorySystems.Models.Model, Nothing}
     kinds::AbstractVector{Symbol}
     groups::AbstractVector{String}
     adjacents::AdjacentPrefixes
@@ -93,12 +93,24 @@ load_slices(location, channel) = DataFrame(
     Arrow.Table(path(:slices, channel; prefix = location))
 )
 
-reify_model(specification, locator) = GeneRegulatorySystems.Models.Parameters(
-    Specifications.reify(
+function reify_model(specification, locator)
+    reified = Specifications.reify(
         specification,
         parse(Specifications.Locator, locator),
     )[:model]
-)
+
+    result = GeneRegulatorySystems.Models.Model(reified)
+
+    # TODO: Allow models to describe their link structure and then remove this.
+    if result isa GeneRegulatorySystems.Models.SciMLJumpModel
+        result = GeneRegulatorySystems.Models.Model(
+            Symbol("vanilla-simple"),
+            reified,
+        )
+    end
+
+    result
+end
 
 function filter(simulations; selection)
     template = Dict(
@@ -184,7 +196,7 @@ function prepare(simulations; selection, specification, location)
 
         transform!(
             slices,
-            Cols(startswith("promoters")) .=> ByRow(Bool),
+            Cols(endswith("promoter")) .=> ByRow(Bool),
             renamecols = false
         )
         # ^ for now: convert promoter states to `Bool[]`s here...
@@ -480,11 +492,16 @@ function main(;
             location,
         )
         figure = build_figure(; data, displays, kinds, selection, resolution)
+        empty!(screen)
         display(screen, figure)
     end
 
     notify(selection)
-    wait_for_close && wait(screen)
+    if wait_for_close
+        wait(screen)
+    else
+        close(screen)
+    end
 
     return 0
 end

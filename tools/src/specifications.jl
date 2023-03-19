@@ -41,9 +41,7 @@ Specification(specification::AbstractDict{Symbol}) =
             variable = isnothing(variable) ? nothing : Symbol(variable),
             template = Specification(get(specification, :in, nothing)),
         )
-        bindings = Dict{Symbol, Any}(
-            pair for pair ∈ specification if pair.first ∉ (:each, :as, :in)
-        )
+        bindings = filter(!in((:each, :as, :in)) ∘ first, specification)
 
         # As a convenience, if there are bindings we introduce an implicit
         # scope for them. Otherwise we can emit the Each as is.
@@ -97,6 +95,10 @@ paste(x::Number) = repr(x)
 paste(x::Locator) = join(filter(>(0), x.path), "-")
 paste(::Any) = "__omitted__"
 
+pluck(x, path::AbstractVector) = foldl(pluck, path, init = x)
+pluck(x::AbstractDict{Symbol}, key::AbstractString) = x[Symbol(key)]
+pluck(xs::AbstractVector, i::Int) = xs[i]
+
 substituted(::Any; context::AbstractDict{Symbol}) = nothing
 
 function substituted(target::AbstractString; context::AbstractDict{Symbol})
@@ -134,7 +136,14 @@ function substituted(
     context::AbstractDict{Symbol},
 )
     if haskey(target, :$)
-        Some(context[Symbol(target[:$])])  # fail if reference is undefined
+        specializations = filter(!=(:$) ∘ first, target)
+        template = pluck(context, target[:$])  # fail if reference is undefined
+        if isempty(specializations)
+            Some(template)
+        else
+            Some(merge(template, substitute(specializations; context)))
+            #    ^ fail unless template is a Dict
+        end
     else
         changed = Dict(
             key => something(value)

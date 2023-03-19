@@ -7,7 +7,7 @@ import GeneRegulatorySystems
 import Graphs
 import GraphMakie
 
-COMPONENT_PATTERN = r"(?<kind>.+)\[(?<group>.+)\]"
+COMPONENT_PATTERN = r"(?<group>.+)\.(?<kind>.+)"
 
 struct TrajectoryComponent
     kind::Symbol
@@ -77,7 +77,7 @@ function attach_trajectory_components!(
 )
     components_of_kind = select(
         slices,
-        Cols(startswith(String(kind))),
+        Cols(endswith(String(kind))),
         copycols = false
     )
 
@@ -106,7 +106,7 @@ function attach_trajectory_components!(
                     scatterlines!(
                         axis,
                         taken_slices.t,
-                        taken_slices[!, "$kind[$group]"],
+                        taken_slices[!, "$group.$kind"],
                         color = group_colors[group],
                         markersize = 3,
                         linewidth = 1,
@@ -118,7 +118,7 @@ function attach_trajectory_components!(
                     stairs!(
                         axis,
                         taken_slices.t,
-                        taken_slices[!, "$kind[$group]"],
+                        taken_slices[!, "$group.$kind"],
                         color = group_colors[group],
                         step = :pre,
                         linewidth = 1,
@@ -189,7 +189,7 @@ function attach_trajectory_components!(
                 for (j, group) in enumerate(component_groups)
                     ons, offs = activation_windows(
                         taken_slices.t,
-                        taken_slices[!, "$kind[$group]"]
+                        taken_slices[!, "$group.$kind"]
                     )
                     position = (j - 1) * nrow(simulations) + (i - 1)
                     barplot!(
@@ -212,7 +212,7 @@ attach_trajectory_components!(figure; slices, kind, rest...) =
     attach_trajectory_components!(
         figure,
         promote_type(
-            describe(slices, cols = Cols(startswith("$kind"))).eltype...
+            describe(slices, cols = Cols(endswith("$kind"))).eltype...
         );
         slices,
         kind,
@@ -257,79 +257,47 @@ end
 
 function attach_model!(
     figure,
-    model::GeneRegulatorySystems.Models.Vanilla.Parameters;
+    model::GeneRegulatorySystems.Models.Vanilla.Model;
     group_colors,
 )
     axis = Axis(figure, autolimitaspect = 1)
 
+    kinds = [
+        :activation => (color = :black, linestyle = :solid),
+        :repression => (color = :red, linestyle = :dash),
+    ]
+
     links = Dict(
-        (link.from => link.to) => link
-        for link in GeneRegulatorySystems.Models.Vanilla.normalize_links(
-            model.links,
-            model.genes
-        )
+        (model.genes_index[regulator.from] => model.genes_index[gene.name]) =>
+            (; label = repr(regulator.at), style...)
+        for gene in model.definition.genes
+        for (kind, style) in kinds
+        for regulator in getfield(gene, kind).slots
     )
 
-    graph = Graphs.DiGraph(length(model.genes))
+    graph = Graphs.DiGraph(length(model.definition.genes))
     Graphs.add_edge!.(Ref(graph), keys(links))
 
     # TODO: handle parallel edges?
 
-    function edge_properties(edge)
-        link = links[Graphs.src(edge) => Graphs.dst(edge)]
-        if link.repression != Inf
-            (
-                label = repr(link.repression),
-                color = :crimson,
-                linestyle = :dash,
-            )
-        else
-            (
-                label = repr(link.activation),
-                color = :black,
-                linestyle = :solid,
-            )
-        end
-    end
+    link_properties(property) = [
+        getproperty(links[Graphs.src(edge) => Graphs.dst(edge)], property)
+        for edge in Graphs.edges(graph)
+    ]
 
     edge_attributes = Graphs.ne(graph) == 0 ? (;) : (
-        elabels = (
-            graph
-            |> Graphs.edges
-            .|> edge_properties
-            .|> (e -> e.label)
-        ),
-        elabels_color = (
-            graph
-            |> Graphs.edges
-            .|> edge_properties
-            .|> (e -> e.color)
-        ),
+        elabels = link_properties(:label),
+        elabels_color = link_properties(:color),
         elabels_distance = 24,
         elabels_fontsize = 12,
         edge_plottype = :beziersegments,
         edge_attr = (
-            linestyle = (
-                graph
-                |> Graphs.edges
-                .|> edge_properties
-                .|> (e -> e.linestyle)
-            ),
-            color = (
-                graph
-                |> Graphs.edges
-                .|> edge_properties
-                .|> (e -> e.color)
-            ),
+            linestyle = link_properties(:linestyle),
+            color = link_properties(:color),
         ),
         arrow_attr = (
             size = 16,
-            color = (
-                graph
-                |> Graphs.edges
-                .|> edge_properties
-                .|> (e -> e.color)
-            ),
+            color = link_properties(:color),
         ),
     )
 
@@ -338,12 +306,11 @@ function attach_model!(
         graph,
         node_size = 16,
         node_color = [
-            get(group_colors, string(model.genes[i]), :gray)
+            get(group_colors, string(model.definition.genes[i].name), :gray)
             for i in Graphs.vertices(graph)
         ];
         edge_attributes...
     )
-    # TODO: clean this up
 
     hidespines!(axis)
     hidedecorations!(axis)

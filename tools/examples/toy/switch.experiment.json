@@ -1,42 +1,52 @@
 {
-    "model": {
-        "kind": "VanillaModel",
-        "volume": 3000.0,
-        "genes": 2,
-        "polymerases": 50.0,
-        "ribosomes": 5537.0,
-        "proteasomes": 2215.0,
-        "links": [
-            {"from": 1, "to": 1, "activation": 0.00111},
-            {"from": 2, "to": 2, "activation": 0.00111},
-            {"from": 1, "to": 2, "repression": 0.00222},
-            {"from": 2, "to": 1, "repression": 0.00222}
-        ],
-        "rates": {
-            "activation": [0.05, 0.05],
-            "deactivation": [10.0, 10.0],
-            "trigger": [0.33, 0.33],
-            "transcription": [0.001, 0.001],
-            "splicing": [1.0, 1.0],
-            "translation": [0.0000009, 0.0000009],
-            "abortion": [0.01, 0.01],
-            "premrna_decay": [0.01, 0.01],
-            "mrna_decay": [0.001, 0.001],
-            "protein_decay": [0.000000136, 0.000000136]
+    "gene": {
+        "base_rates": {
+            "activation": 0.05,
+            "deactivation": 10.0,
+            "trigger": 0.33,
+            "transcription": 0.001,
+            "splicing": 1.0,
+            "translation": 0.0000009,
+            "abortion": 0.01,
+            "premrna_decay": 0.01,
+            "mrna_decay": 0.001,
+            "protein_decay": 0.000000136
         }
     },
-    "each": {"start": 0, "step": 25, "stop": 100},
-    "as": "a",
     "in": {
+        "model": {
+            "kind": "vanilla",
+            "volume": 3000.0,
+            "polymerases": 50,
+            "ribosomes": 5537,
+            "proteasomes": 2215,
+            "genes": [
+                {
+                    "$": "gene",
+                    "activation": [{"from": 1, "at": 0.00111}],
+                    "repression": [{"from": 2, "at": 0.00222}]
+                },
+                {
+                    "$": "gene",
+                    "activation": [{"from": 2, "at": 0.00111}],
+                    "repression": [{"from": 1, "at": 0.00222}]
+                }
+            ]
+        },
         "each": {"start": 0, "step": 25, "stop": 100},
-        "as": "b",
+        "as": "a",
         "in": {
-            "initial": {"proteins": [{"$": "a"}, {"$": "b"}]},
-            "take": {"to": 100000.0, "step": 100.0},
+            "each": {"start": 0, "step": 25, "stop": 100},
+            "as": "b",
             "in": {
                 "label": "switch-$a-$b",
-                "each": {"start": 1, "length": 3}
+                "initial": {
+                    "1": {"proteins": {"$": "a"}},
+                    "2": {"proteins": {"$": "b"}}
+                },
+                "each": {"length": 3}
             }
         }
-    }
+    },
+    "take": {"to": 100000.0, "step": 100.0}
 }

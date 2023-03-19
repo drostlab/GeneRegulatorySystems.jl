@@ -10,7 +10,7 @@ mktempdir() do location
     ExperimentScript.run([
         "--location",
         result_location,
-        joinpath(@__DIR__, "precompile_experiment.json"),
+        joinpath(@__DIR__, "precompile.experiment.json"),
     ])
 
     @info "Precompiling command `$InspectScript`..."
@@ -20,10 +20,18 @@ mktempdir() do location
     InspectScript.run(["--no-wait-for-close", result_location])
     InspectScript.run([
         "--label-pattern",
-        "initial-.*-t200",
+        "vanilla-default-initial-.*-at200",
         "--no-wait-for-close",
         "--kinds",
-        "promoters,mrnas,log10(proteins)",
+        "promoter,mrnas,log10(proteins)",
+        result_location,
+    ])
+    InspectScript.run([
+        "--label-pattern",
+        "vanilla-default-initial-.*-to200",
+        "--no-wait-for-close",
+        "--kinds",
+        "promoter,mrnas,log10(proteins)",
         result_location,
     ])
 end

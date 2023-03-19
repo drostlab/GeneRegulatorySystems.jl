@@ -142,8 +142,7 @@ function simulate!(; location)
 
     simulations = []
     for (i, experiment) in enumerate(Specifications.unroll(specification))
-        initial = experiment[:initial]
-        model = GeneRegulatorySystems.Models.Parameters(experiment[:model])
+        model = GeneRegulatorySystems.Models.Model(experiment[:model])
         takes = GeneRegulatorySystems.Simulations.takes(experiment[:take])
         simulation_seed = experiment[:simulation_seed]
         channel = experiment[:channel]
@@ -168,17 +167,16 @@ function simulate!(; location)
         )
 
         transcript = GeneRegulatorySystems.simulate(
-            initial,
-            model;
-            takes,
+            model,
+            experiment[:initial],
+            takes;
             randomness = randomness(simulation_seed),
         )
 
+        collected = GeneRegulatorySystems.Models.collect(transcript, model)
         slices = (;
-            :simulation => fill(i, length(transcript.ts)),
-            :t => transcript.ts,
-            columns(transcript.states; groups = model.genes)...,
-            columns(transcript.rates; groups = model.genes)...,
+            :simulation => fill(i, length(collected.t)),
+            collected...,
         )
 
         if isfile(slices_path)

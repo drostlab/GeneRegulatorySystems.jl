@@ -17,7 +17,7 @@ end
 function simulate!(
     state,
     rates,
-    θ::Models.Parameters;
+    θ::Models.GillespieModel;
     randomness,
     t,
     next_reaction,
@@ -62,13 +62,14 @@ function simulate!(
     t, next_reaction
 end
 
-function simulate(
-    initial,
-    θ::Models.Parameters;
-    takes::AbstractVector{Simulations.Take},
+function Simulations.simulate(
+    θ::Models.GillespieModel,
+    initial_specification,
+    takes::AbstractVector{Simulations.Take};
     randomness::AbstractRNG
 )
     t = 0.0
+    initial = Models.prepare_initial(initial_specification, θ)
     state, rates = Models.initialize(initial, θ)
     Models.regulate!(rates, state, θ)
 

@@ -18,18 +18,14 @@ takes(xs::AbstractVector) = Take.(xs)
 takes(x::Take) = [x]
 takes(x) = [Take(x)]
 
-include("gillespie.jl")
-
 simulate(
-    initial,
-    θ::Models.Parameters;
-    takes,
-    randomness::AbstractRNG = Xoshiro(0)
-) = Simulations.Gillespie.simulate(
-    initial,
-    θ;
-    takes = Simulations.takes(takes),
-    randomness
-)
+    θ::Models.Model,
+    initial_specification,
+    takes::AbstractVector{Simulations.Take};
+    randomness::AbstractRNG
+) = throw("unimplemented")
+
+include("gillespie.jl")
+include("sciml.jl")
 
 end
