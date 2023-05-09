@@ -18,10 +18,11 @@ resolve(location) = replace(
     location,
     "{SCRATCHSPACE}" => SCRATCHSPACE,
     "{VERSION}" => repository_version(),
+    "{JULIA_VERSION}" => "v$VERSION",
 )
 
 function settings(; location = nothing)
-    default_location = "{SCRATCHSPACE}/{VERSION}.so"
+    default_location = "{SCRATCHSPACE}/{VERSION}-for-julia-{JULIA_VERSION}.so"
     location = resolve(@something location default_location)
     epilog = """
         sysimage location:
