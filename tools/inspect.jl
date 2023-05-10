@@ -7,7 +7,6 @@ if "GeneRegulatorySystemsTools" in (
     import GeneRegulatorySystemsTools: InspectScript
 else
     include("src/common.jl")
-    include("src/specifications.jl")
     include("src/visualization.jl")
     include("src/scripts/inspect.jl")
 end

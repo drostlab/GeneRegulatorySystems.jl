@@ -1,14 +1,13 @@
 module InspectScript
 
 import ..Common: path
-import ..Specifications
 import ..Visualization
 
 using ArgParse
 import Arrow
 using DataFrames
 import JSON
-import GeneRegulatorySystems
+using GeneRegulatorySystems
 using GLMakie
 
 settings() = @add_arg_table! ArgParseSettings(
@@ -49,7 +48,7 @@ end
 Base.@kwdef struct PreparedData
     simulations::AbstractDataFrame
     slices::Union{AbstractDataFrame, Nothing}
-    model::Union{GeneRegulatorySystems.Models.Model, Nothing}
+    model::Union{Models.Model, Nothing}
     kinds::AbstractVector{Symbol}
     groups::AbstractVector{String}
     adjacents::AdjacentPrefixes
@@ -78,8 +77,7 @@ function load_simulations(location; specification)
         experiment[Symbol("^$symbol")],
     )
     takes = Dict(
-        locate_definition(s, :item) =>
-            GeneRegulatorySystems.Simulations.takes(s[:take])
+        locate_definition(s, :item) => Simulations.takes(s[:take])
         for s in Specifications.unroll(specification)
     )
     transform(
@@ -99,14 +97,11 @@ function reify_model(specification, locator)
         parse(Specifications.Locator, locator),
     )[:model]
 
-    result = GeneRegulatorySystems.Models.Model(reified)
+    result = Models.Model(reified)
 
     # TODO: Allow models to describe their link structure and then remove this.
-    if result isa GeneRegulatorySystems.Models.SciMLJumpModel
-        result = GeneRegulatorySystems.Models.Model(
-            Symbol("vanilla-simple"),
-            reified,
-        )
+    if result isa Models.SciMLJumpModel
+        result = Models.Model(Symbol("vanilla-simple"), reified)
     end
 
     result

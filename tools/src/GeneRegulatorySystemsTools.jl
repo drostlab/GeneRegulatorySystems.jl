@@ -13,7 +13,6 @@ scripts executed via `./grs` do this conditionally, depending on whether
 module GeneRegulatorySystemsTools
 
 include("common.jl")
-include("specifications.jl")
 include("visualization.jl")
 
 include("scripts/experiment.jl")

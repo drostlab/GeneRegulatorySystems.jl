@@ -1,7 +1,6 @@
 module ExperimentScript
 
 import ..Common: repository_version, path
-import ..Specifications
 
 import Dates
 using Random
@@ -9,8 +8,7 @@ import SHA
 
 using ArgParse
 import Arrow
-using ComponentArrays
-import GeneRegulatorySystems
+using GeneRegulatorySystems
 import JSON
 
 settings() = @add_arg_table! ArgParseSettings(
@@ -36,12 +34,6 @@ end
 
 randomness(seed::AbstractString) =
     Xoshiro(reinterpret(UInt64, SHA.sha256(seed))...)
-
-columns(xs; groups) = (
-    Symbol("$kind[$(groups[i])]") => (row -> row[kind][i]).(xs)
-    for kind in keys(first(xs))
-    for i in eachindex(first(xs)[kind])
-)
 
 function map_paths(paths)
     preliminary_map = Dict(p => basename(p) for p in paths)
@@ -142,8 +134,8 @@ function simulate!(; location)
 
     simulations = []
     for (i, experiment) in enumerate(Specifications.unroll(specification))
-        model = GeneRegulatorySystems.Models.Model(experiment[:model])
-        takes = GeneRegulatorySystems.Simulations.takes(experiment[:take])
+        model = Models.Model(experiment[:model])
+        takes = Simulations.takes(experiment[:take])
         simulation_seed = experiment[:simulation_seed]
         channel = experiment[:channel]
         slices_path = path(:slices, channel; prefix = location)
@@ -166,14 +158,14 @@ function simulate!(; location)
             into = simulation.slices,
         )
 
-        transcript = GeneRegulatorySystems.simulate(
+        transcript = simulate(
             model,
             experiment[:initial],
             takes;
             randomness = randomness(simulation_seed),
         )
 
-        collected = GeneRegulatorySystems.Models.collect(transcript, model)
+        collected = Models.collect(transcript, model)
         slices = (;
             :simulation => fill(i, length(collected.t)),
             collected...,
