@@ -1,42 +1,17 @@
-module InspectScript
+module InspectTool
 
-import ..Common: path
-import ..Visualization
+if nameof(parentmodule(@__MODULE__)) == :GeneRegulatorySystemsTools
+    @eval using GeneRegulatorySystemsTools: Common, Visualization
+else
+    include("$(@__DIR__)/../common.jl")
+    include("$(@__DIR__)/../visualization.jl")
+end
 
-using ArgParse
 import Arrow
 using DataFrames
 import JSON
 using GeneRegulatorySystems
 using GLMakie
-
-settings() = @add_arg_table! ArgParseSettings(
-    prog = "inspect",
-    autofix_names = true,
-    exit_after_help = false,
-) begin
-    "location"
-        required = true
-
-    "--channel", "-c"
-
-    "--items-prefix", "-i"
-
-    "--label-pattern", "-l"
-
-    "--displays", "-d"
-        default = "selector,trajectory,model,legend,info"
-
-    "--kinds", "-k"
-        default = "promoter,mrnas,proteins"
-
-    "--resolution", "-r"
-        default = "1280x720"
-
-    "--no-wait-for-close"
-        action = :store_false
-        dest_name = "wait_for_close"
-end
 
 Base.@kwdef struct AdjacentPrefixes
     parent::String
@@ -61,7 +36,7 @@ Base.@kwdef struct Selection
 end
 
 function load_specification(location)
-    specification_path = path(:specification; prefix = location)
+    specification_path = Common.path(:specification; prefix = location)
     Specifications.load(
         basename(specification_path);
         loader = target -> JSON.parsefile(
@@ -80,15 +55,16 @@ function load_simulations(location; specification)
         locate_definition(s, :item) => Simulations.takes(s[:take])
         for s in Specifications.unroll(specification)
     )
+    simulations = Arrow.Table(Common.path(:simulations; prefix = location))
     transform(
-        path(:simulations; prefix = location) |> Arrow.Table |> DataFrame,
+        DataFrame(simulations),
         :item => (item -> getindex.(Ref(takes), item)) => :takes,
         :item => LinearIndices => :i,
     )
 end
 
 load_slices(location, channel) = DataFrame(
-    Arrow.Table(path(:slices, channel; prefix = location))
+    Arrow.Table(Common.path(:slices, channel; prefix = location))
 )
 
 function reify_model(specification, locator)
@@ -497,15 +473,6 @@ function main(;
     else
         close(screen)
     end
-
-    return 0
 end
 
-run(arguments = ARGS) = main(;
-    @something(
-        parse_args(arguments, settings(), as_symbols = true),
-        return 1
-    )...
-)
-
-end # module
+end

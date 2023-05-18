@@ -1,36 +1,18 @@
-module ExperimentScript
+module ExperimentTool
 
-import ..Common: repository_version, path
+if nameof(parentmodule(@__MODULE__)) == :GeneRegulatorySystemsTools
+    @eval using GeneRegulatorySystemsTools: Common
+else
+    include("$(@__DIR__)/../common.jl")
+end
+
+using .Common: repository_version, path
 
 import Dates
 using Random
 import SHA
 
-using ArgParse
-import Arrow
-using GeneRegulatorySystems
-import JSON
-
-settings() = @add_arg_table! ArgParseSettings(
-    prog = "experiment",
-    exit_after_help = false
-) begin
-    "--location", "-l"
-        default = "results/{TIMESTAMP}/"
-
-    "--prepare"
-        action = :store_true
-
-    "--seed"
-        default = "seed"
-
-    "--simulate"
-        action = :store_true
-
-    "specifications"
-        nargs = '*'
-        arg_type = String
-end
+# NOTE: This module lazily imports additional modules in `main`.
 
 randomness(seed::AbstractString) =
     Xoshiro(reinterpret(UInt64, SHA.sha256(seed))...)
@@ -44,7 +26,7 @@ function map_paths(paths)
     end
 end
 
-function confirm_compatible_versions(specification)
+function assert_compatible_versions(specification)
     if (specification.bindings[:_julia_version] != "v$VERSION")
         @error(
             "Experiment was prepared with a different Julia version.",
@@ -52,7 +34,7 @@ function confirm_compatible_versions(specification)
             "v$VERSION",
         )
         @info "This is disallowed to ensure reproducibility."
-        return false
+        throw(:help)
     end
 
     if (specification.bindings[:_version] != repository_version())
@@ -63,10 +45,8 @@ function confirm_compatible_versions(specification)
             repository_version(),
         )
         @info "This is disallowed to ensure reproducibility."
-        return false
+        throw(:help)
     end
-
-    return true
 end
 
 function prepare!(; location, specifications, seed)
@@ -76,10 +56,10 @@ function prepare!(; location, specifications, seed)
             "Cannot prepare experiment, specification already exists.",
             specification_path,
         )
-        return false
+        throw(:help)
     elseif isempty(specifications)
         @error "No specifications given to be prepared."
-        return false
+        throw(:help)
     else
         paths = realpath.(specifications)
         path_map = map_paths(paths)
@@ -110,7 +90,6 @@ function prepare!(; location, specifications, seed)
                 4,
             )
         end
-        return true
     end
 end
 
@@ -125,7 +104,7 @@ function simulate!(; location)
         loader
     )
 
-    confirm_compatible_versions(specification) || return false
+    assert_compatible_versions(specification)
 
     locate_definition(experiment, symbol) = repr(
         "text/plain",
@@ -196,31 +175,17 @@ function main(;
     timestamp = Dates.now()
     location = replace(location, "{TIMESTAMP}" => timestamp)
 
-    if !any((prepare, simulate))
-        if isempty(specifications)
-            ArgParse.show_help(settings(); exit_when_done = false)
-            return 0
-        end
+    if !any([prepare, simulate])
         prepare = true
         simulate = true
     end
 
-    if prepare && !prepare!(; location, specifications, seed)
-        ArgParse.show_help(settings(); exit_when_done = false)
-        return 1
-    end
+    @eval import JSON
+    prepare && Base.invokelatest(prepare!; location, specifications, seed)
 
-    if simulate && !simulate!(; location)
-        ArgParse.show_help(settings(); exit_when_done = false)
-        return 1
-    end
+    @eval using GeneRegulatorySystems
+    @eval import Arrow
+    simulate && !Base.invokelatest(simulate!; location)
 end
 
-run(arguments = ARGS) = main(;
-    @something(
-        parse_args(arguments, settings(), as_symbols = true),
-        return 1
-    )...
-)
-
-end # module
+end

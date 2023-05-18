@@ -1,3 +1,3 @@
 include("src/common.jl")
-include("src/scripts/sysimage.jl")
+include("src/sysimage/script.jl")
 exit(something(SysimageScript.run(), 0))

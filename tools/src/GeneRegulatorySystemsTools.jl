@@ -15,7 +15,9 @@ module GeneRegulatorySystemsTools
 include("common.jl")
 include("visualization.jl")
 
-include("scripts/experiment.jl")
-include("scripts/inspect.jl")
+include("experiment/script.jl")
+include("experiment/tool.jl")
+include("inspect/script.jl")
+include("inspect/tool.jl")
 
-end # module
+end

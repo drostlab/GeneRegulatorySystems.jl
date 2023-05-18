@@ -1,14 +1,10 @@
-# Conditionally import the script from the sysimage if available, otherwise
-# load it along with (only) its dependencies;
-# see [`GeneRegulatorySystemsTools`](@ref).
+# Conditionally import the script from the sysimage if available:
 if "GeneRegulatorySystemsTools" in (
     first(entry).name for entry in Base.loaded_modules
 )
     import GeneRegulatorySystemsTools: InspectScript
 else
-    include("src/common.jl")
-    include("src/visualization.jl")
-    include("src/scripts/inspect.jl")
+    include("src/inspect/script.jl")
 end
 
 exit(something(InspectScript.run(), 0))
