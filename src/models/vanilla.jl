@@ -26,6 +26,11 @@ Base.@kwdef struct BaseRates
     protein_decay::Float64
 end
 
+Base.@kwdef struct DirectRegulator
+    from::Symbol
+    k::Float64
+end
+
 Base.@kwdef struct HillRegulator
     from::Symbol
     at::Float64
@@ -48,11 +53,16 @@ end
 (repression::Repression)(xs; T) =
     isempty(repression.slots) ? one(T) : repression.aggregate(xs)
 
+Base.@kwdef struct Proteolysis <: Regulation
+    slots::Vector{DirectRegulator} = []
+end
+
 Base.@kwdef struct Gene
     name::Symbol
     base_rates::BaseRates
     activation::Activation = Activation()
     repression::Repression = Repression()
+    proteolysis::Proteolysis = Proteolysis()
 end
 
 Base.@kwdef struct Definition
@@ -232,6 +242,12 @@ function Models.regulate!(rates, state, θ::Model)
         )
         for gene in genes
     )
+    γs = (
+        sum(gene.proteolysis.slots, init = zero(eltype(rates))) do (; from, k)
+            k * state.proteins[θ.genes_index[from]]
+        end
+        for gene in genes
+    )
 
     xs = state
     hs = rates
@@ -248,7 +264,8 @@ function Models.regulate!(rates, state, θ::Model)
     hs.abortion .= xs.elongations .* base.abortion
     hs.premrna_decay .= xs.premrnas .* base.premrna_decay
     hs.mrna_decay .= xs.mrnas .* base.mrna_decay
-    hs.protein_decay .= xs.proteins .* base.protein_decay .* proteasomes
+    hs.protein_decay .=
+        xs.proteins .* (base.protein_decay .* proteasomes .+ γs)
 end
 
 Models.apply!(state, i, θ::Model) =
@@ -306,20 +323,32 @@ function regulation(
         )
     )
 
+    # Regulation for the whole network: for each target...
     mapreduce(vcat, definition.genes) do target::Gene
         [
-            Reaction(
-                activation_rate(target),
-                nothing,
-                [genes_by_name[target.name].promoter],
-                only_use_rate = true
-            )
+            # ...activation (by tempering promoter deactivation)
             Reaction(
                 deactivation_rate(target),
                 [genes_by_name[target.name].promoter],
                 nothing,
                 only_use_rate = true
             )
+
+            # ...repression (by tempering promoter activation)
+            Reaction(
+                activation_rate(target),
+                nothing,
+                [genes_by_name[target.name].promoter],
+                only_use_rate = true
+            )
+
+            # ...repression (by proteolysis)
+            map(target.proteolysis.slots) do (; from, k)
+                proteases = genes_by_name[from].proteins
+                proteins = genes_by_name[target.name].proteins
+
+                Reaction(k, [proteases, proteins], [proteases])
+            end
         ]
     end
 end

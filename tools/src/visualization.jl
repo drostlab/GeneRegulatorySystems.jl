@@ -264,15 +264,29 @@ function attach_model!(
 
     kinds = [
         :activation => (color = :black, linestyle = :solid),
-        :repression => (color = :red, linestyle = :dash),
+        :repression => (color = :red, linestyle = :solid),
+        :proteolysis => (color = :red, linestyle = :dash),
     ]
 
+    regulators(gene, ::Val{:activation}) = (
+        (; from, label = string(at))
+        for (; from, at) in gene.activation.slots
+    )
+    regulators(gene, ::Val{:repression}) = (
+        (; from, label = string(at))
+        for (; from, at) in gene.repression.slots
+    )
+    regulators(gene, ::Val{:proteolysis}) = (
+        (; from, label = string(k))
+        for (; from, k) in gene.proteolysis.slots
+    )
+
     links = Dict(
-        (model.genes_index[regulator.from] => model.genes_index[gene.name]) =>
-            (; label = repr(regulator.at), style...)
+        (model.genes_index[from] => model.genes_index[gene.name]) =>
+            (; label, style...)
         for gene in model.definition.genes
         for (kind, style) in kinds
-        for regulator in getfield(gene, kind).slots
+        for (; from, label) in regulators(gene, Val(kind))
     )
 
     graph = Graphs.DiGraph(length(model.definition.genes))

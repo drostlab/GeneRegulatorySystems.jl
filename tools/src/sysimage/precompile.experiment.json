@@ -29,7 +29,8 @@
                         "premrna_decay": 0.01,
                         "mrna_decay": 0.001,
                         "protein_decay": 0.000000136
-                    }
+                    },
+                    "proteolysis": [{"from": "Gene 2", "k": 0.0000001}]
                 },
                 {
                     "name": "Gene 2",
@@ -45,6 +46,7 @@
                         "mrna_decay": 0.001,
                         "protein_decay": 0.000000136
                     },
+                    "activation": [{"from": "Gene 2", "at": 0.00111}],
                     "repression": [{"from": "Gene 1", "at": 0.00277}]
                 }
             ]

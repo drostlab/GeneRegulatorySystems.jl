@@ -24,7 +24,8 @@
                     "protein_decay": 0.000000136
                 },
                 "activation": {"slots": [], "aggregate": "minimum"},
-                "repression": {"slots": [], "aggregate": "minimum"}
+                "repression": {"slots": [], "aggregate": "minimum"},
+                "proteolysis": {"slots": [{"from": "Gene.2", "k": 0.00001}]}
             },
             {
                 "name": "Gene.2",
@@ -44,7 +45,8 @@
                 "repression": {
                     "slots": [{"from": "Gene.1", "at": 0.00277, "k": -1.0}],
                     "aggregate": "minimum"
-                }
+                },
+                "proteolysis": {"slots": []}
             }
         ]
     },

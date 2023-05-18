@@ -18,7 +18,8 @@
                     "premrna_decay": 0.01,
                     "mrna_decay": 0.001,
                     "protein_decay": 0.000000136
-                }
+                },
+                "proteolysis": [{"from": "1", "k": 0.00001}]
             },
             {
                 "base_rates": {
