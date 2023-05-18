@@ -18,6 +18,7 @@
         {"kind": "vanilla-simple", "method": "default"},
         {"kind": "vanilla-Catalyst", "method": "Direct"},
         {"kind": "vanilla-Catalyst", "method": "SortingDirect"},
+        {"kind": "vanilla-Catalyst", "method": "RSSA"},
         {"kind": "vanilla-Catalyst", "method": "RSSACR"}
     ],
     "as": "variant",

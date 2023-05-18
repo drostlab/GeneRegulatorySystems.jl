@@ -5,7 +5,8 @@
         "polymerases": 50,
         "ribosomes": 5537,
         "proteasomes": 2215,
-        "activation": {"aggregate": "geometric_mean"},
+        "activation": {"aggregate": "generalized_mean", "p": 0.0},
+        "repression": {"aggregate": "generalized_mean"},
         "genes": [
             {
                 "name": "Gene 1",
@@ -47,7 +48,7 @@
                         {"from": "Gene 1", "at": 0.00222},
                         {"from": "Gene 2", "at": 0.00277}
                     ],
-                    "aggregate": "complement_geometric_mean"
+                    "p": 2.0
                 }
             }
         ]

@@ -63,28 +63,17 @@ Base.@kwdef struct Definition
     genes::Vector{Gene}
 end
 
-const AGGREGATIONS = Dict(
-    "neutral" => one ∘ typeof ∘ first,
-    "minimum" => minimum,
-    "maximum" => maximum,
-    "mean" => mean,
-    "geometric_mean" => geomean,
-    "complement_geometric_mean" => xs -> geomean(1.0 .- xs),
-    "harmonic_mean" => harmmean,
-    "median" => median,
-)
-
-coerce(T::Type, ::Val{K}, x; context) where {K} =
-    coerce(fieldtype(T, K), x; context)
-coerce(::Type{Symbol}, x; context) = Symbol(x)
-coerce(T::Type{<:Number}, x::Number; context) = convert(T, x)
-coerce(T::Type{<:Number}, x::AbstractString; context) = parse(T, x)
+coerce(T::Type, x::AbstractDict{Symbol}, ::Val{K}; context) where {K} =
+    coerce(fieldtype(T, K), x[K]; context)
+coerce(::Type{Symbol}, x; _...) = Symbol(x)
+coerce(T::Type{<:Number}, x::Number; _...) = convert(T, x)
+coerce(T::Type{<:Number}, x::AbstractString; _...) = parse(T, x)
 coerce(::Type{Vector{T}}, xs::AbstractVector; context) where {T} =
     coerce.(T, xs; context)
 coerce(T::Type, x::AbstractDict{Symbol}; context = x) = _coerce(T, x; context)
 _coerce(T::Type, x::AbstractDict{Symbol}; context) = T(; (
-    key => coerce(T, Val(key), value; context)
-    for (key, value) in x
+    key => coerce(T, x, Val(key); context)
+    for key in keys(x)
     if hasfield(T, key)
 )...)
 
@@ -105,7 +94,30 @@ coerce(::Type{Activation}, x::AbstractDict{Symbol}; context) =
     _coerce(Activation, merge(get(context, :activation, empty(x)), x); context)
 coerce(::Type{Repression}, x::AbstractDict{Symbol}; context) =
     _coerce(Repression, merge(get(context, :repression, empty(x)), x); context)
-coerce(::Type{<:Regulation}, ::Val{:aggregate}, x; context) = AGGREGATIONS[x]
+
+coerce(
+    ::Type{<:Regulation},
+    x::AbstractDict{Symbol},
+    ::Val{:aggregate};
+    _...
+) = aggregation(Val(Symbol(x[:aggregate])), x)
+
+aggregation(::Val{:neutral}, _) = one ∘ typeof ∘ first
+aggregation(::Val{:minimum}, _) = minimum
+aggregation(::Val{:maximum}, _) = maximum
+aggregation(::Val{:mean}, _) = mean
+aggregation(::Val{:geometric_mean}, _) = geomean
+aggregation(::Val{:complement_geometric_mean}, _) = xs -> geomean(1.0 .- xs)
+aggregation(::Val{:harmonic_mean}, _) = harmmean
+aggregation(k::Val{:generalized_mean}, x) =
+    aggregation(k, coerce(Float64, get(x, :p, 0.0)))
+aggregation(::Val{:generalized_mean}, p::Float64) =
+    p == -Inf ? minimum :
+    p == -1.0 ? harmmean :
+    p == 0.0 ? geomean :
+    p == 1.0 ? mean :
+    p == Inf ? maximum :
+    Base.Fix2(genmean, p)
 
 const REACTION_KINDS = collect(fieldnames(BaseRates))
 const SPECIES_KINDS = [:promoter, :elongations, :premrnas, :mrnas, :proteins]
@@ -255,7 +267,6 @@ end
 
 # issue: proteins = 0 AND repression/activation = 0 -> NaN
 hill2(X, v, K, n) = v / (1.0 + ifelse(iszero(K), 0.0, K / X) ^ n)
-@register_symbolic hill2(X, v, K, n);
 
 function regulation(
     genes_by_name::Dict{Symbol,<:ModelingToolkit.AbstractSystem};
@@ -316,6 +327,7 @@ end
 const JUMP_PROCESSES_METHODS = Dict(
     "Direct" => Direct,
     "SortingDirect" => SortingDirect,
+    "RSSA" => RSSA,
     "RSSACR" => RSSACR,
     "default" => RSSACR,
 )
