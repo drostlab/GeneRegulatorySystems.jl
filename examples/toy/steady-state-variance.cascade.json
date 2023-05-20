@@ -2,7 +2,6 @@
     "label": "steady-state-variance",
     "model": {
         "kind": "vanilla",
-        "volume": 3000.0,
         "polymerases": 50,
         "ribosomes": 5537,
         "proteasomes": 2215,

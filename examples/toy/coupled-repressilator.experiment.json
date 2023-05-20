@@ -17,7 +17,6 @@
     "in": {
         "model": {
             "kind": "vanilla",
-            "volume": 3000.0,
             "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
@@ -25,46 +24,46 @@
                 {
                     "$": "gene",
                     "name": "P1",
-                    "activation": [{"from": "P1", "at": 0.00111}],
-                    "repression": [{"from": "P3", "at": 0.00222}]
+                    "activation": [{"from": "P1", "at": 2.0}],
+                    "repression": [{"from": "P3", "at": 4.0}]
                 },
                 {
                     "$": "gene",
                     "name": "P2",
-                    "activation": [{"from": "P2", "at": 0.00111}],
-                    "repression": [{"from": "P1", "at": 0.00222}]
+                    "activation": [{"from": "P2", "at": 2.0}],
+                    "repression": [{"from": "P1", "at": 4.0}]
                 },
                 {
                     "$": "gene",
                     "name": "P3",
-                    "activation": [{"from": "P3", "at": 0.00111}],
-                    "repression": [{"from": "P2", "at": 0.00222}]
+                    "activation": [{"from": "P3", "at": 2.0}],
+                    "repression": [{"from": "P2", "at": 4.0}]
                 },
                 {
                     "$": "gene",
                     "name": "S1",
                     "activation": [
-                        {"from": "S1", "at": 0.00111},
-                        {"from": "P1", "at": 0.00111}
+                        {"from": "S1", "at": 2.0},
+                        {"from": "P1", "at": 2.0}
                     ],
-                    "repression": [{"from": "S3", "at": 0.00222}]
+                    "repression": [{"from": "S3", "at": 4.0}]
                 },
                 {
                     "$": "gene",
                     "name": "S2",
-                    "activation": [{"from": "S2", "at": 0.00111}],
+                    "activation": [{"from": "S2", "at": 2.0}],
                     "repression": [
-                        {"from": "S1", "at": 0.00222},
-                        {"from": "P1", "at": 0.00222}
+                        {"from": "S1", "at": 4.0},
+                        {"from": "P1", "at": 4.0}
                     ]
                 },
                 {
                     "$": "gene",
                     "name": "S3",
-                    "activation": [{"from": "S3", "at": 0.00111}],
+                    "activation": [{"from": "S3", "at":2.0}],
                     "repression": [
-                        {"from": "S2", "at": 0.00222},
-                        {"from": "P1", "at": 0.00222}
+                        {"from": "S2", "at": 4.0},
+                        {"from": "P1", "at": 4.0}
                     ]
                 }
             ]

@@ -66,7 +66,6 @@ Base.@kwdef struct Gene
 end
 
 Base.@kwdef struct Definition
-    volume::Float64
     polymerases::Int
     ribosomes::Int
     proteasomes::Int
@@ -167,12 +166,6 @@ end
 Models.Model(::Val{Symbol("vanilla-simple")}, specification) =
     Model(definition = coerce(Definition, specification))
 
-function concentration(count; volume)
-    # @David: units?
-    Nₐ = 6.02e23
-    count / (volume * Nₐ * 1e-24)
-end
-
 function Models.prepare_initial(specification::AbstractDict{Symbol}, θ::Model)
     ComponentVector(; (
         kind => [
@@ -213,12 +206,12 @@ function Models.initialize(initial, θ::Model)
 end
 
 function Models.regulate!(rates, state, θ::Model)
-    (; volume, polymerases, ribosomes, proteasomes, genes) = θ.definition
+    (; polymerases, ribosomes, proteasomes, genes) = θ.definition
 
     # slot activity:
     σ(x) = 1.0 / (1.0 + exp(-x))
     occupancy(x; k, β) = σ(
-        k * (β == -Inf ? Inf : log(concentration(x; volume)) - β)
+        k * (β == -Inf ? Inf : log(x) - β)
     )
 
     # activation/deactivation tempering coefficients:
@@ -293,18 +286,13 @@ function regulation(
     #   them into a JumpSystem; need to use Reactions with a symbolic rate law
     #   directly
 
-    # TODO: remove `concentration` calculations, fold into
-    #   `repression`/`activation` constants
-
-    (; volume, polymerases) = definition
-
     activation_rate(target::Gene) = (
         (1 - genes_by_name[target.name].promoter)
         * target.base_rates.activation
-        * polymerases
+        * definition.polymerases
         * target.repression(
             (  # ^ arguments and value go towards 0 as repression increases
-                hill2(concentration(genes_by_name[from].proteins; volume), 1.0, at, k)
+                hill2(genes_by_name[from].proteins, 1.0, at, k)
                 for (; from, k, at) in target.repression.slots
             );
             T = Num
@@ -316,7 +304,7 @@ function regulation(
         * target.base_rates.deactivation
         * target.activation(
             (  # ^ arguments and value go towards 0 as activation increases
-                hill2(concentration(genes_by_name[from].proteins; volume), 1.0, at, k)
+                hill2(genes_by_name[from].proteins, 1.0, at, k)
                 for (; from, k, at) in target.activation.slots
             );
             T = Num

@@ -11,7 +11,6 @@
         "model": {
             "kind": {"$": ["variant", "kind"]},
             "method": {"$": ["variant", "method"]},
-            "volume": 3000.0,
             "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
@@ -46,8 +45,8 @@
                         "mrna_decay": 0.001,
                         "protein_decay": 0.000000136
                     },
-                    "activation": [{"from": "Gene 2", "at": 0.00111}],
-                    "repression": [{"from": "Gene 1", "at": 0.00277}]
+                    "activation": [{"from": "Gene 2", "at": 2.0}],
+                    "repression": [{"from": "Gene 1", "at": 5.0}]
                 }
             ]
         },

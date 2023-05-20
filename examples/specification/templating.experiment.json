@@ -25,7 +25,6 @@
     "in": {
         "model": {
             "$": "variant",
-            "volume": 3000.0,
             "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
@@ -34,7 +33,7 @@
                 {
                     "$": "typical_gene",
                     "name": "Gene 2",
-                    "repression": [{"from": "Gene 1", "at": 0.00277}]
+                    "repression": [{"from": "Gene 1", "at": 5.0}]
                 }
             ]
         },

@@ -17,7 +17,6 @@
     "in": {
         "model": {
             "kind": "vanilla",
-            "volume": 3000.0,
             "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
@@ -34,22 +33,22 @@
                 {
                     "$": "gene",
                     "repression": [
-                        {"from": 1, "at": 0.01107},
-                        {"from": 3, "at": 0.0051},
-                        {"from": 4, "at": 0.01107}
+                        {"from": 1, "at": 20.0},
+                        {"from": 3, "at": 9.0},
+                        {"from": 4, "at": 20.0}
                     ]
                 },
                 {
                     "$": "gene",
                     "repression": [
-                        {"from": 1, "at": 0.001107}
+                        {"from": 1, "at": 2.0}
                     ]
                 },
                 {
                     "$": "gene",
                     "repression": [
-                        {"from": 1, "at": 0.001107},
-                        {"from": 2, "at": 0.01107}
+                        {"from": 1, "at": 2.0},
+                        {"from": 2, "at": 20.0}
                     ]
                 }
             ]
