@@ -71,6 +71,19 @@ function collect(transcript, θ::SciMLJumpModel)
     )
 end
 
+coerce(T::Type, x::AbstractDict{Symbol}, ::Val{K}; context) where {K} =
+    coerce(fieldtype(T, K), x[K]; context)
+coerce(::Type{Symbol}, x; _...) = Symbol(x)
+coerce(T::Type{<:Number}, x::Number; _...) = convert(T, x)
+coerce(T::Type{<:Number}, x::AbstractString; _...) = parse(T, x)
+coerce(::Type{Vector{T}}, xs::AbstractVector; context) where {T} =
+    coerce.(T, xs; context)
+coerce(T::Type, x::AbstractDict{Symbol}; context = x) = T(; (
+    key => coerce(T, x, Val(key); context)
+    for key in keys(x)
+    if hasfield(T, key)
+)...)
+
 include("vanilla.jl")
 
 end

@@ -1,7 +1,8 @@
 module Vanilla
 
-import ..Models
+import ..Models: Models, coerce
 
+using Base: @kwdef, @invoke
 using LinearAlgebra
 
 using AxisArrays
@@ -13,7 +14,7 @@ using ModelingToolkit
 using StatsBase
 import Symbolics
 
-Base.@kwdef struct BaseRates
+@kwdef struct BaseRates
     activation::Float64
     deactivation::Float64
     trigger::Float64
@@ -26,12 +27,12 @@ Base.@kwdef struct BaseRates
     protein_decay::Float64
 end
 
-Base.@kwdef struct DirectRegulator
+@kwdef struct DirectRegulator
     from::Symbol
     k::Float64
 end
 
-Base.@kwdef struct HillRegulator
+@kwdef struct HillRegulator
     from::Symbol
     at::Float64
     k::Float64 = -1.0
@@ -39,25 +40,25 @@ end
 
 abstract type Regulation end
 
-Base.@kwdef struct Activation <: Regulation
+@kwdef struct Activation <: Regulation
     slots::Vector{HillRegulator} = []
     aggregate::Function = minimum
 end
 (activation::Activation)(xs; T) =
     isempty(activation.slots) ? one(T) : activation.aggregate(xs)
 
-Base.@kwdef struct Repression <: Regulation
+@kwdef struct Repression <: Regulation
     slots::Vector{HillRegulator} = []
     aggregate::Function = minimum
 end
 (repression::Repression)(xs; T) =
     isempty(repression.slots) ? one(T) : repression.aggregate(xs)
 
-Base.@kwdef struct Proteolysis <: Regulation
+@kwdef struct Proteolysis <: Regulation
     slots::Vector{DirectRegulator} = []
 end
 
-Base.@kwdef struct Gene
+@kwdef struct Gene
     name::Symbol
     base_rates::BaseRates
     activation::Activation = Activation()
@@ -65,45 +66,39 @@ Base.@kwdef struct Gene
     proteolysis::Proteolysis = Proteolysis()
 end
 
-Base.@kwdef struct Definition
+@kwdef struct Definition
     polymerases::Int
     ribosomes::Int
     proteasomes::Int
     genes::Vector{Gene}
 end
 
-coerce(T::Type, x::AbstractDict{Symbol}, ::Val{K}; context) where {K} =
-    coerce(fieldtype(T, K), x[K]; context)
-coerce(::Type{Symbol}, x; _...) = Symbol(x)
-coerce(T::Type{<:Number}, x::Number; _...) = convert(T, x)
-coerce(T::Type{<:Number}, x::AbstractString; _...) = parse(T, x)
-coerce(::Type{Vector{T}}, xs::AbstractVector; context) where {T} =
-    coerce.(T, xs; context)
-coerce(T::Type, x::AbstractDict{Symbol}; context = x) = _coerce(T, x; context)
-_coerce(T::Type, x::AbstractDict{Symbol}; context) = T(; (
-    key => coerce(T, x, Val(key); context)
-    for key in keys(x)
-    if hasfield(T, key)
-)...)
-
 coerce(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
     coerce(Gene, merge(Dict(:name => i), x); context)
     for (i, x) in enumerate(xs)
 ]
-coerce(::Type{Gene}, x::AbstractDict{Symbol}; context) = _coerce(
-    Gene,
+coerce(::Type{Gene}, x::AbstractDict{Symbol}; context) = @invoke coerce(
+    Gene::Type,
     # Ensure we descend on these, even if they are not in x, because we will
     # look up model-wide defaults further down:
-    merge(Dict(:activation => empty(x), :repression => empty(x)), x);
+    merge(
+        Dict(:activation => empty(x), :repression => empty(x)),
+        x
+    )::AbstractDict{Symbol};
     context
 )
 coerce(T::Type{<:Regulation}, xs::AbstractVector; context) =
     coerce(T, Dict(:slots => xs); context)
-coerce(::Type{Activation}, x::AbstractDict{Symbol}; context) =
-    _coerce(Activation, merge(get(context, :activation, empty(x)), x); context)
-coerce(::Type{Repression}, x::AbstractDict{Symbol}; context) =
-    _coerce(Repression, merge(get(context, :repression, empty(x)), x); context)
-
+coerce(::Type{Activation}, x::AbstractDict{Symbol}; context) = @invoke coerce(
+    Activation::Type,
+    merge(get(context, :activation, empty(x)), x)::AbstractDict{Symbol};
+    context
+)
+coerce(::Type{Repression}, x::AbstractDict{Symbol}; context) = @invoke coerce(
+    Repression::Type,
+    merge(get(context, :repression, empty(x)), x)::AbstractDict{Symbol};
+    context
+)
 coerce(
     ::Type{<:Regulation},
     x::AbstractDict{Symbol},
@@ -147,7 +142,7 @@ const KERNEL = AxisArray(
     species_kinds = SPECIES_KINDS,
 )
 
-Base.@kwdef struct Model <: Models.GillespieModel
+@kwdef struct Model <: Models.GillespieModel
     definition::Definition
 
     genes_index =
@@ -349,9 +344,16 @@ const JUMP_PROCESSES_METHODS = Dict(
     "default" => RSSACR,
 )
 
-function Models.Model(::Val{Symbol("vanilla-Catalyst")}, specification)
-    definition = coerce(Definition, specification)
+Models.Model(::Val{:vanilla}, specification) =
+    Models.Model(Symbol("vanilla-Catalyst"), specification)
 
+Models.Model(kind::Val{Symbol("vanilla-Catalyst")}, specification) =
+    Models.SciMLJumpModel(
+        coerce(Definition, specification),
+        method = get(specification, :method, "default"),
+    )
+
+function Models.SciMLJumpModel(definition::Definition; method)
     @variables t
     @parameters ribosomes proteasomes
     genes_by_name = Dict(
@@ -372,7 +374,7 @@ function Models.Model(::Val{Symbol("vanilla-Catalyst")}, specification)
 
     Models.SciMLJumpModel(
         system = jump_system,
-        method = JUMP_PROCESSES_METHODS[get(specification, :method, "default")](),
+        method = JUMP_PROCESSES_METHODS[method](),
         parameters = (
             ribosomes => definition.ribosomes,
             proteasomes => definition.proteasomes,
@@ -386,8 +388,5 @@ function Models.Model(::Val{Symbol("vanilla-Catalyst")}, specification)
         ),
     )
 end
-
-Models.Model(::Val{:vanilla}, specification) =
-    Models.Model(Symbol("vanilla-Catalyst"), specification)
 
 end
