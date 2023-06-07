@@ -23,7 +23,7 @@ end
 Base.@kwdef struct PreparedData
     simulations::AbstractDataFrame
     slices::Union{AbstractDataFrame, Nothing}
-    model::Union{Models.Model, Nothing}
+    model::Union{Models.ModelDescription, Nothing}
     kinds::AbstractVector{Symbol}
     groups::AbstractVector{String}
     adjacents::AdjacentPrefixes
@@ -67,21 +67,12 @@ load_slices(location, channel) = DataFrame(
     Arrow.Table(Common.path(:slices, channel; prefix = location))
 )
 
-function reify_model(specification, locator)
-    reified = Specifications.reify(
+reify_model(specification, locator) = Models.Model(
+    Specifications.reify(
         specification,
         parse(Specifications.Locator, locator),
     )[:model]
-
-    result = Models.Model(reified)
-
-    # TODO: Allow models to describe their link structure and then remove this.
-    if result isa Models.SciMLJumpModel
-        result = Models.Model(Symbol("vanilla-simple"), reified)
-    end
-
-    result
-end
+)
 
 function filter(simulations; selection)
     template = Dict(
@@ -185,7 +176,7 @@ function prepare(simulations; selection, specification, location)
     model_locators = unique(simulations.model)
     model =
         if length(model_locators) == 1
-            reify_model(specification, only(model_locators))
+            Models.describe(reify_model(specification, only(model_locators)))
         else
             nothing
         end

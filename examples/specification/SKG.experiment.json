@@ -1,0 +1,60 @@
+{
+    "model": {
+        "kind": "kronecker",
+        "seed": "kronecker-$seed",
+        "polymerases": 50,
+        "ribosomes": 5537,
+        "proteasomes": 2215,
+        "base_rates": {
+            "activation": 0.05,
+            "deactivation": 10.0,
+            "trigger": 0.33,
+            "transcription": 0.001,
+            "splicing": 1.0,
+            "translation": 0.0000009,
+            "abortion": 0.01,
+            "premrna_decay": 0.01,
+            "mrna_decay": 0.001,
+            "protein_decay": 0.000000136
+        },
+        "activation": {
+            "adjacency": [
+                [
+                    [0.7, 0.6],
+                    [0.4, 0.2]
+                ],
+                [
+                    [0.7, 0.6],
+                    [0.4, 0.2]
+                ],
+                [
+                    [0.7, 0.6],
+                    [0.4, 0.2]
+                ]
+            ],
+            "at": ["LogNormal", -5.0, 2.0]
+        },
+        "repression": {
+            "adjacency": {
+                "initiator": [
+                    [0.7, 0.6],
+                    [0.5, 0.2]
+                ],
+                "power": 3
+            },
+            "at": ["LogNormal", -5.0, 2.0]
+        },
+        "proteolysis": {
+            "adjacency": {
+                "initiator": [
+                    [0.7, 0.6],
+                    [0.5, 0.2]
+                ],
+                "power": 3,
+                "expected_links_per_gene": 0.5
+            },
+            "k": ["LogNormal", -5.0, 2.0]
+        }
+    },
+    "take": {"to": 10000.0}
+}

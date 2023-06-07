@@ -1,6 +1,8 @@
 module Vanilla
 
-import ..Models: Models, coerce
+using ...GeneRegulatorySystems: σ
+using ..Models
+import ..Models: coerce
 
 using Base: @kwdef, @invoke
 using LinearAlgebra
@@ -161,6 +163,28 @@ end
 Models.Model(::Val{Symbol("vanilla-simple")}, specification) =
     Model(definition = coerce(Definition, specification))
 
+Models.describe(definition::Definition) = Models.ModelDescription(
+    species_kinds = SPECIES_KINDS,
+    species_groups = [gene.name for gene in definition.genes],
+    links = mapreduce(vcat, definition.genes) do gene
+        vcat(
+            map(gene.activation.slots) do (; from, at, k)
+                properties = Dict(:at => at, :k => k)
+                (; to = gene.name, from, kind = :activation, properties)
+            end,
+            map(gene.repression.slots) do (; from, at, k)
+                properties = Dict(:at => at, :k => k)
+                (; to = gene.name, from, kind = :repression, properties)
+            end,
+            map(gene.proteolysis.slots) do (; from, k)
+                properties = Dict(:k => k)
+                (; to = gene.name, from, kind = :proteolysis, properties)
+            end,
+        )
+    end
+)
+Models.describe(θ::Model) = Models.describe(θ.definition)
+
 function Models.prepare_initial(specification::AbstractDict{Symbol}, θ::Model)
     ComponentVector(; (
         kind => [
@@ -204,7 +228,6 @@ function Models.regulate!(rates, state, θ::Model)
     (; polymerases, ribosomes, proteasomes, genes) = θ.definition
 
     # slot activity:
-    σ(x) = 1.0 / (1.0 + exp(-x))
     occupancy(x; k, β) = σ(
         k * (β == -Inf ? Inf : log(x) - β)
     )
@@ -330,7 +353,17 @@ function regulation(
                 proteases = genes_by_name[from].proteins
                 proteins = genes_by_name[target.name].proteins
 
-                Reaction(k, [proteases, proteins], [proteases])
+                if from == target.name
+                    # This is a loop in the proteolysis repression network and
+                    # means that the protein decays without proteosomes.
+                    # (Perhaps this should be "2 proteins -> proteins", in
+                    # which case we also need to update the naive Gillespie
+                    # sampler above to reflect the combinatoric rate law.)
+                    # TODO: Check if this makes sense and can actually happen.
+                    Reaction(k, [proteins], nothing)
+                else
+                    Reaction(k, [proteases, proteins], [proteases])
+                end
             end
         ]
     end
@@ -386,6 +419,7 @@ function Models.SciMLJumpModel(definition::Definition; method)
                 if kind ∉ (:activation, :deactivation)
             )...
         ),
+        description = Models.describe(definition),
     )
 end
 

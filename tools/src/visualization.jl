@@ -1,5 +1,7 @@
 module Visualization
 
+using Printf
+
 import Colors: Colors, @colorant_str
 using DataFrames
 using Makie
@@ -257,61 +259,54 @@ end
 
 function attach_model!(
     figure,
-    model::GeneRegulatorySystems.Models.Vanilla.Model;
+    model::GeneRegulatorySystems.Models.ModelDescription;
     group_colors,
 )
     axis = Axis(figure, autolimitaspect = 1)
 
-    kinds = [
+    styles = Dict(
         :activation => (color = :black, linestyle = :solid),
         :repression => (color = :red, linestyle = :solid),
         :proteolysis => (color = :red, linestyle = :dash),
-    ]
-
-    regulators(gene, ::Val{:activation}) = (
-        (; from, label = string(at))
-        for (; from, at) in gene.activation.slots
-    )
-    regulators(gene, ::Val{:repression}) = (
-        (; from, label = string(at))
-        for (; from, at) in gene.repression.slots
-    )
-    regulators(gene, ::Val{:proteolysis}) = (
-        (; from, label = string(k))
-        for (; from, k) in gene.proteolysis.slots
+        :multiple => (color = :gray, linestyle = :dash, label = "⋯"),
     )
 
-    links = Dict(
-        (model.genes_index[from] => model.genes_index[gene.name]) =>
-            (; label, style...)
-        for gene in model.definition.genes
-        for (kind, style) in kinds
-        for (; from, label) in regulators(gene, Val(kind))
+    groups_index = Dict(
+        group => i
+        for (i, group) in enumerate(model.species_groups)
     )
+    edges = Dict()
+    for link in model.links
+        edge = groups_index[link.from] => groups_index[link.to]
+        edges[edge] = haskey(edges, edge) ? styles[:multiple] : (;
+            label = @sprintf(
+                "%.2g",
+                link.properties[link.kind == :proteolysis ? :k : :at]
+            ),
+            styles[link.kind]...
+        )
+    end
 
-    graph = Graphs.DiGraph(length(model.definition.genes))
-    Graphs.add_edge!.(Ref(graph), keys(links))
+    graph = Graphs.DiGraph(length(model.species_groups))
+    Graphs.add_edge!.(Ref(graph), keys(edges))
 
-    # TODO: handle parallel edges?
-
-    link_properties(property) = [
-        getproperty(links[Graphs.src(edge) => Graphs.dst(edge)], property)
-        for edge in Graphs.edges(graph)
-    ]
+    edge_properties(property) = map(Graphs.edges(graph)) do edge
+        getproperty(edges[Graphs.src(edge) => Graphs.dst(edge)], property)
+    end
 
     edge_attributes = Graphs.ne(graph) == 0 ? (;) : (
-        elabels = link_properties(:label),
-        elabels_color = link_properties(:color),
+        elabels = edge_properties(:label),
+        elabels_color = edge_properties(:color),
         elabels_distance = 24,
         elabels_fontsize = 12,
         edge_plottype = :beziersegments,
         edge_attr = (
-            linestyle = link_properties(:linestyle),
-            color = link_properties(:color),
+            linestyle = edge_properties(:linestyle),
+            color = edge_properties(:color),
         ),
         arrow_attr = (
             size = 16,
-            color = link_properties(:color),
+            color = edge_properties(:color),
         ),
     )
 
@@ -320,7 +315,7 @@ function attach_model!(
         graph,
         node_size = 16,
         node_color = [
-            get(group_colors, string(model.definition.genes[i].name), :gray)
+            get(group_colors, string(model.species_groups[i]), :gray)
             for i in Graphs.vertices(graph)
         ];
         edge_attributes...

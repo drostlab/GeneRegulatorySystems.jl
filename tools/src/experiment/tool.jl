@@ -9,13 +9,8 @@ end
 using .Common: repository_version, path
 
 import Dates
-using Random
-import SHA
 
 # NOTE: This module lazily imports additional modules in `main`.
-
-randomness(seed::AbstractString) =
-    Xoshiro(reinterpret(UInt64, SHA.sha256(seed))...)
 
 function map_paths(paths)
     preliminary_map = Dict(p => basename(p) for p in paths)
@@ -141,7 +136,7 @@ function simulate!(; location)
             model,
             experiment[:initial],
             takes;
-            randomness = randomness(simulation_seed),
+            randomness = GeneRegulatorySystems.randomness(simulation_seed),
         )
 
         collected = Models.collect(transcript, model)
