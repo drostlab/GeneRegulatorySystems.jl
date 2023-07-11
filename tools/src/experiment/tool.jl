@@ -10,6 +10,8 @@ using .Common: repository_version, path
 
 import Dates
 
+using Chain
+
 # NOTE: This module lazily imports additional modules in `main`.
 
 function map_paths(paths)
@@ -76,7 +78,8 @@ function prepare!(; location, specifications, seed)
                     :_version => repository_version(),
                     :_julia_version => "v$VERSION",
                     :_defaults => Dict(
-                        :simulation_seed => raw"$seed-$^item",
+                        :simulation_seed => raw"$seed-simulation-$^item",
+                        :extraction_seed => raw"$seed-extraction-$^item",
                         :label => raw"$^item",
                         :channel => raw"$^model",
                         :initial => Dict{Symbol, Any}()
@@ -88,7 +91,7 @@ function prepare!(; location, specifications, seed)
     end
 end
 
-function simulate!(; location)
+function load_specification(location)
     loader(path) = JSON.parsefile(
         "$(dirname(location))/$path";
         dicttype = Dict{Symbol, Any}
@@ -101,26 +104,20 @@ function simulate!(; location)
 
     assert_compatible_versions(specification)
 
-    locate_definition(experiment, symbol) = repr(
-        "text/plain",
-        experiment[Symbol("^$symbol")],
-    )
+    specification
+end
 
+function simulate!(specification; location)
     simulations = []
-    for (i, experiment) in enumerate(Specifications.unroll(specification))
-        model = Models.Model(experiment[:model])
-        takes = Simulations.takes(experiment[:take])
-        simulation_seed = experiment[:simulation_seed]
-        channel = experiment[:channel]
-        slices_path = path(:slices, channel; prefix = location)
-
+    for (i, experiment) in enumerate(Experiments.experiments(specification))
+        slices_path = path(:slices, experiment.channel; prefix = location)
         simulation = (;
-            item = locate_definition(experiment, :item),
-            initial = locate_definition(experiment, :initial),
-            model = locate_definition(experiment, :model),
-            label = experiment[:label],
-            seed = experiment[:simulation_seed],
-            channel,
+            item = Experiments.locate_definition(experiment, :item),
+            initial = Experiments.locate_definition(experiment, :initial),
+            model = Experiments.locate_definition(experiment, :model),
+            experiment.label,
+            seed = experiment.simulation_seed,
+            experiment.channel,
             slices = basename(slices_path),
         )
         push!(simulations, simulation)
@@ -133,13 +130,15 @@ function simulate!(; location)
         )
 
         transcript = simulate(
-            model,
-            experiment[:initial],
-            takes;
-            randomness = GeneRegulatorySystems.randomness(simulation_seed),
+            experiment.model,
+            experiment.initial,
+            experiment.takes;
+            randomness = GeneRegulatorySystems.randomness(
+                experiment.simulation_seed
+            ),
         )
 
-        collected = Models.collect(transcript, model)
+        collected = Models.collect(transcript, experiment.model)
         slices = (;
             :simulation => fill(i, length(collected.t)),
             collected...,
@@ -156,31 +155,85 @@ function simulate!(; location)
         simulations;
         dictencode = true
     )
+end
 
-    return true
+function extract!(specification; location)
+    result = Dict()
+    for (i, experiment) in enumerate(Experiments.experiments(specification))
+        slices = @chain :slices begin
+            path(experiment.channel; prefix = location)
+            Arrow.Table
+            DataFrame
+
+            subset(:simulation => ByRow(==(i)), view = true)
+            select(
+                _,
+                :simulation,
+                :t,
+                findall(column -> eltype(column) <: Int, eachcol(_))
+            )
+        end
+
+        randomness =
+            GeneRegulatorySystems.randomness(experiment.extraction_seed)
+
+        for take in experiment.takes
+            slice = only(subset(slices, :t => ByRow(==(take.to))))
+            extracted =
+                experiment.extract(slice[Not([:t, :simulation])]; randomness)
+            entry = (;
+                slice.simulation,
+                slice.t,
+                (
+                    key => extracted[key]
+                    for key in keys(slice)
+                    if haskey(extracted, key)
+                )...
+            )
+            channel = get!(result, experiment.channel, typeof(entry)[])
+            push!(channel, entry)
+        end
+    end
+
+    for (channel, entries) in result
+        Arrow.write(
+            path(:extracts, channel; prefix = location),
+            entries;
+            dictencode = true,
+        )
+    end
 end
 
 function main(;
     location,
     prepare,
     simulate,
+    extract,
     specifications,
     seed,
 )
     timestamp = Dates.now()
     location = replace(location, "{TIMESTAMP}" => timestamp)
 
-    if !any([prepare, simulate])
+    if !any([prepare, simulate, extract])
         prepare = true
         simulate = true
+        extract = true
     end
 
     @eval import JSON
     prepare && Base.invokelatest(prepare!; location, specifications, seed)
 
     @eval using GeneRegulatorySystems
+    specification = Base.invokelatest(load_specification, location)
+
     @eval import Arrow
-    simulate && !Base.invokelatest(simulate!; location)
+    simulate && Base.invokelatest(simulate!, specification; location)
+
+    @eval using DataFrames
+    extract && Base.invokelatest(extract!, specification; location)
+
+    nothing
 end
 
 end

@@ -23,7 +23,7 @@ simulate(
     initial_specification,
     takes::AbstractVector{Simulations.Take};
     randomness::AbstractRNG
-) = throw("unimplemented")
+) = error("unimplemented")
 
 include("gillespie.jl")
 include("sciml.jl")

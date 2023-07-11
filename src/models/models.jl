@@ -16,21 +16,21 @@ end
 
 # TODO defn model specification validation
 
-Model(specification::AbstractDict{Symbol, Any}) =
+Model(specification::AbstractDict{Symbol}) =
     Model(Symbol(specification[:kind]), specification)
 
-Model(kind::Symbol, specification::AbstractDict{Symbol, Any}) =
+Model(kind::Symbol, specification::AbstractDict{Symbol}) =
     Model(Val(kind), specification)
 
-describe(θ::Model) = throw("unimplemented")
+describe(θ::Model) = error("unimplemented")
 prepare_initial(specification::AbstractDict{Symbol}, θ::Model) =
-    throw("unimplemented")
-collect(transcript, θ::Model) = throw("unimplemented")
+error("unimplemented")
+collect(transcript, θ::Model) = error("unimplemented")
 
 abstract type GillespieModel <: Model end
-initialize(initial, θ::GillespieModel) = throw("unimplemented")
-regulate!(rates, state, θ::GillespieModel) = throw("unimplemented")
-apply!(state, i, θ::GillespieModel) = throw("unimplemented")
+initialize(initial, θ::GillespieModel) = error("unimplemented")
+regulate!(rates, state, θ::GillespieModel) = error("unimplemented")
+apply!(state, i, θ::GillespieModel) = error("unimplemented")
 
 @kwdef struct SciMLJumpModel <: Model
     system::ModelingToolkit.JumpSystem
@@ -80,27 +80,6 @@ function collect(transcript, θ::SciMLJumpModel)
         # TODO: add back rates
     )
 end
-
-coerce(T::Type, x::AbstractDict{Symbol}, ::Val{K}; context) where {K} =
-    coerce(fieldtype(T, K), x[K]; context)
-coerce(::Type{Symbol}, x; _...) = Symbol(x)
-coerce(T::Type{<:Real}, x::Real; _...) = convert(T, x)
-coerce(T::Type{<:Real}, x::AbstractString; _...) = parse(T, x)
-coerce(::Type{Vector{T}}, xs::AbstractVector; context) where {T} =
-    coerce.(T, xs; context)
-coerce(T::Type, x::AbstractDict{Symbol}; context = x) = T(; (
-    key => coerce(T, x, Val(key); context)
-    for key in keys(x)
-    if hasfield(T, key)
-)...)
-coerce(::Type{Union{Some{T}, Nothing}}, ::Nothing; _...) where {T} = nothing
-coerce(::Type{Union{Some{T}, Nothing}}, x; context) where {T} =
-    Some(coerce(T, x; context))
-coerce(  # disambiguation
-    ::Type{Union{Some{T}, Nothing}},
-    x::AbstractDict{Symbol};
-    context,
-) where {T} = Some(coerce(T, x; context))
 
 include("vanilla.jl")
 include("kronecker.jl")

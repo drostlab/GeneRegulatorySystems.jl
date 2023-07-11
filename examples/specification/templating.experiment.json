@@ -54,5 +54,11 @@
                 "each": {"length": 3}
             }
         }
+    },
+    "extract": {
+        "transcriptome-amplified": {
+            "cycles": 10,
+            "target": 200
+        }
     }
 }

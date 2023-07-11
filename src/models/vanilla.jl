@@ -1,8 +1,8 @@
 module Vanilla
 
 using ...GeneRegulatorySystems: σ
+import ...Conversion: cast
 using ..Models
-import ..Models: coerce
 
 using Base: @kwdef, @invoke
 using LinearAlgebra
@@ -75,11 +75,11 @@ end
     genes::Vector{Gene}
 end
 
-coerce(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
-    coerce(Gene, merge(Dict(:name => i), x); context)
+cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
+    cast(Gene, merge(Dict(:name => i), x); context)
     for (i, x) in enumerate(xs)
 ]
-coerce(::Type{Gene}, x::AbstractDict{Symbol}; context) = @invoke coerce(
+cast(::Type{Gene}, x::AbstractDict{Symbol}; context) = @invoke cast(
     Gene::Type,
     # Ensure we descend on these, even if they are not in x, because we will
     # look up model-wide defaults further down:
@@ -89,19 +89,19 @@ coerce(::Type{Gene}, x::AbstractDict{Symbol}; context) = @invoke coerce(
     )::AbstractDict{Symbol};
     context
 )
-coerce(T::Type{<:Regulation}, xs::AbstractVector; context) =
-    coerce(T, Dict(:slots => xs); context)
-coerce(::Type{Activation}, x::AbstractDict{Symbol}; context) = @invoke coerce(
+cast(T::Type{<:Regulation}, xs::AbstractVector; context) =
+    cast(T, Dict(:slots => xs); context)
+cast(::Type{Activation}, x::AbstractDict{Symbol}; context) = @invoke cast(
     Activation::Type,
     merge(get(context, :activation, empty(x)), x)::AbstractDict{Symbol};
     context
 )
-coerce(::Type{Repression}, x::AbstractDict{Symbol}; context) = @invoke coerce(
+cast(::Type{Repression}, x::AbstractDict{Symbol}; context) = @invoke cast(
     Repression::Type,
     merge(get(context, :repression, empty(x)), x)::AbstractDict{Symbol};
     context
 )
-coerce(
+cast(
     ::Type{<:Regulation},
     x::AbstractDict{Symbol},
     ::Val{:aggregate};
@@ -116,7 +116,7 @@ aggregation(::Val{:geometric_mean}, _) = geomean
 aggregation(::Val{:complement_geometric_mean}, _) = xs -> geomean(1.0 .- xs)
 aggregation(::Val{:harmonic_mean}, _) = harmmean
 aggregation(k::Val{:generalized_mean}, x) =
-    aggregation(k, coerce(Float64, get(x, :p, 0.0)))
+    aggregation(k, cast(Float64, get(x, :p, 0.0)))
 aggregation(::Val{:generalized_mean}, p::Float64) =
     p == -Inf ? minimum :
     p == -1.0 ? harmmean :
@@ -161,7 +161,7 @@ const KERNEL = AxisArray(
 end
 
 Models.Model(::Val{Symbol("vanilla-simple")}, specification) =
-    Model(definition = coerce(Definition, specification))
+    Model(definition = cast(Definition, specification))
 
 Models.describe(definition::Definition) = Models.ModelDescription(
     species_kinds = SPECIES_KINDS,
@@ -382,7 +382,7 @@ Models.Model(::Val{:vanilla}, specification) =
 
 Models.Model(kind::Val{Symbol("vanilla-Catalyst")}, specification) =
     Models.SciMLJumpModel(
-        coerce(Definition, specification),
+        cast(Definition, specification),
         method = get(specification, :method, "default"),
     )
 

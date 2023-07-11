@@ -41,5 +41,6 @@
         "1": {"proteins": 100},
         "2": {"proteins": 100}
     },
-    "take": {"to": 5000.0}
+    "take": {"to": 5000.0},
+    "extract": {"transcriptome-simple": {"collect": 0.8}}
 }

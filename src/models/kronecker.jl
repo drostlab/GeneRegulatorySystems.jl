@@ -1,8 +1,8 @@
 module Kronecker
 
 using ...GeneRegulatorySystems: randomness, σ, logit
+import ...Conversion: cast
 using ..Models: Models, Vanilla
-import ..Models: coerce
 
 using Base: @kwdef
 using Random
@@ -126,29 +126,29 @@ end
 
 factor(xs::AbstractVector) = vcat(adjoint.(xs)...)
 
-coerce(::Type{UnivariateDistribution}, x::Real; _...) = Dirac(x)
+cast(::Type{UnivariateDistribution}, x::Real; _...) = Dirac(x)
 
-function coerce(::Type{UnivariateDistribution}, xs::AbstractVector; _...)
+function cast(::Type{UnivariateDistribution}, xs::AbstractVector; _...)
     T = eval(Symbol(xs[1]))
     T <: UnivariateDistribution || error("not a UnivariateDistribution")
     T(xs[2:end]...)
 end
 
-function coerce(::Type{Nonnegative{T}}, x; _...) where {T}
-    result = coerce(T, x)
+function cast(::Type{Nonnegative{T}}, x; _...) where {T}
+    result = cast(T, x)
     minimum(result) ≥ 0.0 ||
         error("distribution must have nonnegative support")
     Nonnegative{UnivariateDistribution}(result)
 end
 
-function coerce(::Type{AbstractMatrix}, xs::AbstractVector; _...)
+function cast(::Type{AbstractMatrix}, xs::AbstractVector; _...)
     factors = factor.(xs)
     result = adjacency(factors)
     issquare(result) || error("adjacency must be square")
     result
 end
 
-function coerce(T::Type{AbstractMatrix}, x::AbstractDict{Symbol}; _...)
+function cast(T::Type{AbstractMatrix}, x::AbstractDict{Symbol}; _...)
     initiator = factor(x[:initiator])
     issquare(initiator) || error("initiator must be square")
     k = x[:power]
@@ -215,7 +215,7 @@ function Base.rand(randomness::AbstractRNG, template::Template)
 end
 
 function Models.Model(::Val{:kronecker}, specification)
-    template = coerce(Template, specification)
+    template = cast(Template, specification)
     method = get(specification, :method, "default")
     definition = rand(randomness(specification[:seed]), template)
 

@@ -21,5 +21,7 @@ filename(::Val{:specification}, ::Nothing) = "specification.json"
 filename(::Val{:simulations}, ::Nothing) = "simulations.arrow"
 filename(::Val{:slices}, channel) =
     "slices$(isempty(channel) ? "" : "-$channel").stream.arrow"
+filename(::Val{:extracts}, channel) =
+    "extracts$(isempty(channel) ? "" : "-$channel").arrow"
 
 end

@@ -73,5 +73,15 @@
                 }
             ]
         }
+    },
+    "extract": {
+        "proteome-simple": {"collect": 0.8, "target": 200},
+        "transcriptome-amplified": {
+            "collect": 0.9,
+            "cycles": 5,
+            "efficiency": 0.8,
+            "dropout": 0.02,
+            "target": 100
+        }
     }
 }
