@@ -11,12 +11,12 @@ logit(p) = log(p / (one(p) - p))
 
 include("conversion.jl")
 include("models/models.jl")
-include("simulations/simulations.jl")
+include("simulation.jl")
 include("extraction.jl")
 include("specifications.jl")
 include("experiments.jl")
 
-using .Simulations: simulate
-export Specifications, Experiments, Models, Simulations, simulate
+using .Simulation: simulate
+export Specifications, Experiments, Models, Simulation, simulate
 
 end

@@ -127,41 +127,6 @@ aggregation(::Val{:generalized_mean}, p::Float64) =
 
 const REACTION_KINDS = collect(fieldnames(BaseRates))
 const SPECIES_KINDS = [:promoter, :elongations, :premrnas, :mrnas, :proteins]
-const KERNEL = AxisArray(
-    [
-         1  0  0  0  0  # activate promoter
-        -1  0  0  0  0  # deactivate promoter
-         0  1  0  0  0  # trigger transcription
-         0 -1  1  0  0  # finish transcription
-         0  0 -1  1  0  # splice
-         0  0  0  0  1  # translate
-         0 -1  0  0  0  # abort transcription
-         0  0 -1  0  0  # degrade pre-mRNA
-         0  0  0 -1  0  # degrade mRNA
-         0  0  0  0 -1  # degrade protein
-    ],
-    reaction_kinds = REACTION_KINDS,
-    species_kinds = SPECIES_KINDS,
-)
-
-@kwdef struct Model <: Models.GillespieModel
-    definition::Definition
-
-    genes_index =
-        Dict(gene.name => i for (i, gene) in enumerate(definition.genes))
-
-    reactions = KERNEL ⊗ I(length(definition.genes))
-
-    base_rates_by_kind = NamedTuple(
-        name => map(definition.genes) do gene
-            getfield(gene.base_rates, name)
-        end
-        for name in fieldnames(BaseRates)
-    )
-end
-
-Models.Model(::Val{Symbol("vanilla-simple")}, specification) =
-    Model(definition = cast(Definition, specification))
 
 Models.describe(definition::Definition) = Models.ModelDescription(
     species_kinds = SPECIES_KINDS,
@@ -183,104 +148,6 @@ Models.describe(definition::Definition) = Models.ModelDescription(
         )
     end
 )
-Models.describe(θ::Model) = Models.describe(θ.definition)
-
-function Models.prepare_initial(specification::AbstractDict{Symbol}, θ::Model)
-    ComponentVector(; (
-        kind => [
-            get(
-                get(specification, gene.name, Dict{Symbol, Any}()),
-                kind,
-                0
-            )
-            for gene in θ.definition.genes
-        ]
-        for kind in SPECIES_KINDS
-    )...)
-end
-
-function Models.collect(transcript::NamedTuple, θ::Model)
-    columns(xs) = (
-        Symbol("$(θ.definition.genes[i].name).$kind") =>
-            (row -> row[kind][i]).(xs)
-        for kind in keys(first(xs))
-        for i in eachindex(first(xs)[kind])
-    )
-
-    (;
-        :t => transcript.ts,
-        columns(transcript.states)...,
-        columns(transcript.rates)...,
-    )
-end
-
-function Models.initialize(initial, θ::Model)
-    state = copy(initial)
-    rates = ComponentVector(; (
-        name => Array{Float64}(undef, length(θ.definition.genes))
-        for name in REACTION_KINDS
-    )...)
-
-    state, rates
-end
-
-function Models.regulate!(rates, state, θ::Model)
-    (; polymerases, ribosomes, proteasomes, genes) = θ.definition
-
-    # slot activity:
-    occupancy(x; k, β) = σ(
-        k * (β == -Inf ? Inf : log(x) - β)
-    )
-
-    # activation/deactivation tempering coefficients:
-    p₊s = (
-        gene.repression(
-            (
-                occupancy(state.proteins[θ.genes_index[from]]; k, β = log(at))
-                for (; from, at, k) in gene.repression.slots
-            );
-            T = eltype(rates)
-        )
-        for gene in genes
-    )
-    p₋s = (
-        gene.activation(
-            (
-                occupancy(state.proteins[θ.genes_index[from]]; k, β = log(at))
-                for (; from, at, k) in gene.activation.slots
-            );
-            T = eltype(rates)
-        )
-        for gene in genes
-    )
-    γs = (
-        sum(gene.proteolysis.slots, init = zero(eltype(rates))) do (; from, k)
-            k * state.proteins[θ.genes_index[from]]
-        end
-        for gene in genes
-    )
-
-    xs = state
-    hs = rates
-    base = θ.base_rates_by_kind
-
-    # rate updates:
-    hs.activation .=
-        (1 .- xs.promoter) .* base.activation .* p₊s .* polymerases
-    hs.deactivation .= xs.promoter .* base.deactivation .* p₋s
-    hs.trigger .= xs.promoter .* base.trigger
-    hs.transcription .= xs.elongations .* base.transcription
-    hs.splicing .= xs.premrnas .* base.splicing
-    hs.translation .= xs.mrnas .* base.translation .* ribosomes
-    hs.abortion .= xs.elongations .* base.abortion
-    hs.premrna_decay .= xs.premrnas .* base.premrna_decay
-    hs.mrna_decay .= xs.mrnas .* base.mrna_decay
-    hs.protein_decay .=
-        xs.proteins .* (base.protein_decay .* proteasomes .+ γs)
-end
-
-Models.apply!(state, i, θ::Model) =
-    state .+= θ.reactions[i, :]
 
 gene(name::Symbol; ribosomes, proteasomes) = @reaction_network $name begin
     trigger, promoter --> promoter + elongations
@@ -377,14 +244,10 @@ const JUMP_PROCESSES_METHODS = Dict(
     "default" => RSSACR,
 )
 
-Models.Model(::Val{:vanilla}, specification) =
-    Models.Model(Symbol("vanilla-Catalyst"), specification)
-
-Models.Model(kind::Val{Symbol("vanilla-Catalyst")}, specification) =
-    Models.SciMLJumpModel(
-        cast(Definition, specification),
-        method = get(specification, :method, "default"),
-    )
+Models.Model(::Val{:vanilla}, specification) = Models.SciMLJumpModel(
+    cast(Definition, specification),
+    method = get(specification, :method, "default"),
+)
 
 function Models.SciMLJumpModel(definition::Definition; method)
     @variables t

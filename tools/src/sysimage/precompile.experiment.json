@@ -1,10 +1,9 @@
 {
     "each": [
         {"kind": "vanilla", "method": "default"},
-        {"kind": "vanilla-simple", "method": "default"},
-        {"kind": "vanilla-Catalyst", "method": "Direct"},
-        {"kind": "vanilla-Catalyst", "method": "SortingDirect"},
-        {"kind": "vanilla-Catalyst", "method": "RSSACR"}
+        {"kind": "vanilla", "method": "Direct"},
+        {"kind": "vanilla", "method": "SortingDirect"},
+        {"kind": "vanilla", "method": "RSSACR"}
     ],
     "as": "variant",
     "in": {

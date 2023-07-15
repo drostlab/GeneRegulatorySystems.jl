@@ -27,11 +27,6 @@ prepare_initial(specification::AbstractDict{Symbol}, θ::Model) =
 error("unimplemented")
 collect(transcript, θ::Model) = error("unimplemented")
 
-abstract type GillespieModel <: Model end
-initialize(initial, θ::GillespieModel) = error("unimplemented")
-regulate!(rates, state, θ::GillespieModel) = error("unimplemented")
-apply!(state, i, θ::GillespieModel) = error("unimplemented")
-
 @kwdef struct SciMLJumpModel <: Model
     system::ModelingToolkit.JumpSystem
     method  # ::AbstractAggregatorAlgorithm

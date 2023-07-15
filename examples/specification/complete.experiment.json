@@ -1,6 +1,6 @@
 {
     "model": {
-        "kind": "vanilla-Catalyst",
+        "kind": "vanilla",
         "method": "RSSACR",
         "polymerases": 50,
         "ribosomes": 5537,

@@ -52,7 +52,7 @@ function load_simulations(location; specification)
         experiment[Symbol("^$symbol")],
     )
     takes = Dict(
-        locate_definition(s, :item) => Simulations.takes(s[:take])
+        locate_definition(s, :item) => Simulation.takes(s[:take])
         for s in Specifications.unroll(specification)
     )
     simulations = Arrow.Table(Common.path(:simulations; prefix = location))

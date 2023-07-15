@@ -1,7 +1,7 @@
 module Experiments
 
 using ..Models: Model
-import ..Simulations
+import ..Simulation
 import ..Extraction
 import ..Specifications: Specifications, Specification
 
@@ -11,7 +11,7 @@ using Base: @kwdef
     label::String
     initial::AbstractDict{Symbol}
     model::Model
-    takes::Vector{Simulations.Take}
+    takes::Vector{Simulation.Take}
     extract::Extraction.Scheme
     simulation_seed::String
     extraction_seed::String
@@ -23,7 +23,7 @@ Experiment(specification::AbstractDict{Symbol}) = Experiment(;
     label = specification[:label],
     model = Model(specification[:model]),
     initial = specification[:initial],
-    takes = Simulations.takes(specification[:take]),
+    takes = Simulation.takes(specification[:take]),
     extract = Extraction.Scheme(get(specification, :extract, nothing)),
     simulation_seed = specification[:simulation_seed],
     extraction_seed = specification[:extraction_seed],
