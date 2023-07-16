@@ -1,5 +1,6 @@
 {
-    "model": {
+    "to": 10000.0,
+    "step": { "{regulation/kronecker}": {
         "kind": "kronecker",
         "seed": "kronecker-$seed",
         "polymerases": 50,
@@ -55,6 +56,5 @@
             },
             "k": ["LogNormal", -5.0, 2.0]
         }
-    },
-    "take": {"to": 10000.0}
+    }}
 }

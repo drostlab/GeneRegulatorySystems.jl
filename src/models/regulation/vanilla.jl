@@ -1,17 +1,14 @@
 module Vanilla
 
-using ...GeneRegulatorySystems: σ
 import ...Conversion: cast
-using ..Models
+using ..Models: Models, SciML
+import ...Specifications
 
 using Base: @kwdef, @invoke
 using LinearAlgebra
 
-using AxisArrays
 using Catalyst
-using ComponentArrays
 using JumpProcesses
-using Kronecker
 using ModelingToolkit
 using StatsBase
 import Symbolics
@@ -128,10 +125,10 @@ aggregation(::Val{:generalized_mean}, p::Float64) =
 const REACTION_KINDS = collect(fieldnames(BaseRates))
 const SPECIES_KINDS = [:promoter, :elongations, :premrnas, :mrnas, :proteins]
 
-Models.describe(definition::Definition) = Models.ModelDescription(
+Models.describe(f!::SciML.JumpModel{Definition}) = Models.Network(
     species_kinds = SPECIES_KINDS,
-    species_groups = [gene.name for gene in definition.genes],
-    links = mapreduce(vcat, definition.genes) do gene
+    species_groups = [gene.name for gene in f!.definition.genes],
+    links = mapreduce(vcat, f!.definition.genes) do gene
         vcat(
             map(gene.activation.slots) do (; from, at, k)
                 properties = Dict(:at => at, :k => k)
@@ -244,12 +241,16 @@ const JUMP_PROCESSES_METHODS = Dict(
     "default" => RSSACR,
 )
 
-Models.Model(::Val{:vanilla}, specification) = Models.SciMLJumpModel(
-    cast(Definition, specification),
-    method = get(specification, :method, "default"),
-)
+SciML.JumpModel{Definition}(specification::AbstractDict{Symbol}) =
+    SciML.JumpModel{Definition}(
+        cast(Definition, specification),
+        method = get(specification, :method, "default")
+    )
 
-function Models.SciMLJumpModel(definition::Definition; method)
+function SciML.JumpModel{Definition}(
+    definition::Definition;
+    method::AbstractString
+)
     @variables t
     @parameters ribosomes proteasomes
     genes_by_name = Dict(
@@ -266,10 +267,9 @@ function Models.SciMLJumpModel(definition::Definition; method)
         systems = collect(values(genes_by_name)),
     )
 
-    jump_system = convert(JumpSystem, reaction_system)
-
-    Models.SciMLJumpModel(
-        system = jump_system,
+    SciML.JumpModel{Definition}(;
+        definition,
+        system = convert(JumpSystem, reaction_system),
         method = JUMP_PROCESSES_METHODS[method](),
         parameters = (
             ribosomes => definition.ribosomes,
@@ -282,8 +282,10 @@ function Models.SciMLJumpModel(definition::Definition; method)
                 if kind ∉ (:activation, :deactivation)
             )...
         ),
-        description = Models.describe(definition),
     )
 end
+
+Specifications.constructor(::Val{Symbol("regulation/vanilla")}) =
+    SciML.JumpModel{Definition}
 
 end

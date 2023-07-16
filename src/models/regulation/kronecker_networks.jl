@@ -1,8 +1,9 @@
-module Kronecker
+module KroneckerNetworks
 
-using ...GeneRegulatorySystems: randomness, σ, logit
 import ...Conversion: cast
-using ..Models: Models, Vanilla
+using ...GeneRegulatorySystems: randomness, σ, logit
+using ..Models: SciML, Vanilla
+import ..Specifications
 
 using Base: @kwdef
 using Random
@@ -214,12 +215,22 @@ function Base.rand(randomness::AbstractRNG, template::Template)
     )
 end
 
-function Models.Model(::Val{:kronecker}, specification)
+function SciML.JumpModel{Template}(specification::AbstractDict{Symbol})
     template = cast(Template, specification)
     method = get(specification, :method, "default")
     definition = rand(randomness(specification[:seed]), template)
 
-    Models.SciMLJumpModel(definition; method)
+    synthesized = SciML.JumpModel{Vanilla.Definition}(definition; method)
+
+    SciML.JumpModel{Template}(
+        definition = template;
+        synthesized.system,
+        synthesized.method,
+        synthesized.parameters,
+    )
 end
+
+Specifications.constructor(::Val{Symbol("regulation/kronecker")}) =
+    SciML.JumpModel{Template}
 
 end

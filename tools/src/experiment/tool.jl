@@ -6,17 +6,124 @@ else
     include("$(@__DIR__)/../common.jl")
 end
 
-using .Common: repository_version, path
-
-import Dates
+using .Common: repository_version, artifact
 
 using Chain
+using DataFrames
+using LoggingExtras
+import Term
+
+using Base: @kwdef
+import Dates
 
 # NOTE: This module lazily imports additional modules in `main`.
 
-function map_paths(paths)
+abstract type ProgressLogger <: AbstractLogger end
+
+Logging.min_enabled_level(::ProgressLogger) =
+    GeneRegulatorySystems.Scheduling.Progress
+
+Logging.shouldlog(::ProgressLogger, level, module_, _group, _id) =
+    (module_ == Scheduling || module_ == ExperimentTool) &&
+        level == Scheduling.Progress
+
+struct SimpleProgressLogger <: ProgressLogger end
+
+function Logging.handle_message(
+    ::SimpleProgressLogger,
+    _level,
+    message::Symbol,
+    _rest...;
+    path,
+    todo = nothing,
+    done = nothing,
+)
+    if message == :done
+        @info "$path done"
+    elseif message == :saved
+        @info "Saved $done slices into '$path'"
+    end
+end
+
+@kwdef struct BarProgressLogger <: ProgressLogger
+    bar::Term.ProgressBar
+    stack::Dict{String, Term.ProgressJob} = Dict{String, Term.ProgressJob}()
+end
+
+function Logging.handle_message(
+    logger::BarProgressLogger,
+    _level,
+    message::Symbol,
+    _rest...;
+    path,
+    todo = nothing,
+    done = nothing,
+)
+    if message == :preparing
+        logger.stack[path] = Term.Progress.addjob!(
+            logger.bar,
+            description = "preparing $path"
+        )
+    elseif message == :stepping
+        if todo !== nothing
+            if haskey(logger.stack, path)
+                Term.Progress.removejob!(logger.bar, logger.stack[path])
+                delete!(logger.stack, path)
+            end
+
+            if isfinite(todo)
+                logger.stack[path] = Term.Progress.addjob!(
+                    logger.bar,
+                    description = path,
+                    N = round(Int, todo, RoundUp),
+                )
+            end
+        end
+        if done !== nothing
+            Term.Progress.update!(
+                logger.stack[path],
+                i = round(Int, done, RoundDown)
+            )
+        end
+    elseif message == :iterating
+        if todo !== nothing
+            if haskey(logger.stack, path)
+                Term.Progress.removejob!(logger.bar, logger.stack[path])
+                delete!(logger.stack, path)
+            end
+
+            logger.stack[path] = Term.Progress.addjob!(
+                logger.bar,
+                description = path,
+                N = todo,
+            )
+        end
+        if done !== nothing
+            Term.Progress.update!(logger.stack[path], i = done)
+        end
+    elseif message == :done || message == :advanced
+        if haskey(logger.stack, path)
+            Term.Progress.removejob!(logger.bar, logger.stack[path])
+            delete!(logger.stack, path)
+        end
+    else
+        if haskey(logger.stack, path)
+            Term.Progress.removejob!(logger.bar, logger.stack[path])
+            delete!(logger.stack, path)
+        end
+        description = "$message $path"
+        if todo !== nothing
+            description = "$description ($todo)"
+        end
+        logger.stack[path] = Term.Progress.addjob!(logger.bar; description)
+    end
+
+    Term.Progress.render(logger.bar)
+end
+
+function map_artifacts(paths)
     preliminary_map = Dict(p => basename(p) for p in paths)
-    if allunique(vcat(path(:specification), values(preliminary_map)...))
+    if allunique(vcat(artifact(:specification), values(preliminary_map)...))
         return preliminary_map
     else
         return Dict(p => "_$(i)_$(basename(p))" for (i, p) in enumerate(paths))
@@ -24,7 +131,7 @@ function map_paths(paths)
 end
 
 function assert_compatible_versions(specification)
-    if (specification.bindings[:_julia_version] != "v$VERSION")
+    if (specification[:_julia_version] != "v$VERSION")
         @error(
             "Experiment was prepared with a different Julia version.",
             specification.bindings[:_julia_version],
@@ -34,11 +141,11 @@ function assert_compatible_versions(specification)
         throw(:help)
     end
 
-    if (specification.bindings[:_version] != repository_version())
+    if (specification[:_version] != repository_version())
         @error(
             "Experiment was prepared with a different " *
             "GeneRegulatorySystems.jl version.",
-            specification.bindings[:_version],
+            specification[:_version],
             repository_version(),
         )
         @info "This is disallowed to ensure reproducibility."
@@ -47,7 +154,7 @@ function assert_compatible_versions(specification)
 end
 
 function prepare!(; location, specifications, seed)
-    specification_path = path(:specification; prefix = location)
+    specification_path = artifact(:specification; prefix = location)
     if ispath(specification_path)
         @error(
             "Cannot prepare experiment, specification already exists.",
@@ -59,31 +166,30 @@ function prepare!(; location, specifications, seed)
         throw(:help)
     else
         paths = realpath.(specifications)
-        path_map = map_paths(paths)
+        artifacts = map_artifacts(paths)
         wrapped = [
-            Dict(:< => basename("$(location)$(path_map[p])"))
+            Dict(:< => basename("$(location)$(artifacts[p])"))
             for p in paths
         ]
 
         mkpath(dirname(specification_path))
-        for (source, target) in path_map
+        for (source, target) in artifacts
             cp(source, "$(location)$target"; follow_symlinks = true)
         end
         open(specification_path, "w") do file
             JSON.print(
                 file,
-                Dict(
-                    :seed => seed,
-                    :in => length(wrapped) == 1 ? only(wrapped) : wrapped,
-                    :_version => repository_version(),
-                    :_julia_version => "v$VERSION",
-                    :_defaults => Dict(
-                        :simulation_seed => raw"$seed-simulation-$^item",
-                        :extraction_seed => raw"$seed-extraction-$^item",
-                        :label => raw"$^item",
-                        :channel => raw"$^model",
-                        :initial => Dict{Symbol, Any}()
+                merge(
+                    Dict(
+                        :seed => seed,
+                        :_version => repository_version(),
+                        :_julia_version => "v$VERSION",
                     ),
+                    if length(wrapped) == 1
+                        Dict(:step => only(wrapped))
+                    else
+                        Dict(:step => wrapped, :branch => true)
+                    end,
                 ),
                 4,
             )
@@ -91,116 +197,112 @@ function prepare!(; location, specifications, seed)
     end
 end
 
-function load_specification(location)
-    loader(path) = JSON.parsefile(
+@kwdef mutable struct Sink
+    location::String
+    i::Int = 0
+    index = []
+    threshold::Int = 100000
+    channels::Dict{String, DataFrame} = Dict{String, DataFrame}()
+end
+
+function flush!(sink::Sink)
+    for into in keys(sink.channels)
+        flush!(sink, into)
+    end
+
+    index = artifact(:index; prefix = sink.location)
+    Arrow.write(index, sink.index, dictencode = true)
+end
+
+function flush!(sink::Sink, into)
+    segment = pop!(sink.channels, into)
+    segments = artifact(:segments, into, prefix = sink.location)
+    if isfile(segments)
+        Arrow.append(segments, segment)
+    else
+        Arrow.write(segments, segment, file = false)
+    end
+    @logmsg(Scheduling.Progress, :saved, path = segments, done = nrow(segment))
+end
+
+function (sink::Sink)(into, state; path, primitive!, from, _...)
+    sink.i += 1
+
+    to = Models.t(state)
+    if primitive!.skip > 0.0
+        from = to
+    end
+    model = primitive!.path
+    label = get(primitive!.bindings, :label, "")
+    push!(sink.index, (; sink.i, path, from, to, model, label, into))
+
+    segment = @chain begin
+        state
+        Models.table(sorted = true)
+        DataFrame
+        insertcols(1, :i => sink.i)
+    end
+
+    if haskey(sink.channels, into)
+        append!(sink.channels[into], segment, cols = :orderequal)
+    else
+        sink.channels[into] = copy(segment)
+    end
+
+    prod(size(sink.channels[into])) > sink.threshold && flush!(sink, into)
+end
+
+function with_progress(run!, progress::Symbol)
+    if progress == :bars && stdout isa Base.TTY
+        logger = BarProgressLogger(
+            bar = Term.ProgressBar(expand = true)
+        )
+        Term.with(logger.bar) do
+            with_logger(run!, TeeLogger(current_logger(), logger))
+        end
+    elseif progress == :simple
+        with_logger(run!, TeeLogger(current_logger(), SimpleProgressLogger()))
+    else
+        run!()
+    end
+end
+
+function simulate!(; location, progress, dry)
+    load(path) = JSON.parsefile(
         "$(dirname(location))/$path";
         dicttype = Dict{Symbol, Any}
     )
 
-    specification = Specifications.load(
-        basename(path(:specification; prefix = location));
-        loader
-    )
+    function dryrun(primitive!, x, Δt; path, into, _...)
+        modelname = nameof(typeof(primitive!.f!))
+        isinterval = isfinite(Δt) && 0.0 < Δt
+        interval = isinterval ? "from $(x.t) to $(x.t + Δt)" : "at $(x.t)"
+        maybe_into =
+            if into === nothing
+                ""
+            elseif isinterval && 0.0 < primitive!.skip
+                ", record final into '$into'"
+            else
+                ", record into '$into'"
+            end
 
+        @info "$path: $modelname $interval$maybe_into"
+    end
+
+    specification = load(basename(artifact(:specification; prefix = location)))
     assert_compatible_versions(specification)
+    schedule! = Schedule(specification = Specification(specification))
 
-    specification
-end
-
-function simulate!(specification; location)
-    simulations = []
-    for (i, experiment) in enumerate(Experiments.experiments(specification))
-        slices_path = path(:slices, experiment.channel; prefix = location)
-        simulation = (;
-            item = Experiments.locate_definition(experiment, :item),
-            initial = Experiments.locate_definition(experiment, :initial),
-            model = Experiments.locate_definition(experiment, :model),
-            experiment.label,
-            seed = experiment.simulation_seed,
-            experiment.channel,
-            slices = basename(slices_path),
-        )
-        push!(simulations, simulation)
-        @info(
-            "About to run simulation '$(simulation.item)'.",
-            label = simulation.label,
-            model = simulation.model,
-            initial = simulation.initial,
-            into = simulation.slices,
-        )
-
-        transcript = simulate(
-            experiment.model,
-            experiment.initial,
-            experiment.takes;
-            randomness = GeneRegulatorySystems.randomness(
-                experiment.simulation_seed
-            ),
-        )
-
-        collected = Models.collect(transcript, experiment.model)
-        slices = (;
-            :simulation => fill(i, length(collected.t)),
-            collected...,
-        )
-
-        if isfile(slices_path)
-            Arrow.append(slices_path, slices)
-        else
-            Arrow.write(slices_path, slices, file = false)
-        end
-    end
-    Arrow.write(
-        path(:simulations; prefix = location),
-        simulations;
-        dictencode = true
-    )
-end
-
-function extract!(specification; location)
-    result = Dict()
-    for (i, experiment) in enumerate(Experiments.experiments(specification))
-        slices = @chain :slices begin
-            path(experiment.channel; prefix = location)
-            Arrow.Table
-            DataFrame
-
-            subset(:simulation => ByRow(==(i)), view = true)
-            select(
-                _,
-                :simulation,
-                :t,
-                findall(column -> eltype(column) <: Int, eachcol(_))
-            )
-        end
-
-        randomness =
-            GeneRegulatorySystems.randomness(experiment.extraction_seed)
-
-        for take in experiment.takes
-            slice = only(subset(slices, :t => ByRow(==(take.to))))
-            extracted =
-                experiment.extract(slice[Not([:t, :simulation])]; randomness)
-            entry = (;
-                slice.simulation,
-                slice.t,
-                (
-                    key => extracted[key]
-                    for key in keys(slice)
-                    if haskey(extracted, key)
-                )...
-            )
-            channel = get!(result, experiment.channel, typeof(entry)[])
-            push!(channel, entry)
-        end
+    if dry
+        progress = :none
     end
 
-    for (channel, entries) in result
-        Arrow.write(
-            path(:extracts, channel; prefix = location),
-            entries;
-            dictencode = true,
-        )
+    with_progress(progress) do
+        state = Models.FlatState()
+        state = Models.Plumbing.Seed(specification[:seed])(state)
+        sink = Sink(; location)
+        schedule!(state; load, dump = sink, dryrun = dry ? dryrun : nothing)
+        flush!(sink)
     end
 end
 
@@ -208,30 +310,25 @@ function main(;
     location,
     prepare,
     simulate,
-    extract,
-    specifications,
+    progress,
+    dry,
     seed,
+    specifications,
 )
     timestamp = Dates.now()
     location = replace(location, "{TIMESTAMP}" => timestamp)
 
-    if !any([prepare, simulate, extract])
+    if !any([prepare, simulate])
         prepare = true
         simulate = true
-        extract = true
     end
 
     @eval import JSON
     prepare && Base.invokelatest(prepare!; location, specifications, seed)
 
     @eval using GeneRegulatorySystems
-    specification = Base.invokelatest(load_specification, location)
-
     @eval import Arrow
-    simulate && Base.invokelatest(simulate!, specification; location)
-
-    @eval using DataFrames
-    extract && Base.invokelatest(extract!, specification; location)
+    simulate && Base.invokelatest(simulate!; location, progress, dry)
 
     nothing
 end

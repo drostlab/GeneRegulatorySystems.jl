@@ -14,14 +14,10 @@ repository_version() = LibGit2.format(
     )
 )
 
-path(kind::Symbol, name = nothing; prefix = "") =
-    "$prefix$(filename(Val(kind), name))"
-
-filename(::Val{:specification}, ::Nothing) = "specification.json"
-filename(::Val{:simulations}, ::Nothing) = "simulations.arrow"
-filename(::Val{:slices}, channel) =
-    "slices$(isempty(channel) ? "" : "-$channel").stream.arrow"
-filename(::Val{:extracts}, channel) =
-    "extracts$(isempty(channel) ? "" : "-$channel").arrow"
+artifact(kind::Symbol, name = nothing; prefix = "") =
+    "$prefix$(artifact(Val(kind), name))"
+artifact(::Val{:specification}, ::Nothing) = "specification.json"
+artifact(::Val{:index}, ::Nothing) = "index.arrow"
+artifact(::Val{:segments}, into) = "segments$into.stream.arrow"
 
 end

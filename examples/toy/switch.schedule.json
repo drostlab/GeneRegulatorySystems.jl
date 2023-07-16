@@ -1,4 +1,5 @@
 {
+    "anchor": "${channel}",
     "gene": {
         "base_rates": {
             "activation": 0.05,
@@ -13,9 +14,8 @@
             "protein_decay": 0.000000136
         }
     },
-    "in": {
-        "model": {
-            "kind": "vanilla",
+    "step": {
+        "do": {"{regulation/vanilla}": {
             "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
@@ -31,21 +31,27 @@
                     "repression": [{"from": 1, "at": 4.0}]
                 }
             ]
-        },
+        }},
         "each": {"start": 0, "step": 25, "stop": 100},
         "as": "a",
-        "in": {
+        "step": {
             "each": {"start": 0, "step": 25, "stop": 100},
             "as": "b",
-            "in": {
+            "step": {
                 "label": "switch-$a-$b",
-                "initial": {
-                    "1": {"proteins": {"$": "a"}},
-                    "2": {"proteins": {"$": "b"}}
-                },
-                "each": {"length": 3}
+                "branch": true,
+                "each": {"length": 3},
+                "step": {
+                    "channel": "${anchor}",
+                    "step": [
+                        {"{set}": {
+                            "1.proteins": {"$": "a"},
+                            "2.proteins": {"$": "b"}
+                        }},
+                        {"to": 100000.0, "step": 100.0}
+                    ]
+                }
             }
         }
-    },
-    "take": {"to": 100000.0, "step": 100.0}
+    }
 }

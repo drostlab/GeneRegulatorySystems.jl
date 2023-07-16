@@ -10,13 +10,15 @@ randomness(seed::AbstractString) =
 logit(p) = log(p / (one(p) - p))
 
 include("conversion.jl")
-include("models/models.jl")
-include("simulation.jl")
-include("extraction.jl")
 include("specifications.jl")
-include("experiments.jl")
+include("models/models.jl")
 
-using .Simulation: simulate
-export Specifications, Experiments, Models, Simulation, simulate
+using .Specifications: Specification
+using .Models.Scheduling: Scheduling, Schedule
+
+export Specification
+export Models
+export Scheduling
+export Schedule
 
 end

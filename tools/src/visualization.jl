@@ -5,7 +5,7 @@ using Printf
 import Colors: Colors, @colorant_str
 using DataFrames
 using Makie
-import GeneRegulatorySystems
+using GeneRegulatorySystems: Models, Scheduling
 import Graphs
 import GraphMakie
 
@@ -97,34 +97,35 @@ function attach_trajectory_components!(
 
     component_groups = groups(trajectory_components(names(slices)))
     for simulation in eachrow(simulations)
-        for take in simulation.takes
-            taken_slices = subset(
-                slices,
-                [:simulation, :t] => (s, t) ->
-                    take.from .<= t .<= take.to .&& s .== simulation.i
-            )
-            if take.step > 0.0 || take.event_resolution > 1
+        for element in Scheduling.annotate(simulation.schedule)
+            if element.kind in [:spotty, :full]
+                taken_slices = subset(
+                    slices,
+                    [:simulation, :t] => (s, t) ->
+                        element.from .<= t .<= element.to .&&
+                        s .== simulation.i
+                )
                 for group in component_groups
-                    scatterlines!(
-                        axis,
-                        taken_slices.t,
-                        taken_slices[!, "$group.$kind"],
-                        color = group_colors[group],
-                        markersize = 3,
-                        linewidth = 1,
-                        linestyle = :dash,
-                    )
-                end
-            else
-                for group in component_groups
-                    stairs!(
-                        axis,
-                        taken_slices.t,
-                        taken_slices[!, "$group.$kind"],
-                        color = group_colors[group],
-                        step = :pre,
-                        linewidth = 1,
-                    )
+                    if element.kind == :spotty
+                        scatterlines!(
+                            axis,
+                            taken_slices.t,
+                            taken_slices[!, "$group.$kind"],
+                            color = group_colors[group],
+                            markersize = 3,
+                            linewidth = 1,
+                            linestyle = :dash,
+                        )
+                    else
+                        stairs!(
+                            axis,
+                            taken_slices.t,
+                            taken_slices[!, "$group.$kind"],
+                            color = group_colors[group],
+                            step = :pre,
+                            linewidth = 1,
+                        )
+                    end
                 end
             end
         end
@@ -181,13 +182,14 @@ function attach_trajectory_components!(
 
     component_groups = groups(trajectory_components(names(slices)))
     for (i, simulation) in enumerate(eachrow(simulations))
-        for take in simulation.takes
-            taken_slices = subset(
-                slices,
-                [:simulation, :t] => (s, t) ->
-                    take.from .<= t .<= take.to .&& s .== simulation.i
-            )
-            if iszero(take.step) && take.event_resolution == 1
+        for element in Scheduling.annotate(simulation.schedule)
+            if element.kind == :full
+                taken_slices = subset(
+                    slices,
+                    [:simulation, :t] => (s, t) ->
+                        element.from .<= t .<= element.to .&&
+                        s .== simulation.i
+                )
                 for (j, group) in enumerate(component_groups)
                     ons, offs = activation_windows(
                         taken_slices.t,
@@ -257,11 +259,7 @@ function attach_trajectory!(figure; simulations, slices, kinds, group_colors)
     grid
 end
 
-function attach_model!(
-    figure,
-    model::GeneRegulatorySystems.Models.ModelDescription;
-    group_colors,
-)
+function attach_model!(figure, model::Models.ModelDescription; group_colors)
     axis = Axis(figure, autolimitaspect = 1)
 
     styles = Dict(

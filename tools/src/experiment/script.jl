@@ -18,7 +18,11 @@ settings() = @add_arg_table! ArgParseSettings(
     "--simulate"
         action = :store_true
 
-    "--extract"
+    "--progress"
+        default = :simple
+        arg_type = Symbol
+
+    "--dry"
         action = :store_true
 
     "specifications"
@@ -35,7 +39,6 @@ function run(arguments = ARGS)
     if (
         !parsed[:prepare] &&
         !parsed[:simulate] &&
-        !parsed[:extract] &&
         isempty(parsed[:specifications])
     )
         ArgParse.show_help(settings(); exit_when_done = false)

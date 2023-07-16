@@ -1,147 +1,158 @@
 module Specifications
 
+using Base: @kwdef, Fix2
+
+range_(x) = range(; x...)
+
+constructor(name::AbstractString) = constructor(Symbol(name))
+constructor(name::Symbol) = constructor(Val(name))
+constructor(::Val{Symbol("")}) = Dict{String, Any}
+constructor(::Val{:range}) = range_
+
 abstract type Specification end
 
-struct Item <: Specification end
+struct Slice <: Specification end
 
-Base.@kwdef struct Items <: Specification
-    specifications::Vector{Specification}
+function references(s::AbstractString, bound::Set{Symbol})
+    found = eachmatch(r"\$\{(\^?\w+)\}", s) .|> first .|> Symbol |> Set
+    found ⊆ bound || error("undefined references: ", setdiff(found, bound))
+    found
 end
 
-Base.@kwdef struct Let <: Specification
-    bindings::Dict{Symbol}
-    template::Specification
-end
+function references(x::AbstractDict{Symbol}, bound::Set{Symbol})
+    found = mapreduce(
+        Fix2(references, bound),
+        union,
+        values(filter(!=(:$) ∘ first, x)),
+        init = Set{Symbol}(),
+    )
 
-Base.@kwdef struct Each <: Specification
-    iterable::AbstractVector
-    variable::Union{Symbol, Nothing} = nothing
-    template::Specification = Item()
-end
-
-Base.@kwdef struct Load <: Specification
-    path::AbstractString
-end
-
-iterable(xs::AbstractVector) = xs
-iterable(xs::AbstractDict{Symbol}) = range(; xs...)
-
-Specification(::Nothing) = Item()
-Specification(specification::AbstractVector) =
-    Items(Specification.(specification))
-Specification(specification::AbstractDict{Symbol}) =
-    if isempty(specification)
-        Item()
-    elseif haskey(specification, :<)
-        Load(; path = specification[:<])
-    elseif haskey(specification, :each)
-        variable = get(specification, :as, nothing)
-        inner = Each(;
-            iterable = iterable(specification[:each]),
-            variable = isnothing(variable) ? nothing : Symbol(variable),
-            template = Specification(get(specification, :in, nothing)),
-        )
-        bindings = filter(!in((:each, :as, :in)) ∘ first, specification)
-
-        # As a convenience, if there are bindings we introduce an implicit
-        # scope for them. Otherwise we can emit the Each as is.
-        isempty(bindings) ? inner : Let(; bindings, template = inner)
-    else
-        # At this point, either there are bindings so we introduce a scope even
-        # if :in is missing (and therefore implied), or :in is explicitly
-        # specificed so we introduce a scope (even without bindings).
-        Let(;
-            bindings = Dict{Symbol, Any}(
-                pair for pair ∈ specification if pair.first ≠ :in
-            ),
-            template = Specification(get(specification, :in, nothing)),
-        )
+    if haskey(x, :$)
+        direct = Symbol(x[:$] isa AbstractVector ? first(x[:$]) : x[:$])
+        found = union(found, Set([direct]))
     end
 
-load(path::AbstractString; loader::Function) = load(Load(; path); loader)
-load(item::Item; loader::Function) = item
-load(items::Items; loader::Function) =
-    Items(load.(items.specifications; loader))
-load(let_::Let; loader::Function) = Let(;
-    let_.bindings,
-    template = load(let_.template; loader)
-)
-load(each::Each; loader::Function) = Each(;
-    each.iterable,
-    each.variable,
-    template = load(each.template; loader)
-)
-load(load_::Load; loader::Function) =
-    load(Specification(loader(load_.path)); loader)
-
-struct Locator
-    path::Vector{Int}
+    found ⊆ bound || error("undefined references: ", setdiff(found, bound))
+    found
 end
 
-const LOCATOR_PATTERN = r"@(?<path>[/\d]*)"
+references(xs::AbstractVector, bound::Set{Symbol}) =
+    mapreduce(Fix2(references, bound), union, xs, init = Set{Symbol}())
 
-function Base.show(io::IO, ::MIME"text/plain", locator::Locator)
-    segments = (s > 0 ? "/$s" : "/" for s in locator.path)
-    write(io, "@$(join(segments))")
+references(_x, _bound::Set{Symbol}) = Set{Symbol}()
+
+@kwdef struct Template <: Specification
+    value
+    constructor
+    free::Set{Symbol}
+
+    Template(value, constructor, free::Set{Symbol}) =
+        # TODO: Perhaps we should add a (single element by default, but
+        # configurable) cache to Template? This would alleviate the need for
+        # this distinction:
+        if isempty(free)
+            # Eagerly construct the payload since value is already fully
+            # closed; this will prevent unnecessary reconstructions down the
+            # line for this common case.
+            new(constructor(value), identity, free)
+        else
+            new(value, constructor, free)
+        end
 end
 
-function Base.parse(::Type{Locator}, locator::AbstractString)
-    segments = split(match(LOCATOR_PATTERN, locator)[:path], '/')
-    Locator([isempty(s) ? 0 : parse(Int, s) for s in segments][2:end])
+Template(value; constructor = identity, bound = Set{Symbol}()) =
+    Template(free = references(value, bound); value, constructor)
+
+reference(name::Symbol; bound = Set([name])) =
+    Template(Dict(:$ => name); bound)
+
+@kwdef struct Scope <: Specification
+    definitions::Dict{Symbol, Specification}
+    step::Specification = Slice()
+    barrier::Bool = false
+    branch::Bool = false
+    free::Set{Symbol} = union(
+        mapreduce(free, union, values(definitions), init = Set{Symbol}()),
+        barrier ? Set{Symbol}() : setdiff(free(step), keys(definitions)),
+    )
 end
+
+abstract type Sequence <: Specification end
+
+@kwdef struct List <: Sequence
+    items::Vector{Specification}
+    free::Set{Symbol} = mapreduce(free, union, items, init = Set{Symbol}())
+end
+
+List(items) = List(; items)
+
+@kwdef struct Each <: Sequence
+    items::Template
+    as::Symbol = Symbol("")
+    step::Specification
+    free::Set{Symbol} = union(
+        free(items),
+        setdiff(free(step), Set(as == Symbol("") ? Symbol[] : [as])),
+    )
+end
+
+@kwdef struct Load <: Specification
+    path::AbstractString
+    free::Set{Symbol}
+end
+
+Load(path) = Load(; path)
+
+#= XXX confirm we still need these for non-Templates =#
+free(::Slice) = Set{Symbol}()
+free(s::Specification) = s.free
 
 paste(x::AbstractString) = x
 paste(x::Number) = repr(x)
-paste(x::Locator) = join(filter(>(0), x.path), "-")
 paste(::Any) = "__omitted__"
 
 pluck(x, path::AbstractVector) = foldl(pluck, path, init = x)
-pluck(x::AbstractDict{Symbol}, key::AbstractString) = x[Symbol(key)]
+pluck(x::AbstractDict{Symbol}, key::AbstractString) = pluck(x, Symbol(key))
+pluck(x::AbstractDict{Symbol}, key::Symbol) = x[key]
 pluck(xs::AbstractVector, i::Int) = xs[i]
 
-substituted(::Any; context::AbstractDict{Symbol}) = nothing
-
-function substituted(target::AbstractString; context::AbstractDict{Symbol})
+function substituted(target::AbstractString; bindings::AbstractDict{Symbol})
     new = replace(
         target,
-        ("\$$key" => paste(value) for (key, value) in context)...
+        ("\${$key}" => paste(value) for (key, value) in bindings)...
     )
-    if new == target
-        nothing
-    else
-        Some(new)
-    end
+
+    new == target ? nothing : Some(new)
 end
 
-function substituted(target::AbstractVector; context::AbstractDict{Symbol})
+substituted(_target; _...) = nothing
+
+function substituted(target::AbstractVector; bindings::AbstractDict{Symbol})
     changed = Dict(
         i => something(value)
         for (i, value) in zip(
             LinearIndices(target),
-            substituted.(target; context)
+            substituted.(target; bindings)
         )
         if !isnothing(value)
     )
-    if isempty(changed)
-        nothing
-    else
-        Some([
-            get(changed, i, old) for (i, old) in pairs(IndexLinear(), target)
-        ])
-    end
+
+    isempty(changed) ? nothing : Some([
+        get(changed, i, old) for (i, old) in pairs(IndexLinear(), target)
+    ])
 end
 
 function substituted(
     target::AbstractDict{Symbol};
-    context::AbstractDict{Symbol},
+    bindings::AbstractDict{Symbol},
 )
     if haskey(target, :$)
         specializations = filter(!=(:$) ∘ first, target)
-        template = pluck(context, target[:$])  # fail if reference is undefined
+        prototype = pluck(bindings, target[:$])  # fail on undefined reference
         if isempty(specializations)
-            Some(template)
+            Some(prototype)
         else
-            Some(merge(template, substitute(specializations; context)))
+            Some(merge(prototype, substitute(specializations; bindings)))
             #    ^ fail unless template is a Dict
         end
     else
@@ -149,155 +160,147 @@ function substituted(
             key => something(value)
             for (key, value) in zip(
                 keys(target),
-                substituted.(values(target); context)
+                substituted.(values(target); bindings)
             )
             if !isnothing(value)
         )
-        if isempty(changed)
-            nothing
-        else
-            Some(Dict{Symbol, Any}(
-                key => get(changed, key, old) for (key, old) in target
-            ))
-        end
+
+        isempty(changed) ? nothing : Some(Dict{Symbol, Any}(
+            key => get(changed, key, old) for (key, old) in target
+        ))
     end
 end
 
-substitute(target; context::AbstractDict{Symbol}) =
-    something(substituted(target; context), target)
+substitute(target; bindings::AbstractDict{Symbol}) =
+    something(substituted(target; bindings), Some(target))
 
 function expand(
-    context::AbstractDict{Symbol};
-    definitions::AbstractDict{Symbol},
-    path::AbstractVector{Int} = Int[],
-    shadow::Bool = false,
+    template::Template;
+    bindings::AbstractDict{Symbol}
 )
-    definitions =
-        if shadow
-            definitions
-        else
-            filter(definitions) do (name, _)
-                !haskey(context, name)
-            end
-        end
-    if isempty(definitions)
-        context
-    else
-        merge(
-            context,
-            substitute(definitions; context),
-            Dict(
-                Symbol("^$name") => Locator(path)
-                for (name, _) in definitions
-            ),
-        )
-    end
+    bindings = Dict{Symbol, Any}(k => bindings[k] for k in template.free)
+    template.constructor(substitute(template.value; bindings))
 end
 
-Base.eachindex(items::Items) = LinearIndices(items.specifications)
-Base.eachindex(each::Each) = LinearIndices(each.iterable)
-Base.eachindex(::Let) = 0:0
+maybe_reference(x::AbstractDict{Symbol}; bound) =
+    haskey(x, :$) ? Template(x; bound) : nothing
 
-Base.getindex(items::Items, index) = items.specifications[index]
-Base.getindex(each::Each, _index) = each.template
-Base.getindex(let_::Let, _index) = let_.template
-
-bindings(::Items, _index) = Dict{Symbol, Any}()
-bindings(each::Each, index) =
-    if isnothing(each.variable)
-        Dict{Symbol, Any}()
-    else
-        Dict(Symbol(each.variable) => each.iterable[index])
-    end
-bindings(let_::Let, _index) = let_.bindings
-
-function reify(
-    specification::Specification,
-    locator::Locator;
-    context::AbstractDict{Symbol} = Dict{Symbol, Any}(),
-)
-    for (i, index) in enumerate(locator.path)
-        context = expand(
-            context;
-            definitions = bindings(specification, index),
-            path = locator.path[1:i],
-            shadow = true,
-        )
-        specification = specification[index]
-    end
-
-    if specification isa Item
-        context = expand(
-            context;
-            definitions = Dict(:item => nothing),
-            locator.path,
-            shadow = true,
-        )
-
-        if haskey(context, :_defaults)
-            context = expand(
-                context;
-                definitions = context[:_defaults],
-                locator.path
-            )
-        end
-    end
-
-    context
-end
-
-unroll(
-    specification::Specification;
-    context::AbstractDict{Symbol} = Dict{Symbol, Any}(),
-    path::AbstractVector{Int} = Int[],
-) = Channel() do channel
-    unroll!(channel, specification; context, path)
-end
-
-function unroll!(
-    channel,
-    ::Item;
-    context::AbstractDict{Symbol},
-    path::AbstractVector{Int},
-)
-    context = expand(
-        context;
-        definitions = Dict(:item => nothing),
-        path,
-        shadow = true,
+function maybe_load(x::AbstractDict{Symbol}; bound)
+    haskey(x, :<) || return  # x is not a Load literal
+    definitions = Dict{Symbol, Specification}(
+        key => Specification(value; bound)
+        for (key, value) in x
+        if key != :<
     )
+    step = Load(path = x[:<], free = keys(definitions))
 
-    if haskey(context, :_defaults)
-        context = expand(
-            context;
-            definitions = context[:_defaults],
-            path,
-        )
-    end
-
-    push!(channel, context)
+    isempty(definitions) ? step : Scope(barrier = true; step, definitions)
 end
 
-function unroll!(
-    channel,
-    specification::Specification;
-    context::AbstractDict{Symbol},
-    path::AbstractVector{Int},
+function maybe_tagged_template(x::AbstractDict{Symbol}; bound)
+    length(x) == 1 || return
+    key, value = only(x)
+    m = match(r"\{(?<kind>.*)\}", String(key))
+    m !== nothing || return
+
+    Template(value, constructor = constructor(m[:kind]); bound)
+end
+
+maybe_range_template(x::AbstractDict{Symbol}; bound) =
+    Template(x, constructor = range_; bound)
+
+function maybe_scope(x::AbstractDict{Symbol}; bound)
+    isempty(x) && return
+
+    definitions = Dict{Symbol, Specification}(
+        key => Specification(value, as = :value; bound)
+        for (key, value) in x
+        if key != :step && key != :branch
+    )
+    bound = union(
+        bound,
+        keys(definitions),
+        Set(Symbol("^$k") for k in keys(definitions)),
+    )
+    step = haskey(x, :step) ? Specification(x[:step]; bound) : Slice()
+    branch = get(x, :branch, false)
+
+    Scope(; definitions, step, branch)
+end
+
+function maybe_each(x::AbstractDict{Symbol}; bound)
+    haskey(x, :each) || return
+
+    definitions = Dict{Symbol, Specification}(
+        key => Specification(value, as = :value; bound)
+        for (key, value) in x
+        if key ∉ [:each, :as, :step, :branch]
+    )
+    bound = union(
+        bound,
+        keys(definitions),
+        Set(Symbol("^$k") for k in keys(definitions)),
+    )
+    items = Specification(x[:each], as = :items; bound)
+
+    if haskey(x, :as)
+        as = Symbol(x[:as])
+        bound = union(bound, [as, Symbol("^$as")])
+    else
+        as = Symbol("")
+    end
+
+    step = haskey(x, :step) ? Specification(x[:step]; bound) : Slice()
+    each = Each(; items, as, step)
+
+    if isempty(definitions) && !haskey(x, :branch)
+        each  # elide unnecessary Scope
+    else
+        Scope(step = each, branch = get(x, :branch, false); definitions)
+    end
+end
+
+Specification(x; bound::Set{Symbol} = Set{Symbol}(), as::Symbol = :step) =
+    Specification(x, Val(as); bound)
+
+Specification(value, ::Val; bound::Set{Symbol}) = Template(value; bound)
+
+Specification(xs::AbstractVector, ::Val{:step}; bound::Set{Symbol}) =
+    List(items = Specification.(xs; bound))
+
+Specification(
+    x::AbstractDict{Symbol},
+    ::Val{:value};
+    bound::Set{Symbol}
+) = @something(
+    maybe_reference(x; bound),
+    maybe_load(x; bound),
+    maybe_tagged_template(x; bound),
+    Template(x; bound),
 )
-    for index in eachindex(specification)
-        subpath = vcat(path, index)
-        unroll!(
-            channel,
-            specification[index];
-            context = expand(
-                context;
-                definitions = bindings(specification, index),
-                path = subpath,
-                shadow = true,
-            ),
-            path = subpath,
-        )
-    end
-end
+
+Specification(
+    x::AbstractDict{Symbol},
+    ::Val{:items};
+    bound::Set{Symbol}
+) = @something(
+    maybe_reference(x; bound),
+    maybe_tagged_template(x; bound),
+    maybe_range_template(x; bound),
+    Template(x; bound),
+)
+
+Specification(
+    x::AbstractDict{Symbol},
+    ::Val{:step};
+    bound::Set{Symbol}
+) = @something(
+    maybe_reference(x; bound),
+    maybe_load(x; bound),
+    maybe_tagged_template(x; bound),
+    maybe_each(x; bound),
+    maybe_scope(x; bound),
+    Slice(),
+)
 
 end

@@ -14,9 +14,21 @@
             "protein_decay": 0.000000136
         }
     },
-    "in": {
-        "model": {
-            "kind": "vanilla",
+    "step": {
+        "branch": true,
+        "each": {"length": 5},
+        "step": [
+            {"{set}": {
+                "P1.proteins": 100,
+                "P2.proteins": 100,
+                "P3.proteins": 100,
+                "S1.proteins": 100,
+                "S2.proteins": 100,
+                "S3.proteins": 100
+            }},
+            {"to": 1000000.0, "step": 100.0}
+        ],
+        "do": {"{regulation/vanilla}": {
             "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
@@ -67,16 +79,6 @@
                     ]
                 }
             ]
-        },
-        "each": {"length": 5}
-    },
-    "initial": {
-        "P1": {"proteins": 100},
-        "P2": {"proteins": 100},
-        "P3": {"proteins": 100},
-        "S1": {"proteins": 100},
-        "S2": {"proteins": 100},
-        "S3": {"proteins": 100}
-    },
-    "take": {"to": 1000000.0, "step": 100.0}
+        }}
+    }
 }

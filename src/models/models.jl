@@ -1,82 +1,87 @@
 module Models
 
+import ..Conversion: cast
+import ..Specifications
+
 using Base: @kwdef
 using Random
 
-import ModelingToolkit
-import Symbolics
+@kwdef mutable struct FlatState
+    t::Float64 = 0.0
+    counts::Dict{Symbol, Int} = Dict{Symbol, Int}()
+    randomness::AbstractRNG = Random.GLOBAL_RNG
+end
+FlatState(x::FlatState) = FlatState(
+    counts = deepcopy(x.counts);
+    x.t,
+    x.randomness
+)
 
-abstract type Model end
+struct Branched
+    stem
+    branches::Vector
+end
+Branched(x) = Branched(x, [])
 
-@kwdef struct ModelDescription
+cast(::Type{FlatState}, x::Branched) = cast(FlatState, x.stem)
+
+t(x::FlatState) = x.t
+t(x::Branched) = t(x.stem)
+
+flatten(xs::AbstractDict{Symbol}) = mapreduce(merge, xs) do (key, value)
+    if value isa AbstractDict{Symbol}
+        Dict{Symbol, Int}(
+            Symbol("$(key).$(key′)") => value′
+            for (key′, value′) in flatten(value)
+        )
+    else
+        Dict{Symbol, Int}(key => value)
+    end
+end
+
+abstract type Model{State} end
+
+adapt(x, f!::Model; copy = false) = _adapt(x, f!, Val(copy))
+
+_adapt(x, f!::Model, copy::Val) = adapt(x, f!, copy)
+_adapt(x::Branched, ::Model{Branched}, ::Val{false}) = x
+_adapt(x::Branched, f!::Model, ::Val{false}) = _adapt(x.stem, f!, Val(false))
+_adapt(x::Branched, f!::Model, ::Val{true}) = _adapt(x.step, f!, Val(true))
+_adapt(x::FlatState, ::Model{FlatState}, ::Val{false}) = x
+_adapt(x::FlatState, ::Model{Any}, ::Val{false}) = x
+_adapt(x::FlatState, f!::Model, ::Val{true}) =
+    _adapt(FlatState(x), f!, Val(false))
+
+function table(x::FlatState; sorted)
+    ks = keys(x.counts)
+    if sorted
+        ks = sort!(collect(ks))
+    end
+    [(; x.t, (k => x.counts[k] for k in ks)...)]
+end
+
+table(x::Branched; sorted) = table(x.stem; sorted)
+
+(f!::Model)(_x, _Δt::Float64; _...) = error("unimplemented")
+
+abstract type Description end
+
+struct EmptyDescription <: Description end
+
+@kwdef struct Network <: Description
     species_kinds
     species_groups
     links
 end
 
-# TODO defn model specification validation
+describe(f!::Model) = EmptyDescription()
 
-Model(specification::AbstractDict{Symbol}) =
-    Model(Symbol(specification[:kind]), specification)
-
-Model(kind::Symbol, specification::AbstractDict{Symbol}) =
-    Model(Val(kind), specification)
-
-describe(θ::Model) = error("unimplemented")
-prepare_initial(specification::AbstractDict{Symbol}, θ::Model) =
-error("unimplemented")
-collect(transcript, θ::Model) = error("unimplemented")
-
-@kwdef struct SciMLJumpModel <: Model
-    system::ModelingToolkit.JumpSystem
-    method  # ::AbstractAggregatorAlgorithm
-    parameters
-    description::ModelDescription
-end
-
-describe(θ::SciMLJumpModel) = θ.description
-
-function prepare_initial(
-    specification::AbstractDict{Symbol},
-    θ::SciMLJumpModel,
-)
-    lookup(leaf, _path, _default) = leaf
-    lookup(nested, symbol::Symbol, default) =
-        lookup(nested, Symbol.(split(String(symbol), '₊')), default)
-    function lookup(
-        nested::AbstractDict{Symbol},
-        path::AbstractVector{Symbol},
-        default,
-    )
-        first, tail... = path  # fail if empty: Dict value disallowed
-        lookup(get(nested, first, default), tail, default)
-    end
-
-    [
-        s => lookup(specification, Symbolics.tosymbol(s, escape = false), 0)
-        for s in ModelingToolkit.states(θ.system)
-    ]
-end
-
-function collect(transcript, θ::SciMLJumpModel)
-    normalize_symbol(s) = Symbol(
-        replace(
-            String(Symbolics.tosymbol(s, escape = false)),
-            '₊' => '.',
-        )
-    )
-
-    (;
-        :t => transcript.t,
-        sort([
-            normalize_symbol(s) => transcript[s]
-            for s in ModelingToolkit.states(θ.system)
-        ])...,
-        # TODO: add back rates
-    )
-end
-
-include("vanilla.jl")
-include("kronecker.jl")
+include("plumbing.jl")
+include("scheduling.jl")
+include("resampling.jl")
+include("sciml.jl")
+include("regulation/vanilla.jl")
+include("regulation/kronecker_networks.jl")
+include("extraction.jl")
 
 end

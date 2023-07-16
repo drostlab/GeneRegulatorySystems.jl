@@ -1,5 +1,5 @@
 {
-    "channel": "bursts",
+    "label": "bursts",
     "base_rates": {
         "deactivation": 0.0023,
         "trigger": 0.33,
@@ -11,10 +11,8 @@
         "mrna_decay": 0.01,
         "protein_decay": 0.0000225
     },
-    "in": {
-        "label": "single-gene-$^activation",
-        "model": {
-            "kind": "vanilla",
+    "step": {
+        "do": {"{regulation/vanilla}": {
             "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
@@ -32,8 +30,13 @@
                     }
                 }
             ]
-        }
-    },
-    "initial": {"1": {"proteins": 100}},
-    "take": {"to": 8000.0}
+        }},
+        "step": [
+            {"{set}": {
+                "1.proteins": 100,
+                "2.proteins": 100
+            }},
+            {"to": 8000.0}
+        ]
+    }
 }

@@ -1,15 +1,18 @@
 {
-    "each": {"start": 8, "stop": 9},
+    "each": {"start": 5, "stop": 7},
     "as": "n",
-    "in": {
-        "label": "benchmark-SKG-n$n",
-        "channel": "benchmark-SKG-n$n",
+    "step": {
+        "anchor": "${channel}",
+        "label": "benchmark-SKG-n${n}",
+        "branch": true,
         "each": {"length": 3},
         "as": "replicate",
-        "in": {
-            "model": {
-                "kind": "kronecker",
-                "seed": "$seed-$^label-$replicate",
+        "step": {
+            "channel": "${anchor}",
+            "to": 50000.0,
+            "step": 100.0,
+            "do": {"{regulation/kronecker}": {
+                "seed": "${seed}-${label}-${replicate}",
                 "polymerases": 50,
                 "ribosomes": 5537,
                 "proteasomes": 2215,
@@ -58,8 +61,7 @@
                     },
                     "k": ["LogNormal", -5.0, 2.0]
                 }
-            }
+            }}
         }
-    },
-    "take": {"to": 50000.0, "step": 100.0}
+    }
 }

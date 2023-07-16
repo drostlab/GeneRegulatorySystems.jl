@@ -1,7 +1,13 @@
 {
     "label": "steady-state-variance",
-    "model": {
-        "kind": "vanilla",
+    "step": [
+        {"{set}": {
+            "1": {"proteins": 400, "mrnas": 20},
+            "2": {"proteins": 400, "mrnas": 20}
+        }},
+        {"to": 2000.0}
+    ],
+    "do": {"{regulation/vanilla}": {
         "polymerases": 50,
         "ribosomes": 5537,
         "proteasomes": 2215,
@@ -35,10 +41,5 @@
                 }
             }
         ]
-    },
-    "initial": {
-        "1": {"proteins": 400, "mrnas": 20},
-        "2": {"proteins": 400, "mrnas": 20}
-    },
-    "take": {"to": 2000.0}
+    }}
 }
