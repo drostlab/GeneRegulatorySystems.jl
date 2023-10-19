@@ -11,7 +11,9 @@ using .Common: repository_version, artifact
 using Chain
 using DataFrames
 using LoggingExtras
-import Term
+import ProgressLogging
+using TerminalLoggers: TerminalLogger
+using UUIDs
 
 using Base: @kwdef
 import Dates
@@ -46,8 +48,8 @@ function Logging.handle_message(
 end
 
 @kwdef struct BarProgressLogger <: ProgressLogger
-    bar::Term.ProgressBar
-    stack::Dict{String, Term.ProgressJob} = Dict{String, Term.ProgressJob}()
+    ids::Dict{String, UUID} = Dict{String, UUID}()
+    todo::Dict{String, Real} = Dict{String, Real}()
 end
 
 function Logging.handle_message(
@@ -57,68 +59,51 @@ function Logging.handle_message(
     _rest...;
     path,
     todo = nothing,
-    done = nothing,
+    done = 0,
 )
-    if message == :preparing
-        logger.stack[path] = Term.Progress.addjob!(
-            logger.bar,
-            description = "preparing $path"
-        )
-    elseif message == :stepping
-        if todo !== nothing
-            if haskey(logger.stack, path)
-                Term.Progress.removejob!(logger.bar, logger.stack[path])
-                delete!(logger.stack, path)
-            end
-
-            if isfinite(todo)
-                logger.stack[path] = Term.Progress.addjob!(
-                    logger.bar,
-                    description = path,
-                    N = round(Int, todo, RoundUp),
-                )
-            end
-        end
-        if done !== nothing
-            Term.Progress.update!(
-                logger.stack[path],
-                i = round(Int, done, RoundDown)
-            )
-        end
-    elseif message == :iterating
-        if todo !== nothing
-            if haskey(logger.stack, path)
-                Term.Progress.removejob!(logger.bar, logger.stack[path])
-                delete!(logger.stack, path)
-            end
-
-            logger.stack[path] = Term.Progress.addjob!(
-                logger.bar,
-                description = path,
-                N = todo,
-            )
-        end
-        if done !== nothing
-            Term.Progress.update!(logger.stack[path], i = done)
-        end
-    elseif message == :done || message == :advanced
-        if haskey(logger.stack, path)
-            Term.Progress.removejob!(logger.bar, logger.stack[path])
-            delete!(logger.stack, path)
-        end
-    else
-        if haskey(logger.stack, path)
-            Term.Progress.removejob!(logger.bar, logger.stack[path])
-            delete!(logger.stack, path)
-        end
-        description = "$message $path"
-        if todo !== nothing
-            description = "$description ($todo)"
-        end
-        logger.stack[path] = Term.Progress.addjob!(logger.bar; description)
+    if message == :saved
+        @info "Saved $done slices into '$path'"
+        return
     end
 
-    Term.Progress.render(logger.bar)
+    id = get!(uuid4, logger.ids, path)
+
+    if message == :done || message == :advanced
+        @info ProgressLogging.Progress(id, done = true, name = "$path done")
+        delete!(logger.ids, path)
+        delete!(logger.todo, path)
+        return
+    end
+
+    if todo isa Real && isfinite(todo)
+        logger.todo[path] = todo
+    end
+
+    if todo isa Real && !isfinite(todo) && done <= 0
+        # To unclutter the bar stack we will pretend we are done with this path
+        # when we freshly step into a Scope. If we make a second step in this
+        # scope, we will just spawn a new bar with that log message.
+        @info ProgressLogging.Progress(id, done = true)
+        return
+    end
+
+    todo = @something(todo, get(logger.todo, path, nothing), Some(nothing))
+    fraction = nothing
+    if todo === nothing
+        details = ""
+    elseif todo isa Real
+        if isfinite(todo)
+            fraction = done / todo
+            details = "($done/$todo)"
+        else
+            details = "($done)"
+        end
+    else
+        details = "($todo)"
+    end
+    action = lpad(message, 10)
+    description = join(filter(!isempty, [action, path, details]), ' ')
+    @info ProgressLogging.Progress(id, fraction, name = description)
 end
 
 function map_artifacts(paths)
@@ -254,12 +239,7 @@ end
 
 function with_progress(run!, progress::Symbol)
     if progress == :bars && stdout isa Base.TTY
-        logger = BarProgressLogger(
-            bar = Term.ProgressBar(expand = true)
-        )
-        Term.with(logger.bar) do
-            with_logger(run!, TeeLogger(current_logger(), logger))
-        end
+        with_logger(run!, TeeLogger(current_logger(), BarProgressLogger()))
     elseif progress == :simple
         with_logger(run!, TeeLogger(current_logger(), SimpleProgressLogger()))
     else
@@ -315,6 +295,8 @@ function main(;
     seed,
     specifications,
 )
+    global_logger(TerminalLogger())
+
     timestamp = Dates.now()
     location = replace(location, "{TIMESTAMP}" => timestamp)
 

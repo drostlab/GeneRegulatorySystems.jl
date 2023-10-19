@@ -17,7 +17,7 @@ using Base: @kwdef
 using Logging: LogLevel, @logmsg
 using Random
 
-Progress = LogLevel(-1)
+Progress = LogLevel(-2)
 
 struct Locator
     path::String
@@ -89,7 +89,7 @@ function (primitive!::Primitive)(
     f!(x, Δt; path, context..., into = primitive!.skip > 0.0 ? nothing : into)
 
     if into !== nothing
-        @logmsg Progress :saving path todo = "into: $(into)"
+        @logmsg Progress :collecting path todo = "into $(into)"
         dump(into, x; path, primitive!, from)
     end
 
