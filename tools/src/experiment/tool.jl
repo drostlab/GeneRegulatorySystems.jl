@@ -255,6 +255,7 @@ function simulate!(; location, progress, dry)
 
     function dryrun(primitive!, x, Δt; path, into, _...)
         modelname = nameof(typeof(primitive!.f!))
+        maybe_source = primitive!.path == path ? "" : " ($(primitive!.path))"
         isinterval = isfinite(Δt) && 0.0 < Δt
         interval = isinterval ? "from $(x.t) to $(x.t + Δt)" : "at $(x.t)"
         maybe_into =
@@ -266,7 +267,7 @@ function simulate!(; location, progress, dry)
                 ", record into '$into'"
             end
 
-        @info "$path: $modelname $interval$maybe_into"
+        @info "$path: $modelname$maybe_source $interval$maybe_into"
     end
 
     specification = load(basename(artifact(:specification; prefix = location)))

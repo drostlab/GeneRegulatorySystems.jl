@@ -2,14 +2,14 @@ module Plumbing
 
 import ....GeneRegulatorySystems
 using ...Conversion: cast
-using ..Models: Model, FlatState, Branched, flatten
+using ..Models: Model, Instant, FlatState, Branched
 import ..Specifications
 
 struct Pass <: Model{Any} end
 
 (::Pass)(x, _Δt::Float64; _...) = x
 
-struct Seed <: Model{FlatState}
+struct Seed <: Instant{FlatState}
     seed::String
 end
 
@@ -20,7 +20,7 @@ function (f!::Seed)(x::FlatState, _Δt::Float64 = Inf; _...)
     x
 end
 
-struct Filter <: Model{FlatState}
+struct Filter <: Instant{FlatState}
     kinds::Regex
 end
 Filter(s::AbstractString) = Filter(Regex(s))
@@ -36,25 +36,44 @@ function (f!::Filter)(x::FlatState, _Δt::Float64; _...)
     x
 end
 
-struct Adjust <: Model{FlatState}
+flatten(xs::AbstractDict{Symbol}; T = Any) =
+    mapreduce(merge, xs) do (key, value)
+        if value isa AbstractDict{Symbol}
+            Dict{Symbol, T}(
+                Symbol("$(key).$(key′)") => value′
+                for (key′, value′) in flatten(value)
+            )
+        else
+            Dict{Symbol, T}(key => value)
+        end
+    end
+
+struct Adjust <: Instant{FlatState}
     adjust::Function
-    adjustment::Dict{Symbol, Int}
+    adjustment::Dict{Symbol, Real}
+
+    function Adjust(adjust, adjustment)
+        all(values(adjustment) .≥ zero(valtype(adjustment))) ||
+            error("adjustment must be nonnegative")
+        new(adjust, adjustment)
+    end
 end
 
-setter(counts::AbstractDict{Symbol}) = Adjust(last ∘ Pair, flatten(counts))
-adder(counts::AbstractDict{Symbol}) = Adjust(+, flatten(counts))
-grower(counts::AbstractDict{Symbol}) = Adjust(*, flatten(counts))
+adder(counts::AbstractDict{Symbol}) = Adjust(+, flatten(counts, T = Int))
+multiplier(counts::AbstractDict{Symbol}) = Adjust(*, flatten(counts, T = Real))
+setter(counts::AbstractDict{Symbol}) =
+    Adjust(last ∘ Pair, flatten(counts, T = Int))
 
 Specifications.constructor(::Val{:set}) = setter
 Specifications.constructor(::Val{:add}) = adder
-Specifications.constructor(::Val{:grow}) = grower
+Specifications.constructor(::Val{:multiply}) = multiplier
 
 function (f!::Adjust)(x::FlatState, _Δt::Float64; _...)
-    mergewith!(f!.adjust, x.counts, f!.adjustment)
+    mergewith!(Base.Fix1(floor, Int) ∘ f!.adjust, x.counts, f!.adjustment)
     x
 end
 
-struct Merge <: Model{Branched}
+struct Merge <: Instant{Branched}
     merge::Function
 end
 

@@ -68,6 +68,9 @@ function (primitive!::Primitive)(
 
     if dryrun !== nothing
         x = cast(FlatState, x)
+        if primitive!.f! isa Models.Instant
+            Δt = 0.0
+        end
         dryrun(primitive!, x, Δt; path, context..., into)
         if isfinite(Δt)
             x.t += Δt

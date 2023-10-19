@@ -28,18 +28,8 @@ cast(::Type{FlatState}, x::Branched) = cast(FlatState, x.stem)
 t(x::FlatState) = x.t
 t(x::Branched) = t(x.stem)
 
-flatten(xs::AbstractDict{Symbol}) = mapreduce(merge, xs) do (key, value)
-    if value isa AbstractDict{Symbol}
-        Dict{Symbol, Int}(
-            Symbol("$(key).$(key′)") => value′
-            for (key′, value′) in flatten(value)
-        )
-    else
-        Dict{Symbol, Int}(key => value)
-    end
-end
-
 abstract type Model{State} end
+abstract type Instant{State} <: Model{State} end
 
 adapt(x, f!::Model; copy = false) = _adapt(x, f!, Val(copy))
 
