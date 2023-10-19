@@ -19,7 +19,7 @@ settings() = @add_arg_table! ArgParseSettings(
         action = :store_true
 
     "--progress"
-        default = :simple
+        default = :bars
         arg_type = Symbol
 
     "--dry"
