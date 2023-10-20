@@ -73,7 +73,7 @@ Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
             f!.parameters,
         ),
         f!.method,
-        rng = x.randomness
+        rng = x.randomness,
     );
     f!,
 )

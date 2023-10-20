@@ -217,7 +217,7 @@ end
 
 function SciML.JumpModel{Template}(specification::AbstractDict{Symbol})
     template = cast(Template, specification)
-    method = get(specification, :method, "default")
+    method = Symbol(get(specification, :method, "default"))
     definition = rand(randomness(specification[:seed]), template)
 
     synthesized = SciML.JumpModel{Vanilla.Definition}(definition; method)

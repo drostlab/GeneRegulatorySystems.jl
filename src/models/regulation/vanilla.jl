@@ -238,18 +238,25 @@ const JUMP_PROCESSES_METHODS = Dict(
     "SortingDirect" => SortingDirect,
     "RSSA" => RSSA,
     "RSSACR" => RSSACR,
-    "default" => RSSACR,
 )
+
+pick_method(system; method) = get(JUMP_PROCESSES_METHODS, method) do
+    if numspecies(system) < 100 && numreactions(system) < 1000
+        SortingDirect
+    else
+        RSSACR
+    end
+end
 
 SciML.JumpModel{Definition}(specification::AbstractDict{Symbol}) =
     SciML.JumpModel{Definition}(
         cast(Definition, specification),
-        method = get(specification, :method, "default")
+        method = Symbol(get(specification, :method, "default"))
     )
 
 function SciML.JumpModel{Definition}(
     definition::Definition;
-    method::AbstractString
+    method::Symbol
 )
     @variables t
     @parameters ribosomes proteasomes
@@ -270,7 +277,7 @@ function SciML.JumpModel{Definition}(
     SciML.JumpModel{Definition}(;
         definition,
         system = convert(JumpSystem, reaction_system),
-        method = JUMP_PROCESSES_METHODS[method](),
+        method = pick_method(reaction_system; method)(),
         parameters = (
             ribosomes => definition.ribosomes,
             proteasomes => definition.proteasomes,
