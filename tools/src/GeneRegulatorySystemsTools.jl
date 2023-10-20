@@ -13,11 +13,11 @@ scripts executed via `./grs` do this conditionally, depending on whether
 module GeneRegulatorySystemsTools
 
 include("common.jl")
-include("visualization.jl")
+#include("visualization.jl")
 
 include("experiment/script.jl")
 include("experiment/tool.jl")
-include("inspect/script.jl")
-include("inspect/tool.jl")
+#include("inspect/script.jl")
+#include("inspect/tool.jl")
 
 end

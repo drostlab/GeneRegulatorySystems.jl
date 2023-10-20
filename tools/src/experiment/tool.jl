@@ -83,7 +83,7 @@ function Logging.handle_message(
         # To unclutter the bar stack we will pretend we are done with this path
         # when we freshly step into a Scope. If we make a second step in this
         # scope, we will just spawn a new bar with that log message.
-        @info ProgressLogging.Progress(id, done = true)
+        @info ProgressLogging.Progress(id, done = true, name = "$path ...")
         return
     end
 

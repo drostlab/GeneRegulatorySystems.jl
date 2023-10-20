@@ -1,6 +1,6 @@
 import Dates
 
-import GeneRegulatorySystemsTools: ExperimentScript, InspectScript
+import GeneRegulatorySystemsTools: ExperimentScript #, InspectScript
 
 mktempdir() do location
     result_location = "$location/$(Dates.now())/"
@@ -10,9 +10,10 @@ mktempdir() do location
     ExperimentScript.run([
         "--location",
         result_location,
-        joinpath(@__DIR__, "precompile.experiment.json"),
+        joinpath(@__DIR__, "precompile.schedule.json"),
     ])
 
+    #=
     @info "Precompiling command `$InspectScript`..."
     InspectScript.run(["--help"])
     @info "This step may take a couple of minutes..."
@@ -34,6 +35,7 @@ mktempdir() do location
         "promoter,mrnas,log10(proteins)",
         result_location,
     ])
+    =#
 end
 
 @info "Finished executing example workload."
