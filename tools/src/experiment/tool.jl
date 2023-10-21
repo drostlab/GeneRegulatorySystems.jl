@@ -26,8 +26,11 @@ Logging.min_enabled_level(::ProgressLogger) =
     GeneRegulatorySystems.Scheduling.Progress
 
 Logging.shouldlog(::ProgressLogger, level, module_, _group, _id) =
-    (module_ == Scheduling || module_ == ExperimentTool) &&
-        level == Scheduling.Progress
+    level == Scheduling.Progress && (
+        module_ == Scheduling ||
+        module_ == Models.SciML ||
+        module_ == ExperimentTool
+    )
 
 struct SimpleProgressLogger <: ProgressLogger end
 
@@ -36,14 +39,14 @@ function Logging.handle_message(
     _level,
     message::Symbol,
     _rest...;
-    path,
+    at,
     todo = nothing,
     done = nothing,
 )
     if message == :done
-        @info "$path done"
+        @info "$at done"
     elseif message == :saved
-        @info "Saved $done slices into '$path'"
+        @info "Saved $done slices into '$at'"
     end
 end
 
@@ -57,52 +60,54 @@ function Logging.handle_message(
     _level,
     message::Symbol,
     _rest...;
-    path,
+    at,
     todo = nothing,
     done = 0,
 )
     if message == :saved
-        @info "Saved $done slices into '$path'"
+        @info "Saved $done slices into '$at'"
         return
     end
 
-    id = get!(uuid4, logger.ids, path)
+    id = get!(uuid4, logger.ids, at)
 
     if message == :done || message == :advanced
-        @info ProgressLogging.Progress(id, done = true, name = "$path done")
-        delete!(logger.ids, path)
-        delete!(logger.todo, path)
+        @info ProgressLogging.Progress(id, done = true, name = "$at done")
+        delete!(logger.ids, at)
+        delete!(logger.todo, at)
         return
     end
 
     if todo isa Real && isfinite(todo)
-        logger.todo[path] = todo
+        logger.todo[at] = todo
     end
 
     if todo isa Real && !isfinite(todo) && done <= 0
         # To unclutter the bar stack we will pretend we are done with this path
         # when we freshly step into a Scope. If we make a second step in this
         # scope, we will just spawn a new bar with that log message.
-        @info ProgressLogging.Progress(id, done = true, name = "$path ...")
+        @info ProgressLogging.Progress(id, done = true, name = "$at ...")
         return
     end
 
-    todo = @something(todo, get(logger.todo, path, nothing), Some(nothing))
+    formatted_done =
+        string(done isa AbstractFloat ? round(done, digits = 1) : done)
+    todo = @something(todo, get(logger.todo, at, nothing), Some(nothing))
     fraction = nothing
     if todo === nothing
         details = ""
     elseif todo isa Real
         if isfinite(todo)
             fraction = done / todo
-            details = "($done/$todo)"
+            details = "($formatted_done/$todo)"
         else
-            details = "($done)"
+            details = "($formatted_done))"
         end
     else
         details = "($todo)"
     end
     action = lpad(message, 10)
-    description = join(filter(!isempty, [action, path, details]), ' ')
+    description = join(filter(!isempty, [action, at, details]), ' ')
     @info ProgressLogging.Progress(id, fraction, name = description)
 end
 
@@ -207,7 +212,7 @@ function flush!(sink::Sink, into)
     else
         Arrow.write(segments, segment, file = false)
     end
-    @logmsg(Scheduling.Progress, :saved, path = segments, done = nrow(segment))
+    @logmsg(Scheduling.Progress, :saved, at = segments, done = nrow(segment))
 end
 
 function (sink::Sink)(into, state; path, primitive!, from, _...)

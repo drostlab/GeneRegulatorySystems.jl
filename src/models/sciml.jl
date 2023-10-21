@@ -9,9 +9,28 @@ import Symbolics
 
 using Base: @kwdef
 using Random
+using Logging: LogLevel, @logmsg
+
+Progress = LogLevel(-2)
 
 normalize_symbol(s) =
     Symbol(replace(String(Symbolics.tosymbol(s, escape = false)), '₊' => '.'))
+
+@kwdef mutable struct ProgressTrigger
+    i::Int = 0
+end
+
+function (trigger::ProgressTrigger)(_u, _t, _integrator)
+    trigger.i += 1
+    trigger.i % 10000 == 0
+end
+
+progress(integrator) = @logmsg(
+    Progress,
+    :stepping,
+    at = "JumpModel",
+    done = integrator.t - integrator.sol.prob.tspan[1],
+)
 
 @kwdef struct JumpState
     f!::Model{JumpState}
@@ -20,6 +39,7 @@ normalize_symbol(s) =
         problem,
         JumpProcesses.SSAStepper(),
         save_start = false,
+        callback = JumpProcesses.DiscreteCallback(ProgressTrigger(), progress),
     )
 end
 
@@ -99,11 +119,13 @@ end
 function (f!::JumpModel)(x::JumpState, Δt::Float64; into, _...)
     isfinite(Δt) || error("cannot do this forever")
 
+    @logmsg Progress :stepping at = "JumpModel" todo = Δt
     x.integrator.save_everystep = into !== nothing
     ModelingToolkit.step!(x.integrator, Δt, true)
     if !x.integrator.save_everystep
         ModelingToolkit.savevalues!(x.integrator, true)
     end
+    @logmsg Progress :done at = "JumpModel"
 
     x
 end

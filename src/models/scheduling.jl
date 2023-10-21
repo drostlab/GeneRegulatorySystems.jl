@@ -81,22 +81,22 @@ function (primitive!::Primitive)(
     @logmsg(
         Progress,
         :adapting,
-        path,
+        at = path,
         todo = "$(nameof(typeof(x))) to $(nameof(typeof(f!))) \
             ($(primitive!.path))",
     )
     x = Models.adapt(x, primitive!.f!)
     from = Models.t(x)
 
-    @logmsg Progress :advancing path
+    @logmsg Progress :advancing at = path
     f!(x, Δt; path, context..., into = primitive!.skip > 0.0 ? nothing : into)
 
     if into !== nothing
-        @logmsg Progress :collecting path todo = "into $(into)"
+        @logmsg Progress :collecting at = path todo = "into $(into)"
         dump(into, x; path, primitive!, from)
     end
 
-    @logmsg Progress :advanced path
+    @logmsg Progress :done at = path
     x
 end
 
@@ -206,7 +206,7 @@ function (f!::Schedule{Scope})(
     path = f!.path
     f!.branch && error("cannot branch here: not a Sequence")
 
-    @logmsg Progress :preparing path
+    @logmsg Progress :preparing at = path
     x = Models.adapt(x, f!)  # potentially unwrap Branched
     bindings = merge(
         f!.specification.barrier ? Dict{Symbol, Any}() : f!.bindings,
@@ -232,7 +232,7 @@ function (f!::Schedule{Scope})(
     to = get(bindings, :to, Inf)
     Δt = min(Δt, to)
     done = 0.0
-    @logmsg Progress :stepping path todo = Δt
+    @logmsg Progress :repeating at = path todo = Δt
     while 0.0 < Δt
         current = Models.t(x)
         x = step!(x, Δt; context..., into, path = path′)
@@ -241,40 +241,40 @@ function (f!::Schedule{Scope})(
         0.0 < advance || error("cannot progress")
         Δt -= advance
         done += advance
-        @logmsg Progress :stepping path done
+        @logmsg Progress :repeating at = path done
     end
 
-    @logmsg Progress :done path
+    @logmsg Progress :done at = path
 
     x
 end
 
 function (f!::Schedule{<:Sequence})(x, Δt::Float64; context...)
     path = f!.branch ? f!.path : "$(f!.path)-"
-    @logmsg Progress :preparing path
+    @logmsg Progress :preparing at = path
 
     x = Models.adapt(x, f!)  # potentially unwrap Branched
     steps = models(f!.specification; f!.bindings, path)
 
-    @logmsg Progress :iterating path todo = length(steps)
+    @logmsg Progress :iterating at = path todo = length(steps)
     if f!.branch
         x = Branched(x)
         for (i, step!) in enumerate(steps)
             x′ = Models.adapt(x.stem, step!, copy = true)
             x′ = step!(x′, Inf; context..., path = "$path$i")
             push!(x.branches, x′)
-            @logmsg Progress :iterating path done = i
+            @logmsg Progress :iterating at = path done = i
         end
     else
         for (i, step!) in enumerate(steps)
             current = Models.t(x)
             x = step!(x, Δt; context..., path = "$path$i")
             Δt -= Models.t(x) - current
-            @logmsg Progress :iterating path done = i
+            @logmsg Progress :iterating at = path done = i
         end
     end
 
-    @logmsg Progress :done path
+    @logmsg Progress :done at = path
 
     x
 end
