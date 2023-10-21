@@ -61,13 +61,16 @@ cast(::Type{FlatState}, x::JumpState) = FlatState(
     parameters
 end
 
-Models.adapt(x::JumpState, f!::JumpModel, _copy) =
-    if x.f! === f!
+Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where Copy =
+    if x.f! === f! && !Copy
         # We need to drop any previous solution transcripts, but there doesn't
         # seem to be a way to clear x.integrator.sol, and reinit!, set_t! and
         # empty! are not implemented for JumpProcesses.SSAIntegrator so that we
-        # cannot just call init again either, so we have to remake the problem
-        # with the new starting time point.
+        # cannot just call init again either, thus we have to remake the
+        # problem with the new starting time point. Since according to
+        # documentation remaking JumpProblems will partially alias state, in
+        # case a copy is required we will take the detour via FlatState in the
+        # other branch.
         JumpState(
             problem = ModelingToolkit.remake(
                 x.problem,
