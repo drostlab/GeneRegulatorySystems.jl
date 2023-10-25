@@ -16,7 +16,7 @@ repository_version() = LibGit2.format(
 
 artifact(kind::Symbol, name = nothing; prefix = "") =
     "$prefix$(artifact(Val(kind), name))"
-artifact(::Val{:specification}, ::Nothing) = "specification.json"
+artifact(::Val{:specification}, ::Nothing) = "experiment.schedule.json"
 artifact(::Val{:index}, ::Nothing) = "index.arrow"
 artifact(::Val{:segments}, into) = "segments$into.stream.arrow"
 

@@ -200,8 +200,20 @@ function flush!(sink::Sink)
         flush!(sink, into)
     end
 
-    index = artifact(:index; prefix = sink.location)
-    Arrow.write(index, sink.index, dictencode = true)
+    index = Tables.columntable(sink.index)
+    Arrow.write(
+        artifact(:index; prefix = sink.location),
+        (;
+            index.i,
+            path = Arrow.DictEncode(index.path),
+            index.from,
+            index.to,
+            model = Arrow.DictEncode(index.model),
+            label = Arrow.DictEncode(index.label),
+            index.count,
+            into = Arrow.DictEncode(index.into),
+        )
+    )
 end
 
 function flush!(sink::Sink, into)
@@ -219,25 +231,32 @@ function (sink::Sink)(into, state; path, primitive!, from, _...)
     sink.i += 1
 
     to = Models.t(state)
-    if primitive!.skip > 0.0
-        from = to
-    end
     model = primitive!.path
     label = get(primitive!.bindings, :label, "")
-    push!(sink.index, (; sink.i, path, from, to, model, label, into))
 
+    if into === nothing
+        push!(
+            sink.index,
+            (; sink.i, path, from, to, model, label, count = 0, into = "")
+        )
+        return
+    end
+
+    @logmsg Scheduling.Progress :collecting at = path todo = "into $into"
     segment = @chain begin
         state
         Models.table(sorted = true)
         DataFrame
         insertcols(1, :i => sink.i)
     end
+    count = nrow(segment)
 
     if haskey(sink.channels, into)
         append!(sink.channels[into], segment, cols = :orderequal)
     else
-        sink.channels[into] = copy(segment)
+        sink.channels[into] = segment
     end
+    push!(sink.index, (; sink.i, path, from, to, model, label, count, into))
 
     prod(size(sink.channels[into])) > sink.threshold && flush!(sink, into)
 end
@@ -287,7 +306,7 @@ function simulate!(; location, progress, dry)
         state = Models.FlatState()
         state = Models.Plumbing.Seed(specification[:seed])(state)
         sink = Sink(; location)
-        schedule!(state; load, dump = sink, dryrun = dry ? dryrun : nothing)
+        schedule!(state; load, trace = sink, dryrun = dry ? dryrun : nothing)
         flush!(sink)
     end
 end

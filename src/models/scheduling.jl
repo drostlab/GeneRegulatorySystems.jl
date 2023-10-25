@@ -56,7 +56,7 @@ function (primitive!::Primitive)(
     x,
     Δt::Float64;
     path,
-    dump = nothing,
+    trace = nothing,
     dryrun = nothing,
     context...,
 )
@@ -64,14 +64,13 @@ function (primitive!::Primitive)(
     if primitive!.skip > 0.0
         Δt = min(Δt, primitive!.skip)
     end
-    into = dump === nothing ? nothing : primitive!.into
 
     if dryrun !== nothing
         x = cast(FlatState, x)
         if primitive!.f! isa Models.Instant
             Δt = 0.0
         end
-        dryrun(primitive!, x, Δt; path, context..., into)
+        dryrun(primitive!, x, Δt; path, primitive!.into, context...)
         if isfinite(Δt)
             x.t += Δt
         end
@@ -85,15 +84,21 @@ function (primitive!::Primitive)(
         todo = "$(nameof(typeof(x))) to $(nameof(typeof(f!))) \
             ($(primitive!.path))",
     )
-    x = Models.adapt(x, primitive!.f!)
+    x = Models.adapt(x, f!)
     from = Models.t(x)
 
     @logmsg Progress :advancing at = path
-    f!(x, Δt; path, context..., into = primitive!.skip > 0.0 ? nothing : into)
-
-    if into !== nothing
-        @logmsg Progress :collecting at = path todo = "into $(into)"
-        dump(into, x; path, primitive!, from)
+    if trace === nothing
+        f!(x, Δt; path, context...)
+    elseif primitive!.skip > 0.0
+        f!(x, Δt; path, context...)
+        trace(nothing, x; path, primitive!, from)
+        if primitive!.into !== nothing
+            trace(primitive!.into, x; path, primitive!, from = Models.t(x))
+        end
+    else
+        f!(x, Δt; path, context..., primitive!.into)
+        trace(primitive!.into, x; path, primitive!, from)
     end
 
     @logmsg Progress :done at = path
@@ -228,14 +233,13 @@ function (f!::Schedule{Scope})(
         path = path′,
     )
 
-    into = get(bindings, :into, nothing)
     to = get(bindings, :to, Inf)
     Δt = min(Δt, to)
     done = 0.0
     @logmsg Progress :repeating at = path todo = Δt
     while 0.0 < Δt
         current = Models.t(x)
-        x = step!(x, Δt; context..., into, path = path′)
+        x = step!(x, Δt; context..., path = path′)
         isfinite(Δt) || break
         advance = Models.t(x) - current
         0.0 < advance || error("cannot progress")

@@ -39,7 +39,11 @@ progress(integrator) = @logmsg(
         problem,
         JumpProcesses.SSAStepper(),
         save_start = false,
-        callback = JumpProcesses.DiscreteCallback(ProgressTrigger(), progress),
+        callback = JumpProcesses.DiscreteCallback(
+            ProgressTrigger(),
+            progress,
+            save_positions = (false, false),
+        ),
     )
 end
 
@@ -75,7 +79,7 @@ Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where Copy =
             problem = ModelingToolkit.remake(
                 x.problem,
                 tspan = (x.integrator.t, Inf),
-                u0 = x.integrator.u
+                u0 = x.integrator.u,
             );
             f!,
         )
@@ -119,7 +123,7 @@ function Models.table(x::JumpState; sorted)
     (; x.integrator.sol.t, (k => transcript[k] for k in ks)...)
 end
 
-function (f!::JumpModel)(x::JumpState, Δt::Float64; into, _...)
+function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
     isfinite(Δt) || error("cannot do this forever")
 
     @logmsg Progress :stepping at = "JumpModel" todo = Δt
