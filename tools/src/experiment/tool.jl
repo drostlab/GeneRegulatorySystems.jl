@@ -90,18 +90,24 @@ function Logging.handle_message(
         return
     end
 
-    formatted_done =
-        string(done isa AbstractFloat ? round(done, digits = 1) : done)
     todo = @something(todo, get(logger.todo, at, nothing), Some(nothing))
+    current =
+        if message == :iterating
+            done + 1
+        elseif done isa AbstractFloat
+            round(done, digits = 1)
+        else
+            done
+        end
     fraction = nothing
     if todo === nothing
         details = ""
     elseif todo isa Real
         if isfinite(todo)
             fraction = done / todo
-            details = "($formatted_done/$todo)"
+            details = "($current/$todo)"
         else
-            details = "($formatted_done))"
+            details = "($current)"
         end
     else
         details = "($todo)"
