@@ -1,5 +1,9 @@
 module Common
 
+using GeneRegulatorySystems
+
+import JSON
+
 import LibGit2
 
 repository_version() = LibGit2.format(
@@ -19,5 +23,16 @@ artifact(kind::Symbol, name = nothing; prefix = "") =
 artifact(::Val{:specification}, ::Nothing) = "experiment.schedule.json"
 artifact(::Val{:index}, ::Nothing) = "index.arrow"
 artifact(::Val{:segments}, into) = "segments$into.stream.arrow"
+
+reify(path; location) = Scheduling.reify(
+    Schedule(specification = Specifications.Load(
+        basename(artifact(:specification, prefix = location))
+    )),
+    path;
+    load = filename -> JSON.parsefile(
+        "$(dirname(location))/$filename",
+        dicttype = Dict{Symbol, Any},
+    )
+)
 
 end

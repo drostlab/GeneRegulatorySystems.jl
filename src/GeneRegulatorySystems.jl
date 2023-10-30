@@ -16,6 +16,7 @@ include("models/models.jl")
 using .Specifications: Specification
 using .Models.Scheduling: Scheduling, Schedule
 
+export Specifications
 export Specification
 export Models
 export Scheduling

@@ -131,6 +131,18 @@ function descended(bindings::Dict{Symbol, Any}, segment)
     )
 end
 
+evaluate_bindings(f!::Schedule{Scope}) = merge(
+    f!.specification.barrier ? Dict{Symbol, Any}() : f!.bindings,
+    Dict{Symbol, Any}(
+        name => evaluate(specification; f!.bindings)
+        for (name, specification) in f!.specification.definitions
+    ),
+    Dict{Symbol, Any}(
+        Symbol("^$name") => Locator(f!.path)
+        for name in keys(f!.specification.definitions)
+    )
+)
+
 evaluate(template::Template; bindings) =
     Specifications.expand(template; bindings)
 evaluate(x; _...) = x
@@ -157,28 +169,42 @@ function model(at::Float64; bindings, branch, path)
     )
 end
 
+item(x; i, inject = nothing, as = Symbol(), bindings, path) = model(
+    x,
+    bindings = as == Symbol() ? bindings : merge(
+        descended(bindings, i),
+        Dict(as => evaluate(inject; bindings)),
+    ),
+    branch = false,
+    path = "$path$i",
+)
+
 models(list::List; bindings, path) = (
-    model(
-        specification,
-        bindings = descended(bindings, i),
-        branch = false,
-        path = "$path$i"
-    )
+    item(specification; i, bindings = descended(bindings, i), path)
     for (i, specification) in enumerate(list.items)
 )
 
 models(each::Each; bindings, path) = (
-    model(
-        each.step,
-        bindings = each.as == Symbol() ? bindings : merge(
-            descended(bindings, i),
-            Dict(each.as => evaluate(specification; bindings)),
-        ),
-        branch = false,
-        path = "$path$i"
-    )
-    for (i, specification) in enumerate(evaluate(each.items; bindings))
+    item(each.step; i, inject = x, each.as, bindings, path)
+    for (i, x) in enumerate(evaluate(each.items; bindings))
 )
+
+function load_schedule(f!::Schedule{Load}; load)
+    channel = get(f!.bindings, :channel, nothing)
+    if channel !== nothing
+        name = replace(f!.specification.path, r"(\.schedule)?(\.json)$" => "")
+        channel = "$channel-$name"
+    end
+    Schedule(
+        specification = Specification(
+            load(f!.specification.path),
+            bound = Set(keys(f!.bindings)),
+        ),
+        bindings = merge(f!.bindings, Dict(:channel => channel));
+        f!.branch,
+        f!.path,
+    )
+end
 
 function (f!::Schedule{Slice})(x, Δt::Float64; context...)
     path =
@@ -208,47 +234,35 @@ function (f!::Schedule{Scope})(
     Δt::Float64 = Inf;
     context...
 )
-    path = f!.path
     f!.branch && error("cannot branch here: not a Sequence")
 
-    @logmsg Progress :preparing at = path
+    @logmsg Progress :preparing at = f!.path
     x = Models.adapt(x, f!)  # potentially unwrap Branched
-    bindings = merge(
-        f!.specification.barrier ? Dict{Symbol, Any}() : f!.bindings,
-        Dict{Symbol, Any}(
-            name => evaluate(specification; f!.bindings)
-            for (name, specification) in f!.specification.definitions
-        ),
-        Dict{Symbol, Any}(
-            Symbol("^$name") => Locator(path)
-            for name in keys(f!.specification.definitions)
-        )
-    )
-
-    path′ = "$(f!.path)$(f!.specification.branch ? '/' : '+')"
+    bindings = evaluate_bindings(f!)
+    path = "$(f!.path)$(f!.specification.branch ? '/' : '+')"
+    to = get(bindings, :to, Inf)
+    Δt = min(Δt, to)
     step! = model(
         f!.specification.step;
         bindings,
         f!.specification.branch,
-        path = path′,
+        path,
     )
 
-    to = get(bindings, :to, Inf)
-    Δt = min(Δt, to)
+    @logmsg Progress :repeating at = f!.path todo = Δt
     done = 0.0
-    @logmsg Progress :repeating at = path todo = Δt
     while 0.0 < Δt
         current = Models.t(x)
-        x = step!(x, Δt; context..., path = path′)
+        x = step!(x, Δt; context..., path)
         isfinite(Δt) || break
         advance = Models.t(x) - current
         0.0 < advance || error("cannot progress")
         Δt -= advance
         done += advance
-        @logmsg Progress :repeating at = path done
+        @logmsg Progress :repeating at = f!.path done
     end
 
-    @logmsg Progress :done at = path
+    @logmsg Progress :done at = f!.path
 
     x
 end
@@ -283,21 +297,106 @@ function (f!::Schedule{<:Sequence})(x, Δt::Float64; context...)
     x
 end
 
-function (f!::Schedule{Load})(x, Δt::Float64; load, context...)
-    channel = get(f!.bindings, :channel, nothing)
-    if channel !== nothing
-        name = replace(f!.specification.path, r"(\.schedule)?(\.json)$" => "")
-        channel = "$channel-$name"
-    end
-    Schedule(
-        specification = Specification(
-            load(f!.specification.path),
-            bound = Set(keys(f!.bindings)),
-        ),
-        bindings = merge(f!.bindings, Dict(:channel => channel));
+(f!::Schedule{Load})(x, Δt::Float64; load, context...) =
+    load_schedule(f!; load)(x, Δt; load, context..., f!.path)
+
+reify(x, path::AbstractString; load = nothing) =
+    isempty(path) ? x : error("cannot descend to '$path' in $(typeof(x))")
+
+reify(x::AbstractDict{Symbol}, path::AbstractString; load = nothing) =
+    isempty(path) ? x : Specifications.pluck(x, split(path, '.'))
+
+reify(f!::Schedule{Template}, path::AbstractString; load) = reify(
+    model(
+        evaluate(f!.specification; f!.bindings);
+        f!.bindings,
         f!.branch,
-        f!.path,
-    )(x, Δt; load, context..., f!.path)
+        path,
+    ),
+    path;
+    load
+)
+
+function reify(f!::Schedule{Scope}, path::AbstractString; load)
+    isempty(path) && return f!
+    token = path[1]
+    tail = path[2:end]
+    bindings = evaluate_bindings(f!)
+    if token == '.'
+        reify(bindings, tail)
+    elseif token == '+' || token == '/'
+        step! = model(
+            f!.specification.step;
+            bindings,
+            f!.specification.branch,
+            path = "$(f!.path)$token",
+        )
+        reify(step!, tail; load)
+    else
+        error("cannot descend to '$path' in Scope at '$(f!.path)'")
+    end
+end
+
+function reify(f!::Schedule{<:Sequence}, path::AbstractString; load)
+    isempty(path) && return f!
+    m = match(r"^(-?)(\d+)(.*)", path)
+    if m !== nothing
+        prefix, head, tail = m
+        reify(f!, prefix, parse(Int, head), tail; load)
+    else
+        error("cannot descend to '$path' in Sequence at '$(f!.path)'")
+    end
+end
+
+function reify(
+    f!::Schedule{List},
+    prefix::AbstractString,
+    i::Int,
+    tail::AbstractString;
+    load,
+)
+    step! = item(
+        f!.specification.items[i];
+        i,
+        bindings = descended(f!.bindings, i),
+        path = "$(f!.path)$prefix",
+    )
+    reify(step!, tail; load)
+end
+
+function reify(
+    f!::Schedule{Each},
+    prefix::AbstractString,
+    i::Int,
+    tail::AbstractString;
+    load,
+)
+    each = f!.specification
+    step! = item(
+        each.step;
+        i,
+        inject = evaluate(each.items; f!.bindings)[i],
+        each.as,
+        f!.bindings,
+        path = "$(f!.path)$prefix",
+    )
+    reify(step!, tail; load)
+end
+
+reify(f!::Schedule{Load}, path::AbstractString; load) =
+    reify(load_schedule(f!; load), path; load)
+
+function reify(primitive!::Primitive, path::AbstractString; load = nothing)
+    isempty(path) && return primitive!
+    token = path[1]
+    tail = path[2:end]
+    if token == '+'
+        primitive!.f!
+    elseif token == '.'
+        reify(primitive!.bindings, tail)
+    else
+        error("cannot descend to '$path' in Primitive at '$(primitive!.path)'")
+    end
 end
 
 end

@@ -211,7 +211,7 @@ function flush!(sink::Sink)
         artifact(:index; prefix = sink.location),
         (;
             index.i,
-            path = Arrow.DictEncode(index.path),
+            index.path,
             index.from,
             index.to,
             model = Arrow.DictEncode(index.model),

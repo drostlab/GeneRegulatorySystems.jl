@@ -101,7 +101,7 @@ end
     free::Set{Symbol}
 end
 
-Load(path) = Load(; path)
+Load(path) = Load(; path, free = Set{Symbol}())
 
 #= XXX confirm we still need these for non-Templates =#
 free(::Slice) = Set{Symbol}()
