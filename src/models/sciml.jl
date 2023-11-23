@@ -65,6 +65,8 @@ cast(::Type{FlatState}, x::JumpState) = FlatState(
     parameters
 end
 
+Models.describe(f!::SciML.JumpModel) = Models.describe(f!.definition)
+
 Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where Copy =
     if x.f! === f! && !Copy
         # We need to drop any previous solution transcripts, but there doesn't
@@ -127,9 +129,13 @@ function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
     isfinite(Δt) || error("cannot do this forever")
 
     @logmsg Progress :stepping at = "JumpModel" todo = Δt
-    x.integrator.save_everystep = into !== nothing
-    ModelingToolkit.step!(x.integrator, Δt, true)
-    if !x.integrator.save_everystep
+    if into !== nothing
+        x.integrator.save_everystep = true
+        ModelingToolkit.savevalues!(x.integrator, true)
+        ModelingToolkit.step!(x.integrator, Δt, true)
+    else
+        x.integrator.save_everystep = false
+        ModelingToolkit.step!(x.integrator, Δt, true)
         ModelingToolkit.savevalues!(x.integrator, true)
     end
     @logmsg Progress :done at = "JumpModel"

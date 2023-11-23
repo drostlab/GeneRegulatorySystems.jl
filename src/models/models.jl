@@ -59,12 +59,12 @@ abstract type Description end
 struct EmptyDescription <: Description end
 
 @kwdef struct Network <: Description
-    species_kinds
-    species_groups
+    species_kinds::Vector{Symbol}
+    species_groups::Vector{Symbol}
     links
 end
 
-describe(f!::Model) = EmptyDescription()
+describe(::Model) = EmptyDescription()
 
 include("plumbing.jl")
 include("scheduling.jl")

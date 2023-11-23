@@ -2,47 +2,37 @@ module Visualization
 
 using Printf
 
-import Colors: Colors, @colorant_str
+import Colors: Colors, Color, @colorant_str
 using DataFrames
 using Makie
 using GeneRegulatorySystems: Models, Scheduling
 import Graphs
 import GraphMakie
 
-COMPONENT_PATTERN = r"(?<group>.+)\.(?<kind>.+)"
-
-struct TrajectoryComponent
-    kind::Symbol
-    group::String
+struct GroupColors
+    colors::Dict{String, Color}
 end
-
-trajectory_components(names::AbstractVector{<:AbstractString}) = [
-    TrajectoryComponent(Symbol(m[:kind]), m[:group])
-    for m in match.(COMPONENT_PATTERN, names)
-    if !isnothing(m)
-]
-
-kinds(components::AbstractVector{TrajectoryComponent}) =
-    unique(getproperty.(components, :kind))
-
-groups(components::AbstractVector{TrajectoryComponent}) =
-    unique(getproperty.(components, :group))
-
-group_colors(
-    groups;
+GroupColors(::Nothing; _...) = GroupColors(Dict{String, Color}())
+GroupColors(
+    groups::AbstractVector{String};
     seed = [colorant"white", colorant"black", colorant"crimson"]
-) = Dict(
-    zip(
-        groups,
-        Colors.distinguishable_colors(
-            length(groups),
-            seed,
-            dropseed = true
+) = GroupColors(
+    Dict(
+        zip(
+            groups,
+            Colors.distinguishable_colors(
+                length(groups),
+                seed,
+                dropseed = true
+            )
         )
     )
 )
 
-# TODO: clean this up
+Base.getindex(colors::GroupColors, group::Symbol) = colors[string(group)]
+Base.getindex(colors::GroupColors, group::String) =
+    get(colors.colors, group, colorant"gray")
+
 kindname(kind::Symbol) = kindname(Val(kind))
 kindname(::Val{Kind}) where {Kind} = replace(String(Kind), '_' => ' ')
 kindname(::Val{:promoters}) = "promoter states"
@@ -71,101 +61,61 @@ end
 function attach_trajectory_components!(
     figure,
     ::Type{<:Number};
-    simulations,
-    slices,
+    index,
+    dimensions,
     kind,
     group_colors,
     yscale,
 )
-    components_of_kind = select(
-        slices,
-        Cols(endswith(String(kind))),
-        copycols = false
-    )
+    axis = Axis(figure, xticklabelsvisible = false; yscale)
 
-    axis = Axis(
-        figure,
-        xticklabelsvisible = false,
-        limits = (
-            0.0,
-            maximum(slices.t),
-            0.5,
-            max(1.0, components_of_kind |> eachcol .|> maximum |> maximum),
-        );
-        yscale
-    )
-
-    component_groups = groups(trajectory_components(names(slices)))
-    for simulation in eachrow(simulations)
-        for element in Scheduling.annotate(simulation.schedule)
-            if element.kind in [:spotty, :full]
-                taken_slices = subset(
-                    slices,
-                    [:simulation, :t] => (s, t) ->
-                        element.from .<= t .<= element.to .&&
-                        s .== simulation.i
-                )
-                for group in component_groups
-                    if element.kind == :spotty
-                        scatterlines!(
-                            axis,
-                            taken_slices.t,
-                            taken_slices[!, "$group.$kind"],
-                            color = group_colors[group],
-                            markersize = 3,
-                            linewidth = 1,
-                            linestyle = :dash,
-                        )
-                    else
-                        stairs!(
-                            axis,
-                            taken_slices.t,
-                            taken_slices[!, "$group.$kind"],
-                            color = group_colors[group],
-                            step = :pre,
-                            linewidth = 1,
-                        )
-                    end
+    top = 0.0
+    right = 1.0
+    segments = dimensions[kind]
+    for (i, groups) in segments
+        segment = index[i, :]
+        right = max(right, segment.to)
+        for (group, dimension) in groups
+            top = max(top, maximum(dimension[!, end]))
+            if segment.previous > 0 && haskey(segments, segment.previous)
+                previous_groups = segments[segment.previous]
+                if haskey(previous_groups, group)
+                    previous_t = index[segment.previous, :to]
+                    previous_value = last(previous_groups[group])[2]
+                    next_t, next_value = first(dimension)
+                    scatterlines!(
+                        axis,
+                        [previous_t, next_t],
+                        [previous_value, next_value],
+                        markersize = 3,
+                        linewidth = 1,
+                        linestyle = :dash,
+                        color = group_colors[group],
+                    )
                 end
             end
+
+            stairs!(
+                axis,
+                dimension.t,
+                dimension[!, end],
+                step = :pre,
+                linewidth = 1,
+                color = group_colors[group],
+            )
         end
     end
+
+    limits!(axis, 0.0, right, 0.5, top + 1.0)
 
     axis
-end
-
-function activation_windows(ts, states)
-    ons = Float64[]
-    offs = Float64[]
-
-    activation = NaN
-    for (t, state) in zip(ts, states)
-        if isfinite(activation)
-            if iszero(state)
-                push!(ons, activation)
-                push!(offs, t)
-                activation = NaN
-            end
-        else
-            if !iszero(state)
-                activation = t
-            end
-        end
-    end
-
-    if isfinite(activation)
-        push!(ons, activation)
-        push!(offs, ts[end])
-    end
-
-    ons, offs
 end
 
 function attach_trajectory_components!(
     figure,
     ::Type{Bool};
-    simulations,
-    slices,
+    index,
+    dimensions,
     kind,
     group_colors,
     yscale,
@@ -176,54 +126,71 @@ function attach_trajectory_components!(
         yticksvisible = false,
         yticklabelsvisible = false,
         yreversed = true,
-        limits = (0.0, maximum(slices.t), nothing, nothing),
         tellheight = false,
     )
 
-    component_groups = groups(trajectory_components(names(slices)))
-    for (i, simulation) in enumerate(eachrow(simulations))
-        for element in Scheduling.annotate(simulation.schedule)
-            if element.kind == :full
-                taken_slices = subset(
-                    slices,
-                    [:simulation, :t] => (s, t) ->
-                        element.from .<= t .<= element.to .&&
-                        s .== simulation.i
+    segments = dimensions[kind]
+    right = 1.0
+    for (i, groups) in segments
+        segment = index[i, :]
+        segment.from < segment.to || continue
+        segment.count ≥ 2 || continue
+        right = max(right, segment.to)
+        s = 1 / length(groups)
+        for (j, (group, dimension)) in enumerate(groups)
+            if segment.previous > 0
+                previous_t = index[segment.previous, :to]
+                previous_y = index[segment.previous, :track]
+                next_t = segment.from
+                next_y = segment.track + 1.0
+                scatterlines!(
+                    axis,
+                    [previous_t, next_t],
+                    [previous_y, next_y],
+                    markersize = 5,
+                    linewidth = 2,
+                    linestyle = :dash,
+                    color = colorant"black",
                 )
-                for (j, group) in enumerate(component_groups)
-                    ons, offs = activation_windows(
-                        taken_slices.t,
-                        taken_slices[!, "$group.$kind"]
-                    )
-                    position = (j - 1) * nrow(simulations) + (i - 1)
-                    barplot!(
-                        axis,
-                        fill(position, length(offs)),
-                        offs;
-                        fillto = ons,
-                        direction = :x,
-                        color = group_colors[group]
-                    )
-                end
             end
+            y = segment.track + j * s
+            ts = repeat(dimension.t, inner = 2)[2 : end - 1]
+            ys = repeat(dimension[!, end][1 : end - 1], inner = 2)
+            band!(
+                axis,
+                ts,
+                y - 0.55s .- (0.45s .* ys),
+                y - 0.45s .+ (0.45s .* ys),
+                color = group_colors[group],
+            )
         end
     end
+
+    xlims!(axis, 0.0, right)
 
     axis
 end
 
-attach_trajectory_components!(figure; slices, kind, rest...) =
-    attach_trajectory_components!(
-        figure,
-        promote_type(
-            describe(slices, cols = Cols(endswith("$kind"))).eltype...
-        );
-        slices,
-        kind,
-        rest...,
-    )
+attach_trajectory_components!(figure; dimensions, kind, rest...) =
+    if haskey(dimensions, kind)
+        attach_trajectory_components!(
+            figure,
+            promote_type(
+                unique(
+                    eltype(dimension[!, end])
+                    for segment in values(dimensions[kind])
+                    for dimension in values(segment)
+                )...
+            );
+            dimensions,
+            kind,
+            rest...,
+        )
+    else
+        Label(figure, "(no data)", tellheight = false, tellwidth = false)
+    end
 
-function attach_trajectory!(figure; simulations, slices, kinds, group_colors)
+function attach_trajectory!(figure; index, dimensions, kinds, group_colors)
     grid = GridLayout(tellheight = false)
 
     transform_pattern = r"""
@@ -243,23 +210,29 @@ function attach_trajectory!(figure; simulations, slices, kinds, group_colors)
         grid[i, 1] = attach_trajectory_label!(figure; kind, yscale)
         grid[i, 2] = attach_trajectory_components!(
             figure;
-            simulations,
-            slices,
+            index,
+            dimensions,
             kind,
             group_colors,
             yscale,
         )
     end
-    bottom = content(grid[end, 2])
-    bottom.xlabel = "τ"
-    bottom.xticklabelsvisible = true
 
-    linkxaxes!(contents(grid[:, 2])...)
+    axes = [x for x in contents(grid[:, 2]) if x isa Axis]
+    if !isempty(axes)
+        bottom = last(axes)
+        bottom.xlabel = "simulation time"
+        bottom.xticklabelsvisible = true
+        linkxaxes!(axes...)
+    end
 
     grid
 end
 
-function attach_model!(figure, model::Models.ModelDescription; group_colors)
+attach_model!(figure, model::Models.Description; group_colors) =
+    Label(figure, "(model has no visual summary)", tellheight = false)
+
+function attach_model!(figure, model::Models.Network; group_colors)
     axis = Axis(figure, autolimitaspect = 1)
 
     styles = Dict(
@@ -313,7 +286,7 @@ function attach_model!(figure, model::Models.ModelDescription; group_colors)
         graph,
         node_size = 16,
         node_color = [
-            get(group_colors, string(model.species_groups[i]), :gray)
+            group_colors[model.species_groups[i]]
             for i in Graphs.vertices(graph)
         ];
         edge_attributes...

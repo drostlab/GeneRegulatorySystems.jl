@@ -2,7 +2,7 @@ module KroneckerNetworks
 
 import ...Conversion: cast
 using ...GeneRegulatorySystems: randomness, σ, logit
-using ..Models: SciML, Vanilla
+using ..Models: Models, SciML, Vanilla
 import ..Specifications
 
 using Base: @kwdef
@@ -59,7 +59,21 @@ end
     activation::Union{Some{ActivationNetworkTemplate}, Nothing} = nothing
     repression::Union{Some{RepressionNetworkTemplate}, Nothing} = nothing
     proteolysis::Union{Some{ProteolysisNetworkTemplate}, Nothing} = nothing
+    n::Int =
+        first(size(@something(activation, repression, proteolysis).adjacency))
 end
+
+@kwdef struct Definition
+    seed::String
+    template::Template
+end
+
+Models.describe(definition::Definition) =
+    if definition.template.n ≤ 32
+        Models.describe(rand(randomness(definition.seed), definition.template))
+    else
+        Models.EmptyDescription()
+    end
 
 regulator(
     template::Union{ActivationNetworkTemplate, RepressionNetworkTemplate};
@@ -170,11 +184,7 @@ Base.rand(randomness::AbstractRNG, template::BaseRatesTemplate) =
     )...)
 
 function Base.rand(randomness::AbstractRNG, template::Template)
-    n = @something(
-        template.activation,
-        template.repression,
-        template.proteolysis,
-    ).adjacency |> size |> first
+    n = template.n
 
     activations =
         if isnothing(template.activation)
@@ -215,22 +225,25 @@ function Base.rand(randomness::AbstractRNG, template::Template)
     )
 end
 
-function SciML.JumpModel{Template}(specification::AbstractDict{Symbol})
-    template = cast(Template, specification)
+function SciML.JumpModel{Definition}(specification::AbstractDict{Symbol})
+    definition = Definition(
+        seed = specification[:seed],
+        template = cast(Template, specification),
+    )
+
+    synthesized = rand(randomness(definition.seed), definition.template)
     method = Symbol(get(specification, :method, "default"))
-    definition = rand(randomness(specification[:seed]), template)
+    vanilla = SciML.JumpModel{Vanilla.Definition}(synthesized; method)
 
-    synthesized = SciML.JumpModel{Vanilla.Definition}(definition; method)
-
-    SciML.JumpModel{Template}(
-        definition = template;
-        synthesized.system,
-        synthesized.method,
-        synthesized.parameters,
+    SciML.JumpModel{Definition}(;
+        definition,
+        vanilla.system,
+        vanilla.method,
+        vanilla.parameters,
     )
 end
 
 Specifications.constructor(::Val{Symbol("regulation/kronecker")}) =
-    SciML.JumpModel{Template}
+    SciML.JumpModel{Definition}
 
 end

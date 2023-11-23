@@ -35,4 +35,16 @@ reify(path; location) = Scheduling.reify(
     )
 )
 
+COMPONENT_PATTERN = r"(?<group>.+)\.(?<kind>.+)"
+
+struct TrajectoryComponent
+    kind::Symbol
+    group::String
+end
+
+function TrajectoryComponent(dimension::AbstractString)
+    m = match(COMPONENT_PATTERN, dimension)
+    TrajectoryComponent(Symbol(m[:kind]), m[:group])
+end
+
 end

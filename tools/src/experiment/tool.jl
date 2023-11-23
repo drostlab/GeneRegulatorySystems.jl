@@ -202,6 +202,8 @@ end
 end
 
 function flush!(sink::Sink)
+    sink.i > 0 || return
+
     for into in keys(sink.channels)
         flush!(sink, into)
     end

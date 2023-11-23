@@ -1,7 +1,7 @@
 {
     "to": 10000.0,
     "step": {"{regulation/kronecker}": {
-        "seed": "kronecker-$seed",
+        "seed": "kronecker-${seed}",
         "polymerases": 50,
         "ribosomes": 5537,
         "proteasomes": 2215,

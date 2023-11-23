@@ -26,24 +26,6 @@ end
 Specifications.paste(locator::Locator) =
     join("-$s" for s in split(locator.path, r"[+-/]") if length(s) > 0)
 
-#=
-struct Locator
-    path::Vector{Int}
-end
-
-const LOCATOR_PATTERN = r"@(?<path>[/\d]*)"
-
-function Base.show(io::IO, ::MIME"text/plain", locator::Locator)
-    segments = (s > 0 ? "/$s" : "/" for s in locator.path)
-    write(io, "@$(join(segments))")
-end
-
-function Base.parse(::Type{Locator}, locator::AbstractString)
-    segments = split(match(LOCATOR_PATTERN, locator)[:path], '/')
-    Locator([isempty(s) ? 0 : parse(Int, s) for s in segments][2:end])
-end
-=#
-
 @kwdef struct Primitive <: Model{Any}
     f!::Model
     skip::Float64 = 0.0
@@ -51,6 +33,8 @@ end
     path::String
     bindings::Dict{Symbol, Any}
 end
+
+Models.describe(primitive!::Primitive) = Models.describe(primitive!.f!)
 
 function (primitive!::Primitive)(
     x,

@@ -8,78 +8,73 @@ else
 end
 
 import Arrow
+using Chain
 using DataFrames
-import JSON
 using GeneRegulatorySystems
 using GLMakie
 
-Base.@kwdef struct AdjacentPrefixes
+using Base: @kwdef
+
+using .Common: TrajectoryComponent
+
+@kwdef struct AdjacentPrefixes
     parent::String
     next::String
     previous::String
     firstborn::String
 end
 
-Base.@kwdef struct PreparedData
-    simulations::AbstractDataFrame
-    slices::Union{AbstractDataFrame, Nothing}
-    model::Union{Models.ModelDescription, Nothing}
-    kinds::AbstractVector{Symbol}
-    groups::AbstractVector{String}
+@kwdef struct PreparedData
+    index::DataFrame
+    dimensions::Union{
+        Dict{Symbol, Dict{Int, Dict{String, DataFrame}}},
+        Nothing
+    }
+    model::Union{Models.Description, Nothing}
+    groups::Union{Vector{String}, Nothing}
+    group_colors::Visualization.GroupColors
     adjacents::AdjacentPrefixes
 end
 
-Base.@kwdef struct Selection
+@kwdef struct Selection
     channel::String = ""
     items_prefix::String = ""
     label_pattern::String = ""
 end
 
-function load_specification(location)
-    specification_path = Common.path(:specification; prefix = location)
-    Specifications.load(
-        basename(specification_path);
-        loader = target -> JSON.parsefile(
-            "$(dirname(specification_path))/$target";
-            dicttype = Dict{Symbol, Any}
-        ),
-    )
+const BRANCH_PATTERN = r"^(?:.*/\d+)?"
+
+branch(path) = match(BRANCH_PATTERN, path).match
+
+function arrange(index)
+    result = Int[]
+    track = 0
+    tracks = Dict{String, Int}()
+    watermarks = [0.0]
+    for segment in eachrow(index)
+        if segment.branch != branch
+            track = get!(tracks, segment.branch) do
+                if track > 0
+                    watermarks[track] = Inf
+                end
+                @something(
+                    findfirst(≤(segment.from), watermarks),
+                    lastindex(push!(watermarks, NaN)),
+                )
+            end
+        end
+        watermarks[track] = segment.to
+        push!(result, track)
+    end
+    result
 end
 
-function load_simulations(location; specification)
-    locate_definition(experiment, symbol) = repr(
-        "text/plain",
-        experiment[Symbol("^$symbol")],
-    )
-    takes = Dict(
-        locate_definition(s, :item) => Simulation.takes(s[:take])
-        for s in Specifications.unroll(specification)
-    )
-    simulations = Arrow.Table(Common.path(:simulations; prefix = location))
-    transform(
-        DataFrame(simulations),
-        :item => (item -> getindex.(Ref(takes), item)) => :takes,
-        :item => LinearIndices => :i,
-    )
-end
-
-load_slices(location, channel) = DataFrame(
-    Arrow.Table(Common.path(:slices, channel; prefix = location))
-)
-
-reify_model(specification, locator) = Models.Model(
-    Specifications.reify(
-        specification,
-        parse(Specifications.Locator, locator),
-    )[:model]
-)
-
-function filter(simulations; selection)
+function filter(index; selection)
     template = Dict(
-        :channel => channel -> :channel => ByRow(==(channel)),
-        :items_prefix =>
-            items_prefix ->
-                :item => ByRow(contains(Regex("^@$items_prefix(?=/|\$)"))),
+        :channel => channel -> :into => ByRow(contains(channel)),
+        :items_prefix => prefix -> (
+            :path => ByRow(contains(Regex("^\\Q$prefix\\E(?=[/+-]|\$)")))
+        ),
         :label_pattern =>
             label_pattern -> :label => ByRow(contains(Regex(label_pattern))),
     )
@@ -90,20 +85,88 @@ function filter(simulations; selection)
         if !isempty(getproperty(selection, name))
     ]
 
-    isempty(criteria) ? simulations : subset(simulations, criteria...)
+    subset(index, :count => ByRow(>(0)), criteria...)
 end
 
-function prepare(simulations; selection, specification, location)
-    both = rsplit(selection.items_prefix, '/', limit = 2)
-    if length(both) < 2
-        parent = ""
-        current = both[1]
-    else
-        parent, current = both
+function jumps(segment, column)
+    current = segment[1, column]
+    result = [1]
+    for row in eachrow(segment)
+        if row[column] != current
+            current = row[column]
+            push!(result, rownumber(row))
+        end
+    end
+    push!(result, nrow(segment))
+    result
+end
+
+function load_dimensions(filtered; location)
+    sum(filtered.count) < 1000000 || return
+
+    segment_ids = Dict(zip(filtered.i, LinearIndices(eachrow(filtered))))
+    result = Dict{Symbol, Dict{Int, Dict{String, DataFrame}}}()
+    for channel in unique(subset(filtered, :count => ByRow(>(0))).into)
+        slices = @chain begin
+            Common.artifact(:segments, channel, prefix = location)
+            Arrow.Table
+            DataFrame
+            transform(
+                Cols(endswith("promoter")) .=> ByRow(Bool),
+                renamecols = false
+            )
+            # ^ for now: convert promoter states to `Bool[]`s here...
+            # TODO: move this somewhere else
+        end
+
+        for segment in groupby(slices, :i)
+            i = first(segment.i)
+            haskey(segment_ids, i) || continue
+            for column in names(segment)
+                column == "i" && continue
+                column == "t" && continue
+                component = TrajectoryComponent(column)
+                @chain result begin
+                    get!(valtype(_), _, component.kind)
+                    get!(valtype(_), _, segment_ids[i])
+                    setindex!(
+                        segment[jumps(segment, column), ["t", column]],
+                        component.group,
+                    )
+                end
+            end
+        end
     end
 
-    simulations = filter(
-        simulations,
+    result
+end
+
+function backlinks(index)
+    result = Int[]
+    tips = [0]
+    for segment in eachrow(index)
+        local tip, branch
+        while true
+            tip = last(tips)
+            branch = iszero(tip) ? "" : index[tip, :branch]
+            startswith(segment.branch, branch) && break
+            pop!(tips)
+        end
+        push!(result, tip)
+        segment.branch == branch || push!(tips, tip)
+        tips[end] = rownumber(segment)
+    end
+    result
+end
+
+function prepare(index; selection, location)
+    parent, current = let
+        m = match(r"(.*)(\+|[/-]\d+)$", selection.items_prefix)
+        m === nothing ? ["", ""] : m
+    end
+
+    index = filter(
+        index,
         selection = Selection(
             items_prefix = parent;
             selection.channel,
@@ -111,87 +174,75 @@ function prepare(simulations; selection, specification, location)
         ),
     )
 
-    remove_prefix(x; prefix) =
-        isempty(prefix) ? x : split(x, prefix, limit = 2)[2]
-
-    segment_pattern = r"/[^/]*"
-    branches = unique(
-        something(match(segment_pattern, tail).match, "")
-        for tail in remove_prefix.(simulations.item, prefix = "@$parent")
+    segment_pattern = r"^(\+|[/-]?\d+).*"
+    siblings = unique(
+        match(segment_pattern, chopprefix(path, parent))[1]
+        for path in index.path
     )
-    branch_index = findfirst(==("/$current"), branches)
-    if isnothing(branch_index)
-        previous = ""
-        next = ""
-    else
-        previous = branch_index > 1 ? parent * branches[branch_index - 1] : ""
-        next = branch_index < length(branches) ?
-            parent * branches[branch_index + 1] :
-            ""
+    previous, next = let
+        n = length(siblings)
+        i = findfirst(==(current), siblings)
+        if n < 2 || i === nothing
+            "", ""
+        else
+            (
+                parent * siblings[mod1(i - 1, n)],
+                parent * siblings[mod1(i + 1, n)],
+            )
+        end
     end
 
-    simulations = filter(
-        simulations,
-        selection = Selection(; selection.items_prefix)
-    )
+    index = filter(index, selection = Selection(; selection.items_prefix))
+    index.previous = backlinks(index)
 
     firstborn =
-        if isempty(simulations)
+        if isempty(index)
             ""
         else
-            segment = match(
-                segment_pattern,
-                remove_prefix(
-                    first(simulations.item),
-                    prefix = "@$(selection.items_prefix)"
-                )
-            )
-            isnothing(segment) ? "" : selection.items_prefix * segment.match
+            prefix = selection.items_prefix
+            first_tail = chopprefix(first(index.path), prefix)
+            m = match(segment_pattern, first_tail)
+            m === nothing ? "" : prefix * m[1]
         end
 
-    adjacents = AdjacentPrefixes(; parent, previous, next, firstborn)
+    adjacents = AdjacentPrefixes(; previous, next, firstborn, parent)
 
-    channels = unique(simulations.channel)
-    if length(channels) == 1
-        slices = load_slices(location, only(channels))
-        slices = subset(slices, :simulation => ByRow(in(simulations.i)))
-
-        transform!(
-            slices,
-            Cols(endswith("promoter")) .=> ByRow(Bool),
-            renamecols = false
-        )
-        # ^ for now: convert promoter states to `Bool[]`s here...
-        # TODO: move this into `ExperimentScript`
-
-        components = Visualization.trajectory_components(names(slices))
-        kinds = Visualization.kinds(components)
-        groups = Visualization.groups(components)
+    dimensions = load_dimensions(index; location)
+    if dimensions === nothing
+        groups = nothing
     else
-        slices = nothing
-        kinds = Symbol[]
-        groups = String[]
+        groups = unique(
+            group
+            for segments in values(dimensions)
+            for segment in values(segments)
+            for group in keys(segment)
+        )
+        if length(groups) > 32
+            groups = nothing
+        end
     end
 
-    model_locators = unique(simulations.model)
+    group_colors = Visualization.GroupColors(groups)
+
+    model_locators = unique(subset(index, [:from, :to] => ByRow(<)).model)
     model =
         if length(model_locators) == 1
-            Models.describe(reify_model(specification, only(model_locators)))
+            Models.describe(Common.reify(only(model_locators); location))
         else
             nothing
         end
 
-    PreparedData(; simulations, slices, model, kinds, groups, adjacents)
+    PreparedData(;
+        index,
+        dimensions,
+        groups,
+        group_colors,
+        model,
+        adjacents,
+    )
 end
 
-function attach_display!(
-    figure,
-    ::Val{:selector};
-    data,
-    kinds,
-    group_colors,
-    selection,
-)
+function attach_display!(figure, ::Val{:selector}; data, selection, _...)
     items_prefix =
         isempty(selection[].items_prefix) ? " " : selection[].items_prefix
     label_pattern =
@@ -273,72 +324,39 @@ function attach_display!(
     selector
 end
 
-function attach_display!(
-    figure,
-    ::Val{:trajectory};
-    data,
-    kinds,
-    group_colors,
-    selection,
-)
-    if isnothing(data.slices)
-        Label(
-            figure,
-            "(too unspecific, channel not unique)",
-            tellheight = false,
-        )
-    elseif isempty(data.slices)
-        Label(
-            figure,
-            "(too specific, no data points left)",
-            tellheight = false,
-        )
+function attach_display!(figure, ::Val{:trajectory}; data, kinds, _...)
+    if data.dimensions === nothing
+        Label(figure, "(≥1000000 slices)", tellheight = false)
+    elseif isempty(data.dimensions)
+        Label(figure, "(no data)", tellheight = false)
     elseif isempty(kinds)
-        Label(
-            figure,
-            "(no trajectory component kinds selected)",
-            tellheight = false,
-        )
+        Label(figure, "(no kinds selected for display)", tellheight = false)
     else
         Visualization.attach_trajectory!(
             figure;
-            data.simulations,
-            data.slices,
+            data.index,
+            data.dimensions,
             kinds,
-            group_colors,
+            data.group_colors,
         )
     end
 end
 
-function attach_display!(
-    figure,
-    ::Val{:model};
-    data,
-    kinds,
-    group_colors,
-    selection,
-)
-    if isnothing(data.model)
+function attach_display!(figure, ::Val{:model}; data, _...)
+    if data.model === nothing
         Label(
             figure,
-            "(too unspecific, model not unique)",
+            "(model not unique among non-instant segments)",
             tellheight = false,
         )
     else
-        Visualization.attach_model!(figure, data.model; group_colors)
+        Visualization.attach_model!(figure, data.model; data.group_colors)
     end
 end
 
-function attach_display!(
-    figure,
-    ::Val{:legend};
-    data,
-    kinds,
-    group_colors,
-    selection,
-)
-    if isempty(data.groups)
-        Label(figure, "(too unspecific, groups not unique)")
+function attach_display!(figure, ::Val{:legend}; data, _...)
+    if data.groups === nothing
+        Label(figure, "(>32 groups)")
     else
         Legend(
             figure,
@@ -346,7 +364,7 @@ function attach_display!(
                 MarkerElement(
                     marker = :circle,
                     markersize = 32,
-                    color = group_colors[group]
+                    color = data.group_colors[group],
                 )
                 for group in data.groups
             ],
@@ -358,24 +376,22 @@ function attach_display!(
     end
 end
 
-function attach_display!(
-    figure,
-    ::Val{:info};
-    data,
-    kinds,
-    group_colors,
-    selection,
-)
-    simulations_count = nrow(data.simulations)
-    take_count = sum(length.(data.simulations.takes))
-    slice_count = isnothing(data.slices) ? 0 : nrow(data.slices)
-    Label(
-        figure,
-        "$simulations_count simulations," *
-            " $take_count takes" *
-            (slice_count > 0 ? "" : ", $slice_count slices"),
-        tellwidth = false,
-    )
+function attach_display!(figure, ::Val{:info}; data, _...)
+    slices_count = sum(data.index.count)
+    message =
+        if data.dimensions === nothing
+            "$slices_count slices (≥1000000, not loaded)"
+        else
+            groups_count =
+                if data.groups === nothing
+                    ">32"
+                else
+                    "$(length(data.groups))"
+                end
+            "$groups_count groups × $slices_count slices \
+                in $(nrow(data.index)) segments"
+        end
+    Label(figure, message, tellwidth = false)
 end
 
 function build_figure(;
@@ -386,16 +402,13 @@ function build_figure(;
     resolution::Tuple{Int, Int},
 )
     figure = Figure(; resolution)
-
-    group_colors = Visualization.group_colors(data.groups)
-
     subplots = Dict(
         name => attach_display!(
             figure,
             Val(name);
             data,
             kinds,
-            group_colors,
+            data.group_colors,
             selection,
         )
         for name in displays
@@ -440,19 +453,19 @@ function main(;
     kinds = Symbol.(split(kinds, ',', keepempty = false))
     resolution = Tuple(parse.(Int, split(resolution, 'x')))
 
-    specification = load_specification(location)
-    simulations = load_simulations(location; specification)
+    index = @chain begin
+        Common.artifact(:index; prefix = location)
+        Arrow.Table
+        DataFrame
+    end
+    index.branch = branch.(index.path)
+    index.track = arrange(index)
 
     GLMakie.activate!()
     screen = GLMakie.Screen()
 
     on(selection) do selected
-        data = prepare(
-            simulations,
-            selection = selected;
-            specification,
-            location,
-        )
+        data = prepare(index, selection = selected; location)
         figure = build_figure(; data, displays, kinds, selection, resolution)
         empty!(screen)
         display(screen, figure)

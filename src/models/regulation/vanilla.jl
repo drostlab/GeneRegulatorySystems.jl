@@ -125,10 +125,10 @@ aggregation(::Val{:generalized_mean}, p::Float64) =
 const REACTION_KINDS = collect(fieldnames(BaseRates))
 const SPECIES_KINDS = [:promoter, :elongations, :premrnas, :mrnas, :proteins]
 
-Models.describe(f!::SciML.JumpModel{Definition}) = Models.Network(
+Models.describe(definition::Definition) = Models.Network(
     species_kinds = SPECIES_KINDS,
-    species_groups = [gene.name for gene in f!.definition.genes],
-    links = mapreduce(vcat, f!.definition.genes) do gene
+    species_groups = [gene.name for gene in definition.genes],
+    links = mapreduce(vcat, definition.genes) do gene
         vcat(
             map(gene.activation.slots) do (; from, at, k)
                 properties = Dict(:at => at, :k => k)
@@ -219,12 +219,8 @@ function regulation(
 
                 if from == target.name
                     # This is a loop in the proteolysis repression network and
-                    # means that the protein decays without proteosomes.
-                    # (Perhaps this should be "2 proteins -> proteins", in
-                    # which case we also need to update the naive Gillespie
-                    # sampler above to reflect the combinatoric rate law.)
-                    # TODO: Check if this makes sense and can actually happen.
-                    Reaction(k, [proteins], nothing)
+                    # means that the protein decays without another protease.
+                    Reaction(k, [proteins], [proteins], [2], [1])
                 else
                     Reaction(k, [proteases, proteins], [proteases])
                 end
