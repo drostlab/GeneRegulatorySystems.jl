@@ -4,8 +4,6 @@ using ...Conversion: cast
 using ..Models: Model, FlatState
 import ..Specifications
 
-using Base: @kwdef
-
 using Distributions
 
 @kwdef struct ResampleEachBinomial <: Model{FlatState}

@@ -1,21 +1,16 @@
 module InspectTool
 
-if nameof(parentmodule(@__MODULE__)) == :GeneRegulatorySystemsTools
-    @eval using GeneRegulatorySystemsTools: Common, Visualization
-else
-    include("$(@__DIR__)/../common.jl")
-    include("$(@__DIR__)/../visualization.jl")
-end
+include("$(@__DIR__)/../../common.jl")
+include("$(@__DIR__)/visualization.jl")
+
+using .Common: TrajectoryComponent
 
 import Arrow
 using Chain
 using DataFrames
 using GeneRegulatorySystems
 using GLMakie
-
-using Base: @kwdef
-
-using .Common: TrajectoryComponent
+using PrecompileTools
 
 @kwdef struct AdjacentPrefixes
     parent::String
@@ -399,9 +394,9 @@ function build_figure(;
     displays::AbstractSet{Symbol},
     kinds::AbstractVector{Symbol},
     selection::Observable{Selection},
-    resolution::Tuple{Int, Int},
+    size::Tuple{Int, Int},
 )
-    figure = Figure(; resolution)
+    figure = Figure(; size)
     subplots = Dict(
         name => attach_display!(
             figure,
@@ -439,7 +434,7 @@ function main(;
     label_pattern,
     displays,
     kinds,
-    resolution,
+    size,
     wait_for_close,
 )
     selection = Observable(
@@ -451,7 +446,7 @@ function main(;
     )
     displays = Set(Symbol.(split(displays, ',', keepempty = false)))
     kinds = Symbol.(split(kinds, ',', keepempty = false))
-    resolution = Tuple(parse.(Int, split(resolution, 'x')))
+    size = Tuple(parse.(Int, split(size, 'x')))
 
     index = @chain begin
         Common.artifact(:index; prefix = location)
@@ -466,7 +461,7 @@ function main(;
 
     on(selection) do selected
         data = prepare(index, selection = selected; location)
-        figure = build_figure(; data, displays, kinds, selection, resolution)
+        figure = build_figure(; data, displays, kinds, selection, size)
         empty!(screen)
         display(screen, figure)
     end
@@ -478,5 +473,16 @@ function main(;
         close(screen)
     end
 end
+
+#=
+@setup_workload begin
+    mktempdir() do location
+        # TODO create dummy data
+        @compile_workload begin
+            # TODO run main
+        end
+    end
+end
+=#
 
 end

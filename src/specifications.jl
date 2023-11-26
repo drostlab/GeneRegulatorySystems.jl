@@ -1,6 +1,6 @@
 module Specifications
 
-using Base: @kwdef, Fix2
+using Base: Fix2
 
 range_(x) = range(; x...)
 

@@ -1,4 +1,4 @@
-module ExperimentScript
+module Script
 
 using ArgParse
 
@@ -45,14 +45,7 @@ function run(arguments = ARGS)
         return 0
     end
 
-    if !@isdefined ExperimentTool
-        if nameof(parentmodule(@__MODULE__)) == :GeneRegulatorySystemsTools
-            @eval using GeneRegulatorySystemsTools: ExperimentTool
-        else
-            include("$(@__DIR__)/tool.jl")
-        end
-    end
-
+    @eval import ExperimentTool
     try Base.invokelatest(ExperimentTool.main; parsed...)
     catch e
         if e == :help
@@ -65,3 +58,5 @@ function run(arguments = ARGS)
 end
 
 end
+
+exit(something(Script.run(), 0))

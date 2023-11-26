@@ -7,7 +7,6 @@ import JumpProcesses
 import ModelingToolkit
 import Symbolics
 
-using Base: @kwdef
 using Random
 using Logging: LogLevel, @logmsg
 

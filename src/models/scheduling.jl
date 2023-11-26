@@ -13,7 +13,6 @@ using ...Specifications: Slice
 using ...Specifications: Specification
 using ...Specifications: Template
 
-using Base: @kwdef
 using Logging: LogLevel, @logmsg
 using Random
 

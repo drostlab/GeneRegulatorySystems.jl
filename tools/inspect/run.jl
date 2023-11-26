@@ -1,4 +1,4 @@
-module InspectScript
+module Script
 
 using ArgParse
 
@@ -22,7 +22,7 @@ settings() = @add_arg_table! ArgParseSettings(
     "--kinds", "-k"
         default = "promoter,mrnas,proteins"
 
-    "--resolution", "-r"
+    "--size", "-s"
         default = "1280x720"
 
     "--no-wait-for-close"
@@ -36,15 +36,10 @@ function run(arguments = ARGS)
         return 1
     )
 
-    if !@isdefined InspectTool
-        if nameof(parentmodule(@__MODULE__)) == :GeneRegulatorySystemsTools
-            @eval using GeneRegulatorySystemsTools: InspectTool
-        else
-            include("$(@__DIR__)/tool.jl")
-        end
-    end
-
+    @eval import InspectTool
     Base.invokelatest(InspectTool.main; parsed...)
 end
 
 end
+
+exit(something(Script.run(), 0))

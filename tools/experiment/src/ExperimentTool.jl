@@ -1,24 +1,20 @@
 module ExperimentTool
 
-if nameof(parentmodule(@__MODULE__)) == :GeneRegulatorySystemsTools
-    @eval using GeneRegulatorySystemsTools: Common
-else
-    include("$(@__DIR__)/../common.jl")
-end
-
+include("$(@__DIR__)/../../common.jl")
 using .Common: repository_version, artifact
 
+import Arrow
 using Chain
 using DataFrames
+using GeneRegulatorySystems
+import JSON
 using LoggingExtras
+using PrecompileTools
 import ProgressLogging
 using TerminalLoggers: TerminalLogger
 using UUIDs
 
-using Base: @kwdef
 import Dates
-
-# NOTE: This module lazily imports additional modules in `main`.
 
 abstract type ProgressLogger <: AbstractLogger end
 
@@ -338,14 +334,26 @@ function main(;
         simulate = true
     end
 
-    @eval import JSON
-    prepare && Base.invokelatest(prepare!; location, specifications, seed)
-
-    @eval using GeneRegulatorySystems
-    @eval import Arrow
-    simulate && Base.invokelatest(simulate!; location, progress, dry)
+    prepare && prepare!(; location, specifications, seed)
+    simulate && simulate!(; location, progress, dry)
 
     nothing
+end
+
+@setup_workload begin
+    mktempdir() do location
+        @compile_workload begin
+            main(
+                location = "$location/$(Dates.now())/",
+                prepare = true,
+                simulate = true,
+                progress = :bars,
+                dry = false,
+                seed = "seed",
+                specifications = ["$(@__DIR__)/precompile.schedule.json"],
+            )
+        end
+    end
 end
 
 end

@@ -3,7 +3,6 @@ module Models
 import ..Conversion: cast
 import ..Specifications
 
-using Base: @kwdef
 using Random
 
 @kwdef mutable struct FlatState

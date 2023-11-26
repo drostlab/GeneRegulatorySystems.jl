@@ -6,7 +6,19 @@ BIN="$(dirname "$0")"
 COMMAND="$1"
 : ${JULIA:=julia}
 
-"$JULIA" --project="$BIN" -- - <<JULIA_VERSION_CHECK
+if [ -z "$COMMAND" ]; then
+    echo "usage: $(basename "$0") <command> [args...]"
+    echo
+    echo "commands:"
+    for TOOL in $(cd "$BIN"; echo */run.jl); do
+        echo "  ${TOOL%/run.jl}"
+    done
+    exit 0
+fi
+
+TOOL="$BIN/$COMMAND"
+
+"$JULIA" --project="$TOOL" -- - <<JULIA_VERSION_CHECK
     import Pkg
     REQUIRED = Pkg.Versions.semver_spec(
         Pkg.TOML.parse(read(Pkg.project().path, String))["compat"]["julia"]
@@ -17,59 +29,32 @@ COMMAND="$1"
     end
 JULIA_VERSION_CHECK
 
-# Check if `]instantiate` needs to be run for the current `bin/Manifest.toml`.
-# If so, run it and take note of the instantiated state and instantiating Julia
-# version (unless `bin` is write-protected, which is not really a problem since
-# `]instantiate` is idempotent, though it will add latency).
+# Check if `]instantiate` needs to be run for the tool environment's
+# `Manifest.toml`. If so, run it and take note of the instantiated state and
+# instantiating Julia version (unless the directory is write-protected, which
+# is not really a problem since `]instantiate` is idempotent, though it will
+# add latency).
 JULIA_VERSION="$("$JULIA" --version)"
-INSTANTIATED_WITH="$(cat "$BIN"/instantiated_with.version 2>/dev/null || true)"
+INSTANTIATED_WITH="$(
+    cat "$TOOL"/instantiated_with.version 2>/dev/null || true
+)"
 if
     [ "$JULIA_VERSION" != "$INSTANTIATED_WITH" ] || \
-    ! cmp --silent "$BIN/Manifest.toml" "$BIN/Instantiated.toml"
+    ! cmp --silent "$TOOL/Manifest.toml" "$TOOL/Instantiated.toml"
 then
     >&2 echo \
-        "Info: Julia environment may be stale, running \`]instantiate\`..."
+        "Info: '$COMMAND' Julia environment may be stale," \
+        "running \`]instantiate\`..."
     (
         set -x
-        "$JULIA" --project="$BIN" \
+        "$JULIA" --project="$TOOL" \
             -e 'import Pkg; Pkg.instantiate(verbose = true)'
     )
     echo "...done."
-    cp "$BIN/Manifest.toml" "$BIN/Instantiated.toml" 2>/dev/null || true
-    "$JULIA" --version 2>/dev/null >"$BIN/instantiated_with.version" || true
-fi
-
-if [ -z "$COMMAND" ]; then
-    echo "usage: $(basename "$0") <command> [args...]"
-    echo
-    echo "commands:"
-    for SCRIPT in $(cd "$BIN"; echo *.jl); do
-        echo "  ${SCRIPT%.*}"
-    done
-    echo "  julia"
-    exit 0
+    cp "$TOOL/Manifest.toml" "$TOOL/Instantiated.toml" 2>/dev/null || true
+    "$JULIA" --version 2>/dev/null >"$TOOL/instantiated_with.version" || true
 fi
 
 shift
 
-if [ "$COMMAND" = "sysimage" ]; then
-    # We special-case the `sysimage` command to itself always use the default
-    # sysimage to avoid trouble in case of broken or stale sysimages, e.g.
-    # when recompiling. But we still would like it to be as fast as possible,
-    # so to reduce latency in the non-compiling branches, we tell Julia to
-    # reduce compilation. This especially applies to `sysimage locate`,
-    # which gets called for all other commands to resolve the sysimage
-    # to use.
-    # However, since `sysimage compile` is a longer-running operation, we
-    # specifically exclude it from reduced Julia compilation.
-    case "$@" in
-        *compile*) exec "$JULIA" --project="$BIN" "$BIN/sysimage.jl" "$@";;
-        *) exec "$JULIA" --project="$BIN" --compile=min \
-            "$BIN/sysimage.jl" "$@";;
-    esac
-elif [ "$COMMAND" = "julia" ]; then
-    exec "$JULIA" --project="$BIN" --sysimage="$("$0" sysimage locate)" "$@"
-else
-    exec "$JULIA" --project="$BIN" --sysimage="$("$0" sysimage locate)" \
-        "$BIN/$COMMAND.jl" "$@"
-fi
+exec "$JULIA" --project="$TOOL" "$TOOL/run.jl" "$@"

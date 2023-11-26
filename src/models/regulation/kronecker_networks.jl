@@ -5,7 +5,6 @@ using ...GeneRegulatorySystems: randomness, σ, logit
 using ..Models: Models, SciML, Vanilla
 import ..Specifications
 
-using Base: @kwdef
 using Random
 using SparseArrays
 
@@ -144,7 +143,7 @@ factor(xs::AbstractVector) = vcat(adjoint.(xs)...)
 cast(::Type{UnivariateDistribution}, x::Real; _...) = Dirac(x)
 
 function cast(::Type{UnivariateDistribution}, xs::AbstractVector; _...)
-    T = eval(Symbol(xs[1]))
+    T = getfield(Distributions, Symbol(xs[1]))
     T <: UnivariateDistribution || error("not a UnivariateDistribution")
     T(xs[2:end]...)
 end

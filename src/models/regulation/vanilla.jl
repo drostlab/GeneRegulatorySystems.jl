@@ -4,7 +4,7 @@ import ...Conversion: cast
 using ..Models: Models, SciML
 import ...Specifications
 
-using Base: @kwdef, @invoke
+using Base: @invoke
 using LinearAlgebra
 
 using Catalyst
