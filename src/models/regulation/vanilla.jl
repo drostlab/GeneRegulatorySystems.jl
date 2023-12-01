@@ -66,9 +66,12 @@ end
 end
 
 @kwdef struct Definition
-    polymerases::Int
-    ribosomes::Int
-    proteasomes::Int
+    polymerases::Float64
+    ribosomes::Float64
+    proteasomes::Float64
+    # ^ Due to a bug in ModelingToolkit when using mixed-type parameter maps,
+    # we have to temporarily define these as Float64; see ModelingToolkit.jl
+    # issue #2366.
     genes::Vector{Gene}
 end
 
