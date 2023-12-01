@@ -29,17 +29,28 @@ TOOL="$BIN/$COMMAND"
     end
 JULIA_VERSION_CHECK
 
-# Check if `]instantiate` needs to be run for the tool environment's
-# `Manifest.toml`. If so, run it and take note of the instantiated state and
-# instantiating Julia version (unless the directory is write-protected, which
-# is not really a problem since `]instantiate` is idempotent, though it will
-# add latency).
 JULIA_VERSION="$("$JULIA" --version)"
+REPOSITORY_VERSION="$("$JULIA" -e '
+    import LibGit2;
+    @__DIR__() |>
+    LibGit2.GitRepo |>
+    LibGit2.GitDescribeResult |>
+    LibGit2.format |>
+    print
+')"
+
+# Check if `]instantiate` needs to be run for the tool environment's
+# `Manifest.toml`. If so, run it and take note of the instantiated repository
+# version, Julia version and state (unless the directory is write-protected,
+# which is not really a problem since, though adding latency, `]instantiate` is
+# idempotent and `]precompile` does not write in this directory). If any of
+# these have changed since the last run, we potentially need to potentially
+# reinstantiate and recompile.
 INSTANTIATED_WITH="$(
     cat "$TOOL"/instantiated_with.version 2>/dev/null || true
 )"
 if
-    [ "$JULIA_VERSION" != "$INSTANTIATED_WITH" ] || \
+    [ "$REPOSITORY_VERSION, $JULIA_VERSION" != "$INSTANTIATED_WITH" ] || \
     ! cmp --silent "$TOOL/Manifest.toml" "$TOOL/Instantiated.toml"
 then
     >&2 echo \
@@ -47,14 +58,18 @@ then
         "running \`]instantiate\`..."
     (
         set -x
-        "$JULIA" --project="$TOOL" \
+        env JULIA_PKG_PRECOMPILE_AUTO=0 "$JULIA" --project="$TOOL" \
             -e 'import Pkg; Pkg.instantiate(verbose = true)'
+        "$JULIA" --project="$TOOL" \
+            -e "import Pkg; Pkg.precompile(strict = true, timing = true)"
     )
     echo "...done."
     cp "$TOOL/Manifest.toml" "$TOOL/Instantiated.toml" 2>/dev/null || true
-    "$JULIA" --version 2>/dev/null >"$TOOL/instantiated_with.version" || true
+    echo "$REPOSITORY_VERSION, $JULIA_VERSION" \
+        >"$TOOL/instantiated_with.version" || true
 fi
 
 shift
 
-exec "$JULIA" --project="$TOOL" "$TOOL/run.jl" "$@"
+exec env JULIA_PKG_PRECOMPILE_AUTO=0 \
+    "$JULIA" --project="$TOOL" "$TOOL/run.jl" "$@"

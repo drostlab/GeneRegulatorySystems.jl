@@ -17,7 +17,8 @@
     "step": [
         {
             "anchor": {"$": "channel"},
-            "each": ["default", "Direct", "SortingDirect", "RSSA", "RSSACR"],
+            "t": 100.0,
+            "each": ["SortingDirect", "RSSACR"],
             "as": "method",
             "step": {
                 "do": {
@@ -36,28 +37,24 @@
                         ]
                     }
                 },
-                "each": {"start": 150, "step": 25, "stop": 200},
+                "each": {"start": 150, "step": 50, "stop": 200},
                 "as": "proteins",
                 "step": {
-                    "each": [100.0, 200.0],
-                    "as": "t",
-                    "step": {
-                        "label": "${method}-p${proteins}-at${t}",
-                        "channel": "${anchor}",
-                        "branch": true,
-                        "each": {"length": 2},
-                        "step": [
-                            {"{set}": {
-                                "Gene 1": {"proteins": {"$": "proteins"}},
-                                "Gene 2": {"proteins": {"$": "proteins"}}
-                            }},
-                            {"$": "t"},
-                            {"{extract-transcriptome-amplified}": {
-                                "cycles": 3,
-                                "target": 200
-                            }}
-                        ]
-                    }
+                    "label": "${method}-p${proteins}",
+                    "channel": "${anchor}",
+                    "branch": true,
+                    "each": {"length": 2},
+                    "step": [
+                        {"{set}": {
+                            "Gene 1": {"proteins": {"$": "proteins"}},
+                            "Gene 2": {"proteins": {"$": "proteins"}}
+                        }},
+                        {"$": "t"},
+                        {"{extract-transcriptome-amplified}": {
+                            "cycles": 3,
+                            "target": 200
+                        }}
+                    ]
                 }
             }
         },
