@@ -61,7 +61,7 @@ function Logging.handle_message(
     done = 0,
 )
     if message == :saved
-        @info "Saved $done slices into '$at'"
+        @info "Saved $done events into '$at'"
         return
     end
 
@@ -189,12 +189,19 @@ function prepare!(; location, specifications, seed)
     end
 end
 
+@kwdef struct Channel
+    is::Vector{Int64} = Int64[]
+    ts::Vector{Float64} = Float64[]
+    names::Vector{Symbol} = Symbol[]
+    values::Vector{Int64} = Int64[]
+end
+
 @kwdef mutable struct Sink
     location::String
     i::Int = 0
     index = []
-    threshold::Int = 100000
-    channels::Dict{String, DataFrame} = Dict{String, DataFrame}()
+    threshold::Int = 1000000
+    channels::Dict{String, Channel} = Dict{String, Channel}()
 end
 
 function flush!(sink::Sink)
@@ -221,14 +228,21 @@ function flush!(sink::Sink)
 end
 
 function flush!(sink::Sink, into)
-    segment = pop!(sink.channels, into)
-    segments = artifact(:segments, into, prefix = sink.location)
-    if isfile(segments)
-        Arrow.append(segments, segment)
+    channel = pop!(sink.channels, into)
+    filename = artifact(:events, into, prefix = sink.location)
+    events = (;
+        i = channel.is,
+        t = channel.ts,
+        name = channel.names,
+        value = channel.values,
+    )
+    if isfile(filename)
+        Arrow.append(filename, events)
     else
-        Arrow.write(segments, segment, file = false)
+        Arrow.write(filename, events, file = false)
     end
-    @logmsg(Scheduling.Progress, :saved, at = segments, done = nrow(segment))
+    count = length(events.t)
+    @logmsg(Scheduling.Progress, :saved, at = filename, done = count)
 end
 
 function (sink::Sink)(into, state; path, primitive!, from, _...)
@@ -247,22 +261,21 @@ function (sink::Sink)(into, state; path, primitive!, from, _...)
     end
 
     @logmsg Scheduling.Progress :collecting at = path todo = "into $into"
-    segment = @chain begin
-        state
-        Models.table(sorted = true)
-        DataFrame
-        insertcols(1, :i => sink.i)
+    channel = get!(Channel, sink.channels, into)
+    count = 0
+    Models.each_event(state) do t::Float64, name::Symbol, value::Int64
+        if length(channel.values) ≥ sink.threshold
+            flush!(sink, into)
+            channel = sink.channels[into] = Channel()
+        end
+        push!(channel.is, sink.i)
+        push!(channel.ts, t)
+        push!(channel.names, name)
+        push!(channel.values, value)
+        count += 1
     end
-    count = nrow(segment)
 
-    if haskey(sink.channels, into)
-        append!(sink.channels[into], segment, cols = :orderequal)
-    else
-        sink.channels[into] = segment
-    end
     push!(sink.index, (; sink.i, path, from, to, model, label, count, into))
-
-    prod(size(sink.channels[into])) > sink.threshold && flush!(sink, into)
 end
 
 function with_progress(run!, progress::Symbol)
@@ -341,16 +354,17 @@ function main(;
 end
 
 @setup_workload begin
+    specification = "$(@__DIR__)/precompile.schedule.json"
     mktempdir() do location
         @compile_workload begin
             main(
                 location = "$location/$(Dates.now())/",
                 prepare = true,
                 simulate = true,
-                progress = :bars,
+                progress = :none,
                 dry = false,
                 seed = "seed",
-                specifications = ["$(@__DIR__)/precompile.schedule.json"],
+                specifications = [specification],
             )
         end
     end

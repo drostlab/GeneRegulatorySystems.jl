@@ -22,8 +22,8 @@ end
 @kwdef struct PreparedData
     index::DataFrame
     dimensions::Union{
-        Dict{Symbol, Dict{Int, Dict{String, DataFrame}}},
-        Nothing
+        Dict{Symbol, Dict{Int, Dict{String, Visualization.Series}}},
+        Nothing,
     }
     model::Union{Models.Description, Nothing}
     groups::Union{Vector{String}, Nothing}
@@ -83,53 +83,34 @@ function filter(index; selection)
     subset(index, :count => ByRow(>(0)), criteria...)
 end
 
-function jumps(segment, column)
-    current = segment[1, column]
-    result = [1]
-    for row in eachrow(segment)
-        if row[column] != current
-            current = row[column]
-            push!(result, rownumber(row))
-        end
-    end
-    push!(result, nrow(segment))
-    result
-end
-
 function load_dimensions(filtered; location)
-    sum(filtered.count) < 1000000 || return
+    sum(filtered.count) < 100_000_000 || return
+
+    result = Dict{Symbol, Dict{Int, Dict{String, Visualization.Series}}}()
 
     segment_ids = Dict(zip(filtered.i, LinearIndices(eachrow(filtered))))
-    result = Dict{Symbol, Dict{Int, Dict{String, DataFrame}}}()
+    components = Dict{Symbol, TrajectoryComponent}()
     for channel in unique(subset(filtered, :count => ByRow(>(0))).into)
-        slices = @chain begin
-            Common.artifact(:segments, channel, prefix = location)
+        events = @chain begin
+            Common.artifact(:events, channel, prefix = location)
             Arrow.Table
             DataFrame
-            transform(
-                Cols(endswith("promoter")) .=> ByRow(Bool),
-                renamecols = false
-            )
-            # ^ for now: convert promoter states to `Bool[]`s here...
-            # TODO: move this somewhere else
         end
 
-        for segment in groupby(slices, :i)
-            i = first(segment.i)
-            haskey(segment_ids, i) || continue
-            for column in names(segment)
-                column == "i" && continue
-                column == "t" && continue
-                component = TrajectoryComponent(column)
-                @chain result begin
-                    get!(valtype(_), _, component.kind)
-                    get!(valtype(_), _, segment_ids[i])
-                    setindex!(
-                        segment[jumps(segment, column), ["t", column]],
-                        component.group,
-                    )
+        for event in eachrow(events)
+            haskey(segment_ids, event.i) || continue
+            component = get!(components, event.name) do
+                TrajectoryComponent(event.name)
+            end
+            series = @chain result begin
+                get!(valtype(_), _, component.kind)
+                get!(valtype(_), _, segment_ids[event.i])
+                get!(_, component.group) do
+                    Visualization.Series(component.kind)
                 end
             end
+            push!(series.ts, event.t)
+            push!(series.ys, event.value)
         end
     end
 
@@ -361,7 +342,7 @@ function attach_display!(figure, ::Val{:legend}; data, _...)
                     markersize = 32,
                     color = data.group_colors[group],
                 )
-                for group in data.groups
+                for group in sort(data.groups)
             ],
             data.groups,
             orientation = :horizontal,
@@ -372,10 +353,10 @@ function attach_display!(figure, ::Val{:legend}; data, _...)
 end
 
 function attach_display!(figure, ::Val{:info}; data, _...)
-    slices_count = sum(data.index.count)
+    events_count = sum(data.index.count)
     message =
         if data.dimensions === nothing
-            "$slices_count slices (≥1000000, not loaded)"
+            "$events_count events (≥100000000, not loaded)"
         else
             groups_count =
                 if data.groups === nothing
@@ -383,8 +364,8 @@ function attach_display!(figure, ::Val{:info}; data, _...)
                 else
                     "$(length(data.groups))"
                 end
-            "$groups_count groups × $slices_count slices \
-                in $(nrow(data.index)) segments"
+            "$events_count events of $(length(data.dimensions)) kinds \
+                in $groups_count groups × $(nrow(data.index)) segments"
         end
     Label(figure, message, tellwidth = false)
 end
@@ -460,9 +441,9 @@ function main(;
     screen = GLMakie.Screen()
 
     on(selection) do selected
+        empty!(screen)
         data = prepare(index, selection = selected; location)
         figure = build_figure(; data, displays, kinds, selection, size)
-        empty!(screen)
         display(screen, figure)
     end
 

@@ -5,13 +5,11 @@ using ..Models: Models, SciML
 import ...Specifications
 
 using Base: @invoke
-using LinearAlgebra
 
 using Catalyst
 using JumpProcesses
 using ModelingToolkit
 using StatsBase
-import Symbolics
 
 @kwdef struct BaseRates
     activation::Float64

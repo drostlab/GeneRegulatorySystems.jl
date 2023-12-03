@@ -41,15 +41,12 @@ _adapt(x::FlatState, ::Model{Any}, ::Val{false}) = x
 _adapt(x::FlatState, f!::Model, ::Val{true}) =
     _adapt(FlatState(x), f!, Val(false))
 
-function table(x::FlatState; sorted)
-    ks = keys(x.counts)
-    if sorted
-        ks = sort!(collect(ks))
+each_event(callback::Function, x::FlatState) =
+    for (key, value) in x.counts
+        callback(x.t, key, value)
     end
-    [(; x.t, (k => x.counts[k] for k in ks)...)]
-end
 
-table(x::Branched; sorted) = table(x.stem; sorted)
+each_event(callback::Function, x::Branched) = each_event(callback, x.stem)
 
 (f!::Model)(_x, _Δt::Float64; _...) = error("unimplemented")
 

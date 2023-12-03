@@ -5,15 +5,13 @@ using ..Models: Models, Model, FlatState
 
 import JumpProcesses
 import ModelingToolkit
-import Symbolics
 
 using Random
 using Logging: LogLevel, @logmsg
 
 Progress = LogLevel(-2)
 
-normalize_symbol(s) =
-    Symbol(replace(String(Symbolics.tosymbol(s, escape = false)), '₊' => '.'))
+normalize_name(s) = Symbol(replace(chopsuffix(String(s), "(t)"), '₊' => '.'))
 
 @kwdef mutable struct ProgressTrigger
     i::Int = 0
@@ -50,8 +48,8 @@ Models.t(x::JumpState) = x.integrator.t
 
 cast(::Type{FlatState}, x::JumpState) = FlatState(
     counts = Dict(
-        normalize_symbol(s) => x.integrator[s]
-        for s in ModelingToolkit.states(x.integrator.f.sys)
+        normalize_name(s) => x.integrator[s]
+        for s in x.integrator.f.syms
     ),
     randomness = x.problem.rng;
     x.integrator.t,
@@ -94,7 +92,11 @@ Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
         JumpProcesses.DiscreteProblem(
             f!.system,
             [
-                s => get(x.counts, normalize_symbol(s), 0)
+                s => get(
+                    x.counts,
+                    normalize_name(ModelingToolkit.getname(s)),
+                    0
+                )
                 for s in ModelingToolkit.states(f!.system)
             ],
             (x.t, Inf),
@@ -109,19 +111,30 @@ Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
 Models.adapt(x::JumpState, f!::Model, _copy) =
     Models.adapt(cast(FlatState, x), f!)
 
+function Models.each_event(callback::Function, x::JumpState)
+    names = normalize_name.(x.integrator.f.syms)
+    # ^ We assume that this access is safe and the order agrees with the values
+    # in x.integrator.sol.u because this is how SciMLBase constructs the Table
+    # reinterpretation in Tables.rows(::AbstractTimeseriesSolution).
 
-function Models.table(x::JumpState; sorted)
-    transcript = Dict(
-        normalize_symbol(s) => x.integrator.sol[s]
-        for s in ModelingToolkit.states(x.integrator.f.sys)
-    )
+    solution = x.integrator.sol
+    isempty(solution.u) && return
+    (t, previous), rest = Iterators.peel(zip(solution.t, solution.u))
 
-    ks = keys(transcript)
-    if sorted
-        ks = sort!(collect(ks))
+    # We generate events for all variables at the beginning of the segment...
+    for i in LinearIndices(previous)
+        callback(t, names[i], previous[i])
     end
 
-    (; x.integrator.sol.t, (k => transcript[k] for k in ks)...)
+    # ...and only for changes at later timepoints.
+    for (t, current) in rest
+        for i in LinearIndices(current)
+            if current[i] != previous[i]
+                callback(t, names[i], current[i])
+            end
+        end
+        previous = current
+    end
 end
 
 function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)

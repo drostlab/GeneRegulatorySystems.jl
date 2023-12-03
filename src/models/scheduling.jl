@@ -3,15 +3,16 @@ module Scheduling
 using ...Conversion: cast
 using ..Models: Models, Model, FlatState, Branched
 using ..Models.Plumbing: Pass
-using ...Specifications: Specifications
-using ...Specifications: Each
-using ...Specifications: List
-using ...Specifications: Load
-using ...Specifications: Scope
-using ...Specifications: Sequence
-using ...Specifications: Slice
-using ...Specifications: Specification
-using ...Specifications: Template
+using ...Specifications:
+    Specifications,
+    Each,
+    List,
+    Load,
+    Scope,
+    Sequence,
+    Slice,
+    Specification,
+    Template
 
 using Logging: LogLevel, @logmsg
 using Random
@@ -91,7 +92,7 @@ end
 @kwdef struct Schedule{S <: Specification} <: Model{Any}
     specification::S
     bindings::Dict{Symbol, Any} = Dict{Symbol, Any}(
-        :into => :channel,
+        :into => "{channels}",
         :channel => "",
     )
     branch::Bool = false
@@ -100,7 +101,7 @@ end
 
 function sink(bindings::Dict{Symbol, Any})
     into = get(bindings, :into, nothing)
-    if into == :channel
+    if into == "{channels}"
         into = get(bindings, :channel, nothing)
     end
     into

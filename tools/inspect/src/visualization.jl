@@ -33,11 +33,21 @@ Base.getindex(colors::GroupColors, group::Symbol) = colors[string(group)]
 Base.getindex(colors::GroupColors, group::String) =
     get(colors.colors, group, colorant"gray")
 
+kindtype(kind::Symbol) = kindtype(Val(kind))
+kindtype(::Val) = Float64
+kindtype(::Val{:promoter}) = Bool
+
 kindname(kind::Symbol) = kindname(Val(kind))
 kindname(::Val{Kind}) where {Kind} = replace(String(Kind), '_' => ' ')
-kindname(::Val{:promoters}) = "promoter states"
+kindname(::Val{:promoter}) = "promoter states"
 kindname(::Val{:mrnas}) = "mRNAs"
 kindname(::Val{:premrnas}) = "pre-mRNAs"
+
+@kwdef struct Series{T <: Real}
+    ts::Vector{Float64} = Float64[]
+    ys::Vector{T} = T[]
+end
+Series(kind::Symbol) = Series{kindtype(kind)}()
 
 function attach_trajectory_label!(figure; kind, yscale)
     label = Label(
@@ -75,18 +85,17 @@ function attach_trajectory_components!(
     for (i, groups) in segments
         segment = index[i, :]
         right = max(right, segment.to)
-        for (group, dimension) in groups
-            top = max(top, maximum(dimension[!, end]))
+        for (group, series) in groups
             if segment.previous > 0 && haskey(segments, segment.previous)
+                # connect to previous segment's series
                 previous_groups = segments[segment.previous]
                 if haskey(previous_groups, group)
                     previous_t = index[segment.previous, :to]
-                    previous_value = last(previous_groups[group])[2]
-                    next_t, next_value = first(dimension)
+                    previous_y = last(previous_groups[group].ys)
                     scatterlines!(
                         axis,
-                        [previous_t, next_t],
-                        [previous_value, next_value],
+                        [previous_t, first(series.ts)],
+                        [previous_y, first(series.ys)],
                         markersize = 3,
                         linewidth = 1,
                         linestyle = :dash,
@@ -97,12 +106,25 @@ function attach_trajectory_components!(
 
             stairs!(
                 axis,
-                dimension.t,
-                dimension[!, end],
-                step = :pre,
+                series.ts,
+                series.ys,
+                step = :post,
                 linewidth = 1,
                 color = group_colors[group],
             )
+
+            if last(series.ts) < segment.to
+                stairs!(
+                    axis,
+                    [last(series.ts), segment.to],
+                    [last(series.ys), last(series.ys)],
+                    step = :post,
+                    linewidth = 1,
+                    color = group_colors[group],
+                )
+            end
+
+            top = max(top, maximum(series.ys))
         end
     end
 
@@ -134,19 +156,17 @@ function attach_trajectory_components!(
     for (i, groups) in segments
         segment = index[i, :]
         segment.from < segment.to || continue
-        segment.count ≥ 2 || continue
         right = max(right, segment.to)
         s = 1 / length(groups)
-        for (j, (group, dimension)) in enumerate(groups)
+        for (j, (group, series)) in enumerate(groups)
             if segment.previous > 0
+                # connect to previous segment's series
                 previous_t = index[segment.previous, :to]
                 previous_y = index[segment.previous, :track]
-                next_t = segment.from
-                next_y = segment.track + 1.0
                 scatterlines!(
                     axis,
-                    [previous_t, next_t],
-                    [previous_y, next_y],
+                    [previous_t, segment.from],
+                    [previous_y, segment.track + 1.0],
                     markersize = 5,
                     linewidth = 2,
                     linestyle = :dash,
@@ -154,13 +174,13 @@ function attach_trajectory_components!(
                 )
             end
             y = segment.track + j * s
-            ts = repeat(dimension.t, inner = 2)[2 : end - 1]
-            ys = repeat(dimension[!, end][1 : end - 1], inner = 2)
+            ts = [repeat(series.ts, inner = 2)[2 : end]; segment.to]
+            ys = repeat(series.ys, inner = 2)
             band!(
                 axis,
                 ts,
-                y - 0.55s .- (0.45s .* ys),
-                y - 0.45s .+ (0.45s .* ys),
+                y - 0.5s .- (0.5s .* ys),
+                y - 0.5s .+ (0.5s .* ys),
                 color = group_colors[group],
             )
         end
@@ -175,13 +195,7 @@ attach_trajectory_components!(figure; dimensions, kind, rest...) =
     if haskey(dimensions, kind)
         attach_trajectory_components!(
             figure,
-            promote_type(
-                unique(
-                    eltype(dimension[!, end])
-                    for segment in values(dimensions[kind])
-                    for dimension in values(segment)
-                )...
-            );
+            kindtype(kind);
             dimensions,
             kind,
             rest...,
