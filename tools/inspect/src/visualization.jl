@@ -1,6 +1,6 @@
 module Visualization
 
-using Printf
+using ..Common: Dimension
 
 import Colors: Colors, Color, @colorant_str
 using DataFrames
@@ -8,6 +8,8 @@ using Makie
 using GeneRegulatorySystems: Models, Scheduling
 import Graphs
 import GraphMakie
+
+using Printf
 
 struct GroupColors
     colors::Dict{String, Color}
@@ -38,7 +40,7 @@ kindtype(::Val) = Float64
 kindtype(::Val{:promoter}) = Bool
 
 kindname(kind::Symbol) = kindname(Val(kind))
-kindname(::Val{Kind}) where {Kind} = replace(String(Kind), '_' => ' ')
+kindname(::Val{Kind}) where {Kind} = String(Kind)
 kindname(::Val{:promoter}) = "promoter states"
 kindname(::Val{:mrnas}) = "mRNAs"
 kindname(::Val{:premrnas}) = "pre-mRNAs"
@@ -47,7 +49,14 @@ kindname(::Val{:premrnas}) = "pre-mRNAs"
     ts::Vector{Float64} = Float64[]
     ys::Vector{T} = T[]
 end
-Series(kind::Symbol) = Series{kindtype(kind)}()
+
+seriestype(dimension::Dimension) = Series{kindtype(dimension.kind)}
+
+@kwdef struct Catenation
+    front::Int
+    back::Int
+    series::Dict{Dimension, Series} = Dict{Dimension, Series}()
+end
 
 function attach_trajectory_label!(figure; kind, yscale)
     label = Label(
@@ -72,8 +81,7 @@ function attach_trajectory_components!(
     figure,
     ::Type{<:Number};
     index,
-    dimensions,
-    kind,
+    catenations,
     group_colors,
     yscale,
 )
@@ -81,50 +89,63 @@ function attach_trajectory_components!(
 
     top = 0.0
     right = 1.0
-    segments = dimensions[kind]
-    for (i, groups) in segments
-        segment = index[i, :]
-        right = max(right, segment.to)
-        for (group, series) in groups
-            if segment.previous > 0 && haskey(segments, segment.previous)
-                # connect to previous segment's series
-                previous_groups = segments[segment.previous]
-                if haskey(previous_groups, group)
-                    previous_t = index[segment.previous, :to]
-                    previous_y = last(previous_groups[group].ys)
+    for catenation in values(catenations)
+        to = index[catenation.back, :to]
+        right = max(right, to)
+        for (dimension, series) in catenation.series
+            top = max(top, maximum(series.ys))
+            color = group_colors[dimension.group]
+
+            previous_i = index[catenation.front, :previous]
+            if previous_i > 0 && haskey(catenations, previous_i)
+                previous_t = index[previous_i, :to]
+                previous_series = catenations[previous_i].series
+                previous_y =
+                if haskey(previous_series, dimension)
+                    previous_y = last(previous_series[dimension].ys)
                     scatterlines!(
                         axis,
                         [previous_t, first(series.ts)],
                         [previous_y, first(series.ys)],
                         markersize = 3,
                         linewidth = 1,
-                        linestyle = :dash,
-                        color = group_colors[group],
+                        linestyle = :dash;
+                        color,
                     )
                 end
             end
 
-            stairs!(
-                axis,
-                series.ts,
-                series.ys,
-                step = :post,
-                linewidth = 1,
-                color = group_colors[group],
-            )
-
-            if last(series.ts) < segment.to
+            if catenation.front == catenation.back
                 stairs!(
                     axis,
-                    [last(series.ts), segment.to],
-                    [last(series.ys), last(series.ys)],
+                    series.ts,
+                    series.ys,
                     step = :post,
+                    linewidth = 1;
+                    color,
+                )
+
+                if last(series.ts) < to
+                    stairs!(
+                        axis,
+                        [last(series.ts), to],
+                        [last(series.ys), last(series.ys)],
+                        step = :post,
+                        linewidth = 1;
+                        color,
+                    )
+                end
+            else
+                scatterlines!(
+                    axis,
+                    series.ts,
+                    series.ys,
+                    markersize = 3,
                     linewidth = 1,
-                    color = group_colors[group],
+                    linestyle = :dash;
+                    color,
                 )
             end
-
-            top = max(top, maximum(series.ys))
         end
     end
 
@@ -137,8 +158,7 @@ function attach_trajectory_components!(
     figure,
     ::Type{Bool};
     index,
-    dimensions,
-    kind,
+    catenations,
     group_colors,
     yscale,
 )
@@ -151,16 +171,15 @@ function attach_trajectory_components!(
         tellheight = false,
     )
 
-    segments = dimensions[kind]
     right = 1.0
-    for (i, groups) in segments
-        segment = index[i, :]
+    for catenation in values(catenations)
+        catenation.front == catenation.back || continue
+        segment = index[catenation.back, :]
         segment.from < segment.to || continue
         right = max(right, segment.to)
-        s = 1 / length(groups)
-        for (j, (group, series)) in enumerate(groups)
+        s = 1 / length(catenation.series)
+        for (j, (dimension, series)) in enumerate(catenation.series)
             if segment.previous > 0
-                # connect to previous segment's series
                 previous_t = index[segment.previous, :to]
                 previous_y = index[segment.previous, :track]
                 scatterlines!(
@@ -181,7 +200,7 @@ function attach_trajectory_components!(
                 ts,
                 y - 0.5s .- (0.5s .* ys),
                 y - 0.5s .+ (0.5s .* ys),
-                color = group_colors[group],
+                color = group_colors[dimension.group],
             )
         end
     end
@@ -191,20 +210,19 @@ function attach_trajectory_components!(
     axis
 end
 
-attach_trajectory_components!(figure; dimensions, kind, rest...) =
-    if haskey(dimensions, kind)
+attach_trajectory_components!(figure; events, kind, rest...) =
+    if haskey(events, kind)
         attach_trajectory_components!(
             figure,
             kindtype(kind);
-            dimensions,
-            kind,
+            catenations = events[kind],
             rest...,
         )
     else
         Label(figure, "(no data)", tellheight = false, tellwidth = false)
     end
 
-function attach_trajectory!(figure; index, dimensions, kinds, group_colors)
+function attach_trajectory!(figure; index, events, kinds, group_colors)
     grid = GridLayout(tellheight = false)
 
     transform_pattern = r"""
@@ -225,7 +243,7 @@ function attach_trajectory!(figure; index, dimensions, kinds, group_colors)
         grid[i, 2] = attach_trajectory_components!(
             figure;
             index,
-            dimensions,
+            events,
             kind,
             group_colors,
             yscale,

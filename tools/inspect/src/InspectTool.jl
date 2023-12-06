@@ -3,7 +3,8 @@ module InspectTool
 include("$(@__DIR__)/../../common.jl")
 include("$(@__DIR__)/visualization.jl")
 
-using .Common: TrajectoryComponent
+using .Common: Dimension
+using .Visualization: Catenation
 
 import Arrow
 using Chain
@@ -11,6 +12,11 @@ using DataFrames
 using GeneRegulatorySystems
 using GLMakie
 using PrecompileTools
+
+const LIMITS = (;
+    catenations = 500,
+    groups = 32,
+)
 
 @kwdef struct AdjacentPrefixes
     parent::String
@@ -21,10 +27,7 @@ end
 
 @kwdef struct PreparedData
     index::DataFrame
-    dimensions::Union{
-        Dict{Symbol, Dict{Int, Dict{String, Visualization.Series}}},
-        Nothing,
-    }
+    events::Union{Dict{Symbol, Dict{Int, Catenation}}, Nothing}
     model::Union{Models.Description, Nothing}
     groups::Union{Vector{String}, Nothing}
     group_colors::Visualization.GroupColors
@@ -83,13 +86,63 @@ function filter(index; selection)
     subset(index, :count => ByRow(>(0)), criteria...)
 end
 
-function load_dimensions(filtered; location)
-    sum(filtered.count) < 100_000_000 || return
+function cut(filtered)
+    result = Catenation[]
 
-    result = Dict{Symbol, Dict{Int, Dict{String, Visualization.Series}}}()
+    front = 0
+    back = 0
+    branch = nothing
+    for segment in eachrow(filtered)
+        segment.count > 0 || continue  # Ignore segments without recorded data.
 
-    segment_ids = Dict(zip(filtered.i, LinearIndices(eachrow(filtered))))
-    components = Dict{Symbol, TrajectoryComponent}()
+        # Terminate and emit an ongoing run when encountering a non-instant
+        # segment or on switching branches:
+        if front > 0 && (segment.branch != branch || segment.from < segment.to)
+            push!(result, Catenation(; front, back))
+            front = back = 0
+        end
+        branch = segment.branch
+
+        current = rownumber(segment)
+        if segment.from < segment.to
+            # Emit a single-segment run:
+            push!(result, Catenation(front = current, back = current))
+        else
+            # Initiate or extend an ongoing run with the current segment:
+            back = current
+            if front == 0
+                front = current
+            end
+        end
+    end
+
+    # Emit the potentially ongoing run:
+    front > 0 && push!(result, Catenation(; front, back))
+
+    result
+end
+
+function load_events(filtered; location)
+    # Since Makie does not handle large numbers of plot objects well, we
+    # optimize the common case where the simulation state was sampled only at
+    # equidistant time steps by concatenating these consecutive slices into
+    # longer time series that can later be plotted (in a different style) as
+    # single Makie plot objects.
+
+    # We first bracket the segments into these potentially composite ranges,
+    # each with an initially empty collection of time series attached.
+    catenations = cut(filtered)
+    length(catenations) ≤ LIMITS.catenations || return nothing
+    catenations_index = Dict(
+        filtered[k, :i] => j
+        for j in LinearIndices(catenations)
+        for k in (catenations[j].front : catenations[j].back)
+        if filtered[k, :count] > 0
+    )
+
+    # Next we load all linked event streams and sort the events into their
+    # respective timeseries.
+    dimensions = Dict{Symbol, Dimension}()
     for channel in unique(subset(filtered, :count => ByRow(>(0))).into)
         events = @chain begin
             Common.artifact(:events, channel, prefix = location)
@@ -98,19 +151,37 @@ function load_dimensions(filtered; location)
         end
 
         for event in eachrow(events)
-            haskey(segment_ids, event.i) || continue
-            component = get!(components, event.name) do
-                TrajectoryComponent(event.name)
+            haskey(catenations_index, event.i) || continue
+
+            catenation = catenations[catenations_index[event.i]]
+            dimension = get!(dimensions, event.name) do
+                Dimension(event.name)
             end
-            series = @chain result begin
-                get!(valtype(_), _, component.kind)
-                get!(valtype(_), _, segment_ids[event.i])
-                get!(_, component.group) do
-                    Visualization.Series(component.kind)
-                end
+            series = get!(catenation.series, dimension) do
+                Visualization.seriestype(dimension)()
             end
+
             push!(series.ts, event.t)
             push!(series.ys, event.value)
+        end
+    end
+
+    # Finally we regroup the timeseries (i.e. break up the catenations) by
+    # kind, each catenation indexed by its final segment so that we can later
+    # look them up from backlinks to connect them.
+    result = Dict{Symbol, Dict{Int, Catenation}}()
+    for catenation in catenations
+        by_kind = Dict{Symbol, Catenation}()
+        for (dimension, series) in catenation.series
+            catenation′ = get!(by_kind, dimension.kind) do
+                Catenation(; catenation.front, catenation.back)
+            end
+            catenation′.series[dimension] = series
+        end
+
+        for (kind, catenation′) in by_kind
+            catenations′ = get!(Dict{Int, Catenation}, result, kind)
+            catenations′[catenation′.back] = catenation′
         end
     end
 
@@ -183,15 +254,15 @@ function prepare(index; selection, location)
 
     adjacents = AdjacentPrefixes(; previous, next, firstborn, parent)
 
-    dimensions = load_dimensions(index; location)
-    if dimensions === nothing
+    events = load_events(index; location)
+    if events === nothing
         groups = nothing
     else
         groups = unique(
-            group
-            for segments in values(dimensions)
-            for segment in values(segments)
-            for group in keys(segment)
+            dimension.group
+            for catenations in values(events)
+            for catenation in values(catenations)
+            for dimension in keys(catenation.series)
         )
         if length(groups) > 32
             groups = nothing
@@ -208,14 +279,7 @@ function prepare(index; selection, location)
             nothing
         end
 
-    PreparedData(;
-        index,
-        dimensions,
-        groups,
-        group_colors,
-        model,
-        adjacents,
-    )
+    PreparedData(; index, events, groups, group_colors, model, adjacents)
 end
 
 function attach_display!(figure, ::Val{:selector}; data, selection, _...)
@@ -301,9 +365,13 @@ function attach_display!(figure, ::Val{:selector}; data, selection, _...)
 end
 
 function attach_display!(figure, ::Val{:trajectory}; data, kinds, _...)
-    if data.dimensions === nothing
-        Label(figure, "(≥1000000 slices)", tellheight = false)
-    elseif isempty(data.dimensions)
+    if data.events === nothing
+        Label(
+            figure,
+            "(>$(LIMITS.catenations) catenations)",
+            tellheight = false,
+        )
+    elseif isempty(data.events)
         Label(figure, "(no data)", tellheight = false)
     elseif isempty(kinds)
         Label(figure, "(no kinds selected for display)", tellheight = false)
@@ -311,7 +379,7 @@ function attach_display!(figure, ::Val{:trajectory}; data, kinds, _...)
         Visualization.attach_trajectory!(
             figure;
             data.index,
-            data.dimensions,
+            data.events,
             kinds,
             data.group_colors,
         )
@@ -334,17 +402,17 @@ function attach_display!(figure, ::Val{:legend}; data, _...)
     if data.groups === nothing
         Label(figure, "(>32 groups)")
     else
+        groups = sort(data.groups)
         Legend(
             figure,
-            [
+            map(groups) do group
                 MarkerElement(
                     marker = :circle,
                     markersize = 32,
                     color = data.group_colors[group],
                 )
-                for group in sort(data.groups)
-            ],
-            data.groups,
+            end,
+            groups,
             orientation = :horizontal,
             tellwidth = false,
             tellheight = true,
@@ -355,16 +423,17 @@ end
 function attach_display!(figure, ::Val{:info}; data, _...)
     events_count = sum(data.index.count)
     message =
-        if data.dimensions === nothing
-            "$events_count events (≥100000000, not loaded)"
+        if data.events === nothing
+            "$events_count events \
+                (>$(LIMITS.catenations) catenations, not loaded)"
         else
             groups_count =
                 if data.groups === nothing
-                    ">32"
+                    ">$(LIMITS.groups)"
                 else
                     "$(length(data.groups))"
                 end
-            "$events_count events of $(length(data.dimensions)) kinds \
+            "$events_count events of $(length(data.events)) kinds \
                 in $groups_count groups × $(nrow(data.index)) segments"
         end
     Label(figure, message, tellwidth = false)
