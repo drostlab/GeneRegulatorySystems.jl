@@ -3,7 +3,7 @@ module InspectTool
 include("$(@__DIR__)/../../common.jl")
 include("$(@__DIR__)/visualization.jl")
 
-using .Common: Dimension
+using .Common: Dimension, artifact
 using .Visualization: Catenation
 
 import Arrow
@@ -145,7 +145,7 @@ function load_events(filtered; location)
     dimensions = Dict{Symbol, Dimension}()
     for channel in unique(subset(filtered, :count => ByRow(>(0))).into)
         events = @chain begin
-            Common.artifact(:events, channel, prefix = location)
+            artifact(:events, channel, prefix = location)
             Arrow.Table
             DataFrame
         end
@@ -499,7 +499,7 @@ function main(;
     size = Tuple(parse.(Int, split(size, 'x')))
 
     index = @chain begin
-        Common.artifact(:index; prefix = location)
+        artifact(:index; prefix = location)
         Arrow.Table
         DataFrame
     end
@@ -524,15 +524,66 @@ function main(;
     end
 end
 
-#=
 @setup_workload begin
     mktempdir() do location
-        # TODO create dummy data
+        Arrow.write(
+            artifact(:index, prefix = location),
+            DataFrame(
+                i = 1:3,
+                path = ["-1", "-1", "-2"],
+                from = [0.0, 1.0, 1.0],
+                to = [0.0, 1.0, 2.0],
+                model = ["-1", "-1", "-2"],
+                label = ["", "", "SKG"],
+                count = [2, 2, 1],
+                into = ["-1", "-1", "-1"],
+            )
+        )
+
+        Arrow.write(
+            artifact(:events, "-1", prefix = location),
+            DataFrame(
+                i = [1, 1, 2, 2, 3],
+                t = [0.0, 0.0, 1.0, 1.0, 1.5],
+                name = [
+                    Symbol("1.mrnas"),
+                    Symbol("1.proteins"),
+                    Symbol("1.mrnas"),
+                    Symbol("1.proteins"),
+                    Symbol("2.promoter"),
+                ],
+                value = [1, 0, 2, 1, 1],
+            )
+        )
+
+        cp(
+            "$(@__DIR__)/precompile.schedule.json",
+            artifact(:specification, prefix = location),
+        )
+
         @compile_workload begin
-            # TODO run main
+            main(
+                channel = nothing,
+                items_prefix = "-1",
+                label_pattern = nothing,
+                displays = "selector,trajectory,model,legend,info",
+                kinds = "log10(mrnas),proteins",
+                size = "1280x720",
+                wait_for_close = false;
+                location,
+            )
+            main(
+                channel = nothing,
+                items_prefix = nothing,
+                label_pattern = "SKG",
+                displays = "selector,trajectory,model,legend,info",
+                kinds = "promoter",
+                size = "1280x720",
+                wait_for_close = false;
+                location,
+            )
         end
     end
 end
-=#
 
 end
