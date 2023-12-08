@@ -56,6 +56,12 @@ then
     >&2 echo \
         "Info: '$COMMAND' Julia environment may be stale," \
         "running \`]instantiate\`..."
+    if [ "$COMMAND" = inspect ]; then
+        >&2 echo \
+            "Info: Empty windows may open briefly during precompilation;" \
+            "do not close them manually."
+    fi
+
     (
         set -x
         env JULIA_PKG_PRECOMPILE_AUTO=0 "$JULIA" --project="$TOOL" \

@@ -354,6 +354,9 @@ function main(;
 end
 
 @setup_workload begin
+    get(ENV, "JULIA_PKG_PRECOMPILE_AUTO", "1") == "0" &&
+        error("Precompilation triggered implicitly; this should not happen.")
+
     specification = "$(@__DIR__)/precompile.schedule.json"
     mktempdir() do location
         @compile_workload begin

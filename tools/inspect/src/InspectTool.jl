@@ -525,6 +525,9 @@ function main(;
 end
 
 @setup_workload begin
+    get(ENV, "JULIA_PKG_PRECOMPILE_AUTO", "1") == "0" &&
+        error("Precompilation triggered implicitly; this should not happen.")
+
     mktempdir() do location
         Arrow.write(
             artifact(:index, prefix = location),
