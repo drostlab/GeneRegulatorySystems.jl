@@ -261,36 +261,55 @@ function attach_trajectory!(figure; index, events, kinds, group_colors)
     grid
 end
 
-attach_model!(figure, model::Models.Description; group_colors) =
+attach_model!(figure, ::Models.Description; _...) =
     Label(figure, "(model has no visual summary)", tellheight = false)
 
-function attach_model!(figure, model::Models.Network; group_colors)
+attach_model!(figure, description::Models.LabelDescription; _...) =
+    Label(figure, description.label, tellheight = false)
+
+function attach_model!(figure, network::Models.Network; group_colors)
     axis = Axis(figure, autolimitaspect = 1)
 
     styles = Dict(
         :activation => (color = :black, linestyle = :solid),
         :repression => (color = :red, linestyle = :solid),
         :proteolysis => (color = :red, linestyle = :dash),
-        :multiple => (color = :gray, linestyle = :dash, label = "⋯"),
+        :multiple => (color = :darkred, linestyle = :dash),
     )
 
     groups_index = Dict(
         group => i
-        for (i, group) in enumerate(model.species_groups)
+        for (i, group) in enumerate(network.species_groups)
     )
-    edges = Dict()
-    for link in model.links
+    links_by_edge = reduce(network.links, init = Dict()) do by_edge, link
         edge = groups_index[link.from] => groups_index[link.to]
-        edges[edge] = haskey(edges, edge) ? styles[:multiple] : (;
-            label = @sprintf(
-                "%.2g",
-                link.properties[link.kind == :proteolysis ? :k : :at]
-            ),
-            styles[link.kind]...
-        )
+        push!(get!(Vector, by_edge, edge), link)
+        by_edge
     end
 
-    graph = Graphs.DiGraph(length(model.species_groups))
+    edges = reduce(links_by_edge, init = Dict()) do edges, (edge, links)
+        edges[edge] =
+            if length(links) == 1
+                link = only(links)
+                value = link.properties[link.kind == :proteolysis ? :k : :at]
+                (; label = @sprintf("%.2g", value), styles[link.kind]...)
+            else
+                values = ["", "", ""]
+                for link in links
+                    if link.kind == :activation
+                        values[1] = @sprintf("%.2g", link.properties[:at])
+                    elseif link.kind == :repression
+                        values[2] = @sprintf("%.2g", link.properties[:at])
+                    elseif link.kind == :proteolysis
+                        values[3] = @sprintf("%.2g", link.properties[:k])
+                    end
+                end
+                (; label = join(values, "/"), styles[:multiple]...)
+            end
+        edges
+    end
+
+    graph = Graphs.DiGraph(length(network.species_groups))
     Graphs.add_edge!.(Ref(graph), keys(edges))
 
     edge_properties(property) = map(Graphs.edges(graph)) do edge
@@ -318,7 +337,7 @@ function attach_model!(figure, model::Models.Network; group_colors)
         graph,
         node_size = 16,
         node_color = [
-            group_colors[model.species_groups[i]]
+            group_colors[network.species_groups[i]]
             for i in Graphs.vertices(graph)
         ];
         edge_attributes...

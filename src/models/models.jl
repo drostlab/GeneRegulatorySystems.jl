@@ -54,7 +54,12 @@ abstract type Description end
 
 struct EmptyDescription <: Description end
 
+struct LabelDescription <: Description
+    label::String
+end
+
 @kwdef struct Network <: Description
+    label::String = ""
     species_kinds::Vector{Symbol}
     species_groups::Vector{Symbol}
     links

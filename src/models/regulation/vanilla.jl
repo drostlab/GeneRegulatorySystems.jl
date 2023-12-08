@@ -127,6 +127,8 @@ const REACTION_KINDS = collect(fieldnames(BaseRates))
 const SPECIES_KINDS = [:promoter, :elongations, :premrnas, :mrnas, :proteins]
 
 Models.describe(definition::Definition) = Models.Network(
+    label =
+        "'regulation/vanilla' network with $(length(definition.genes)) nodes",
     species_kinds = SPECIES_KINDS,
     species_groups = [gene.name for gene in definition.genes],
     links = mapreduce(vcat, definition.genes) do gene

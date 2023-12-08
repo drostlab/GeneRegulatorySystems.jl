@@ -272,6 +272,9 @@ function prepare(index; selection, location)
     group_colors = Visualization.GroupColors(groups)
 
     model_locators = unique(subset(index, [:from, :to] => ByRow(<)).model)
+    if isempty(model_locators)
+        model_locators = unique(index.model)
+    end
     model =
         if length(model_locators) == 1
             Models.describe(Common.reify(only(model_locators); location))
@@ -400,7 +403,7 @@ end
 
 function attach_display!(figure, ::Val{:legend}; data, _...)
     if data.groups === nothing
-        Label(figure, "(>32 groups)")
+        Label(figure, "(>32 groups)", tellwidth = false)
     else
         groups = sort(data.groups)
         Legend(

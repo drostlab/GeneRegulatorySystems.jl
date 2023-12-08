@@ -67,12 +67,14 @@ end
     template::Template
 end
 
-Models.describe(definition::Definition) =
-    if definition.template.n ≤ 32
+function Models.describe(definition::Definition)
+    n = definition.template.n
+    if n ≤ 32
         Models.describe(rand(randomness(definition.seed), definition.template))
     else
-        Models.EmptyDescription()
+        Models.LabelDescription("(large network with $n nodes omitted)")
     end
+end
 
 regulator(
     template::Union{ActivationNetworkTemplate, RepressionNetworkTemplate};

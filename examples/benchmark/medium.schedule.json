@@ -1,14 +1,14 @@
 {
+    "into": "${channel}",
     "each": {"start": 8, "stop": 9},
-    "as": "n",
+    "as": "k",
     "step": {
-        "anchor": "${channel}",
-        "label": "benchmark-SKG-n${n}",
+        "into": "${into}-k${k}",
+        "label": "benchmark-SKG-k${k}",
         "branch": true,
         "each": {"length": 3},
         "as": "replicate",
         "step": {
-            "channel": "${anchor}",
             "to": 50000.0,
             "step": 100.0,
             "do": {"{regulation/kronecker}": {
@@ -34,7 +34,7 @@
                             [0.8, 0.6],
                             [0.4, 0.2]
                         ],
-                        "power": {"$": "n"},
+                        "power": {"$": "k"},
                         "expected_links_per_gene": 0.8
                     },
                     "at": ["LogNormal", -5.0, 2.0]
@@ -45,7 +45,7 @@
                             [0.6, 0.5],
                             [0.4, 0.2]
                         ],
-                        "power": {"$": "n"},
+                        "power": {"$": "k"},
                         "expected_links_per_gene": 0.7
                     },
                     "at": ["LogNormal", -5.0, 2.0]
@@ -56,7 +56,7 @@
                             [0.4, 0.3],
                             [0.2, 0.1]
                         ],
-                        "power": {"$": "n"},
+                        "power": {"$": "k"},
                         "expected_links_per_gene": 0.5
                     },
                     "k": ["LogNormal", -5.0, 2.0]
