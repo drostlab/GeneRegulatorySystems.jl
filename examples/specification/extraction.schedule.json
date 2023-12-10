@@ -44,7 +44,7 @@
         }}
     },
     {
-        "into": "${channel}-transcriptomic",
+        "into": "${into}-transcriptomic",
         "branch": true,
         "step": [
             {"{extract-transcriptome-simple}": {"collect": 0.8}},
@@ -73,7 +73,8 @@
         ]
     },
     {
-        "channel": "${channel}-multiomic",
+        "into": "{channels}",
+        "channel": "${into}-multiomic",
         "step": [
             {"branch": true, "step": [
                 {"{extract-transcriptome-amplified}": {

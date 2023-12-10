@@ -40,9 +40,9 @@ function Logging.handle_message(
     done = nothing,
 )
     if message == :done
-        @info "$at done"
+        @info "`$at` done"
     elseif message == :saved
-        @info "Saved $done slices into '$at'"
+        @info "Saved $done events into `$at`"
     end
 end
 
@@ -61,7 +61,7 @@ function Logging.handle_message(
     done = 0,
 )
     if message == :saved
-        @info "Saved $done events into '$at'"
+        @info "Saved $done events into `$at`"
         return
     end
 
@@ -160,7 +160,13 @@ function prepare!(; location, specifications, seed)
         paths = realpath.(specifications)
         artifacts = map_artifacts(paths)
         wrapped = [
-            Dict(:< => basename("$(location)$(artifacts[p])"))
+            Dict(
+                :< => basename("$(location)$(artifacts[p])"),
+                :into => "-" * replace(
+                    artifacts[p],
+                    r"(\.schedule)?(\.json)$" => "",
+                )
+            )
             for p in paths
         ]
 
@@ -178,7 +184,7 @@ function prepare!(; location, specifications, seed)
                         :_julia_version => "v$VERSION",
                     ),
                     if length(wrapped) == 1
-                        Dict(:step => only(wrapped))
+                        Dict(:step => Dict(:< => only(wrapped)[:<]))
                     else
                         Dict(:step => wrapped, :branch => true)
                     end,
@@ -275,7 +281,11 @@ function (sink::Sink)(into, state; path, primitive!, from, _...)
         count += 1
     end
 
-    push!(sink.index, (; sink.i, path, from, to, model, label, count, into))
+    filename = basename(artifact(:events, into, prefix = sink.location))
+    push!(
+        sink.index,
+        (; sink.i, path, from, to, model, label, count, into = filename),
+    )
 end
 
 function with_progress(run!, progress::Symbol)

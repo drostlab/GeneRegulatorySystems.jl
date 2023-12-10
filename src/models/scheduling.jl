@@ -92,7 +92,8 @@ end
 @kwdef struct Schedule{S <: Specification} <: Model{Any}
     specification::S
     bindings::Dict{Symbol, Any} = Dict{Symbol, Any}(
-        :into => "{channels}",
+        :seed => "",
+        :into => "",
         :channel => "",
     )
     branch::Bool = false
@@ -102,25 +103,38 @@ end
 function sink(bindings::Dict{Symbol, Any})
     into = get(bindings, :into, nothing)
     if into == "{channels}"
-        into = get(bindings, :channel, nothing)
+        into = bindings[:channel]
     end
     into
 end
 
-function descended(bindings::Dict{Symbol, Any}, segment)
-    channel = get(bindings, :channel, nothing)
-    merge(
-        bindings,
-        Dict(:channel => isnothing(channel) ? nothing : "$channel-$segment"),
-    )
-end
+descended(bindings::Dict{Symbol, Any}, segment) = merge(
+    bindings,
+    Dict(:channel => "$(bindings[:channel])-$segment"),
+)
 
 evaluate_bindings(f!::Schedule{Scope}) = merge(
-    f!.specification.barrier ? Dict{Symbol, Any}() : f!.bindings,
+    # from outer scope:
+    if f!.specification.barrier
+        # Implicitly retain seed and output control, even if this scope has
+        # a barrier (because its step is a Load); these are always available
+        # in the loaded specification.
+        Dict{Symbol, Any}(
+            :seed => f!.bindings[:seed],
+            :into => f!.bindings[:into],
+            :channel => f!.bindings[:channel],
+        )
+    else
+        f!.bindings
+    end,
+
+    # evaluated definitions:
     Dict{Symbol, Any}(
         name => evaluate(specification; f!.bindings)
         for (name, specification) in f!.specification.definitions
     ),
+
+    # evaluated definitions' paths
     Dict{Symbol, Any}(
         Symbol("^$name") => Locator(f!.path)
         for name in keys(f!.specification.definitions)
@@ -173,22 +187,15 @@ models(each::Each; bindings, path) = (
     for (i, x) in enumerate(evaluate(each.items; bindings))
 )
 
-function load_schedule(f!::Schedule{Load}; load)
-    channel = get(f!.bindings, :channel, nothing)
-    if channel !== nothing
-        name = replace(f!.specification.path, r"(\.schedule)?(\.json)$" => "")
-        channel = "$channel-$name"
-    end
-    Schedule(
-        specification = Specification(
-            load(f!.specification.path),
-            bound = Set(keys(f!.bindings)),
-        ),
-        bindings = merge(f!.bindings, Dict(:channel => channel));
-        f!.branch,
-        f!.path,
-    )
-end
+load_schedule(f!::Schedule{Load}; load) = Schedule(
+    specification = Specification(
+        load(f!.specification.path),
+        bound = Set(keys(f!.bindings)),
+    );
+    f!.bindings,
+    f!.branch,
+    f!.path,
+)
 
 function (f!::Schedule{Slice})(x, Δt::Float64; context...)
     path =

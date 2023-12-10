@@ -37,7 +37,7 @@ const SPECIFICATION_EXAMPLES = "$(@__DIR__)/../examples/specification"
     for filename in readdir(SPECIFICATION_EXAMPLES)
         schedule! = Schedule(
             specification = Specification(
-                Dict(:seed => "seed", :step => Dict(:< => filename))
+                Dict(:step => Dict(:< => filename))
             )
         )
         schedule!(Models.FlatState(); load, dryrun)
@@ -45,7 +45,7 @@ const SPECIFICATION_EXAMPLES = "$(@__DIR__)/../examples/specification"
 
     kronecker_schedule! = Schedule(
         specification = Specification(
-            Dict(:seed => "seed", :step => Dict(:< => "SKG.schedule.json"))
+            Dict(:step => Dict(:< => "SKG.schedule.json"))
         )
     )
     Models.describe(Scheduling.reify(kronecker_schedule!, "+++"; load))
@@ -53,13 +53,10 @@ const SPECIFICATION_EXAMPLES = "$(@__DIR__)/../examples/specification"
 
     templating_schedule! = Schedule(
         specification = Specification(
-            Dict(
-                :seed => "seed",
-                :step => Dict(:< => "templating.schedule.json"),
-            )
+            Dict(:step => Dict(:< => "templating.schedule.json"))
         )
     )
-    Models.describe(Scheduling.reify(templating_schedule!, "++-5.do"; load))
+    Models.describe(Scheduling.reify(templating_schedule!, "+++-1.do"; load))
 
 end
 

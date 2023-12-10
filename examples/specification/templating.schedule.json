@@ -1,5 +1,6 @@
 {
-    "anchor": {"$": "channel"},
+    "into": "{channels}",
+    "anchor": "${into}",
     "typical_gene" : {
         "base_rates": {
             "activation": 0.05,
@@ -14,7 +15,7 @@
             "protein_decay": 0.000000136
         }
     },
-    "each": ["default", "Direct", "SortingDirect", "RSSA", "RSSACR"],
+    "each": ["default", "Direct"],
     "as": "method",
     "step": {
         "do": {
@@ -33,10 +34,10 @@
                 ]
             }
         },
-        "each": {"start": 150, "step": 10, "stop": 200},
+        "each": {"start": 150, "step": 25, "stop": 200},
         "as": "proteins",
         "step": {
-            "each": [200.0, 1000.0, 5000.0],
+            "each": [200.0, 5000.0],
             "as": "t",
             "step": {
                 "label": "${method}-p${proteins}-at${t}",

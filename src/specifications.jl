@@ -96,15 +96,12 @@ List(items) = List(; items)
     )
 end
 
-@kwdef struct Load <: Specification
+struct Load <: Specification
     path::AbstractString
-    free::Set{Symbol}
 end
 
-Load(path) = Load(; path, free = Set{Symbol}())
-
-#= TODO confirm we still need these for non-Templates =#
 free(::Slice) = Set{Symbol}()
+free(::Load) = Set{Symbol}()
 free(s::Specification) = s.free
 
 paste(x::AbstractString) = x
@@ -185,17 +182,20 @@ end
 maybe_reference(x::AbstractDict{Symbol}; bound) =
     haskey(x, :$) ? Template(x; bound) : nothing
 
-function maybe_load(x::AbstractDict{Symbol}; bound)
-    haskey(x, :<) || return  # x is not a Load literal
-    definitions = Dict{Symbol, Specification}(
-        key => Specification(value; bound)
-        for (key, value) in x
-        if key != :<
-    )
-    step = Load(path = x[:<], free = keys(definitions))
-
-    isempty(definitions) ? step : Scope(barrier = true; step, definitions)
-end
+maybe_load(x::AbstractDict{Symbol}; bound) =
+    if haskey(x, :<)
+        Scope(
+            definitions = Dict{Symbol, Specification}(
+                key => Specification(value; bound)
+                for (key, value) in x
+                if key != :<
+            ),
+            step = Load(x[:<]),
+            barrier = true,
+        )
+    else
+        nothing  # x is not a Load literal
+    end
 
 function maybe_tagged_template(x::AbstractDict{Symbol}; bound)
     length(x) == 1 || return

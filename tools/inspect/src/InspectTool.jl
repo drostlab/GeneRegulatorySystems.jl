@@ -144,12 +144,7 @@ function load_events(filtered; location)
     # respective timeseries.
     dimensions = Dict{Symbol, Dimension}()
     for channel in unique(subset(filtered, :count => ByRow(>(0))).into)
-        events = @chain begin
-            artifact(:events, channel, prefix = location)
-            Arrow.Table
-            DataFrame
-        end
-
+        events = "$(dirname(location))/$channel" |> Arrow.Table |> DataFrame
         for event in eachrow(events)
             haskey(catenations_index, event.i) || continue
 
@@ -542,7 +537,10 @@ end
                 model = ["-1", "-1", "-2"],
                 label = ["", "", "SKG"],
                 count = [2, 2, 1],
-                into = ["-1", "-1", "-1"],
+                into = fill(
+                    basename(artifact(:events, "-1", prefix = location)),
+                    3,
+                ),
             )
         )
 

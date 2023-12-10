@@ -4,7 +4,8 @@
         "G2": {"proteins": 200}
     }},
     {
-        "anchor": "${channel}",
+        "anchor": "${into}",
+        "into": "{channels}",
         "each": [1.0, 4.0, 13.0],
         "as": "repression_at",
         "step": {
