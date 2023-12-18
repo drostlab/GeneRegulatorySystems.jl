@@ -11,7 +11,8 @@ using Logging: LogLevel, @logmsg
 
 Progress = LogLevel(-2)
 
-normalize_name(s) = Symbol(replace(chopsuffix(String(s), "(t)"), '₊' => '.'))
+normalize_name(s) =
+    Symbol(replace(String(ModelingToolkit.getname(s)), '₊' => '.'))
 
 @kwdef mutable struct ProgressTrigger
     i::Int = 0
@@ -49,7 +50,9 @@ Models.t(x::JumpState) = x.integrator.t
 cast(::Type{FlatState}, x::JumpState) = FlatState(
     counts = Dict(
         normalize_name(s) => x.integrator[s]
-        for s in x.integrator.f.syms
+        for s in ModelingToolkit.SymbolicIndexingInterface.variable_symbols(
+            x.integrator
+        )
     ),
     randomness = x.problem.rng;
     x.integrator.t,
@@ -92,11 +95,7 @@ Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
         JumpProcesses.DiscreteProblem(
             f!.system,
             [
-                s => get(
-                    x.counts,
-                    normalize_name(ModelingToolkit.getname(s)),
-                    0
-                )
+                s => get(x.counts, normalize_name(s), 0)
                 for s in ModelingToolkit.states(f!.system)
             ],
             (x.t, Inf),
@@ -112,12 +111,15 @@ Models.adapt(x::JumpState, f!::Model, _copy) =
     Models.adapt(cast(FlatState, x), f!)
 
 function Models.each_event(callback::Function, x::JumpState)
-    names = normalize_name.(x.integrator.f.syms)
+    solution = x.integrator.sol
+
+    names = normalize_name.(
+        ModelingToolkit.SymbolicIndexingInterface.variable_symbols(solution)
+    )
     # ^ We assume that this access is safe and the order agrees with the values
     # in x.integrator.sol.u because this is how SciMLBase constructs the Table
     # reinterpretation in Tables.rows(::AbstractTimeseriesSolution).
 
-    solution = x.integrator.sol
     isempty(solution.u) && return
     (t, previous), rest = Iterators.peel(zip(solution.t, solution.u))
 
