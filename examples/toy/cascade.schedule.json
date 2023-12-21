@@ -2,9 +2,9 @@
     "label": "cascade",
     "gene": {
         "base_rates": {
-            "activation": 0.00054,
+            "activation": 0.027,
             "deactivation": 0.0023,
-            "trigger": 0.033,
+            "trigger": 0.000000066,
             "transcription": 1.0,
             "splicing": 1.0,
             "translation": 0.0018,
@@ -16,11 +16,10 @@
     },
     "step": {
         "step": [
-            {"{set}": {"1.mrnas": 40}},
+            {"{set}": {"polymerases": 500000, "1.mrnas": 40}},
             {"to": 8000}
         ],
         "do": {"{regulation/vanilla}": {
-            "polymerases": 50,
             "ribosomes": 5537,
             "proteasomes": 2215,
             "genes": [
@@ -28,7 +27,7 @@
                     "base_rates": {
                         "$": ["gene", "base_rates"],
                         "deactivation": 10.0,
-                        "trigger": 0.0033,
+                        "trigger": 0.0000000066,
                         "translation": 0.00018,
                         "protein_decay": 0.00004514
                     }

@@ -64,7 +64,7 @@ end
 end
 
 @kwdef struct Definition
-    polymerases::Float64
+    polymerases::Symbol = :polymerases
     ribosomes::Float64
     proteasomes::Float64
     # ^ Due to a bug in ModelingToolkit when using mixed-type parameter maps,
@@ -149,16 +149,17 @@ Models.describe(definition::Definition) = Models.Network(
     end
 )
 
-gene(name::Symbol; ribosomes, proteasomes) = @reaction_network $name begin
-    trigger, promoter --> promoter + elongations
-    transcription, elongations --> premrnas
-    splicing, premrnas --> mrnas
-    translation * $ribosomes, mrnas --> mrnas + proteins
-    abortion, elongations --> 0
-    premrna_decay, premrnas --> 0
-    mrna_decay, mrnas --> 0
-    protein_decay * $proteasomes, proteins --> 0
-end
+gene(name::Symbol; polymerases, ribosomes, proteasomes) =
+    @reaction_network $name begin
+        trigger, promoter + $polymerases --> promoter + elongations
+        transcription, elongations --> premrnas + $polymerases
+        splicing, premrnas --> mrnas
+        translation * $ribosomes, mrnas --> mrnas + proteins
+        abortion, elongations --> $polymerases
+        premrna_decay, premrnas --> 0
+        mrna_decay, mrnas --> 0
+        protein_decay * $proteasomes, proteins --> 0
+    end
 
 # issue: proteins = 0 AND repression/activation = 0 -> NaN
 hill2(X, v, K, n) = v / (1.0 + ifelse(iszero(K), 0.0, K / X) ^ n)
@@ -174,7 +175,6 @@ function regulation(
     activation_rate(target::Gene) = (
         (1 - genes_by_name[target.name].promoter)
         * target.base_rates.activation
-        * definition.polymerases
         * target.repression(
             (  # ^ arguments and value go towards 0 as repression increases
                 hill2(genes_by_name[from].proteins, 1.0, at, k)
@@ -259,9 +259,20 @@ function SciML.JumpModel{Definition}(
 )
     @variables t
     @parameters ribosomes proteasomes
+
+    polymerases, =
+        let name = definition.polymerases
+            # Replace the only the last '.' in the name with the scope
+            # separator '₊' because the gene names may contain dots while the
+            # kind names certainly do not.
+            name = Symbol(replace(String(name), r"\.(?=[^.]*$)" => '₊'))
+            @species $name(t)
+        end
+
     genes_by_name = Dict(
         g.name => gene(
             g.name,
+            polymerases = ParentScope(polymerases),
             ribosomes = ParentScope(ribosomes),
             proteasomes = ParentScope(proteasomes),
         )

@@ -35,7 +35,7 @@ reify(path; location) = Scheduling.reify(
     )
 )
 
-COMPONENT_PATTERN = r"(?<group>.+)\.(?<kind>.+)"
+COMPONENT_GROUP_PATTERN = r"(?<group>.+)\.(?<kind>.+)"
 
 struct Dimension
     kind::Symbol
@@ -43,8 +43,12 @@ struct Dimension
 end
 
 function Dimension(name::AbstractString)
-    m = match(COMPONENT_PATTERN, name)
-    Dimension(Symbol(m[:kind]), m[:group])
+    m = match(COMPONENT_GROUP_PATTERN, name)
+    if m === nothing
+        Dimension(Symbol(name), "")
+    else
+        Dimension(Symbol(m[:kind]), m[:group])
+    end
 end
 
 Dimension(name::Symbol) = Dimension(String(name))

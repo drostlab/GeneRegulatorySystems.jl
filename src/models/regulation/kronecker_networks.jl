@@ -51,7 +51,6 @@ end
 end
 
 @kwdef struct Template
-    polymerases::Int
     ribosomes::Int
     proteasomes::Int
     base_rates::BaseRatesTemplate
@@ -209,7 +208,6 @@ function Base.rand(randomness::AbstractRNG, template::Template)
         end
 
     Vanilla.Definition(;
-        template.polymerases,
         template.ribosomes,
         template.proteasomes,
         genes = [

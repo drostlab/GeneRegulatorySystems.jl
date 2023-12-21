@@ -258,6 +258,7 @@ function prepare(index; selection, location)
             for catenations in values(events)
             for catenation in values(catenations)
             for dimension in keys(catenation.series)
+            if !isempty(dimension.group)
         )
         if length(groups) > 32
             groups = nothing

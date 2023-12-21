@@ -48,7 +48,7 @@ const SPECIFICATION_EXAMPLES = "$(@__DIR__)/../examples/specification"
             Dict(:step => Dict(:< => "SKG.schedule.json"))
         )
     )
-    Models.describe(Scheduling.reify(kronecker_schedule!, "+++"; load))
+    Models.describe(Scheduling.reify(kronecker_schedule!, "+++-2"; load))
     kronecker_schedule!(Models.FlatState(); load, trace)
 
     templating_schedule! = Schedule(
