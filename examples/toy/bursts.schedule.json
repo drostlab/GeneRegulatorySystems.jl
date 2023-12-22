@@ -13,8 +13,6 @@
     },
     "step": {
         "do": {"{regulation/vanilla}": {
-            "ribosomes": 5537,
-            "proteasomes": 2215,
             "genes": [
                 {
                     "base_rates" : {
@@ -33,6 +31,8 @@
         "step": [
             {"{set}": {
                 "polymerases": 500000,
+                "ribosomes": 5537,
+                "proteasomes": 2215,
                 "1.proteins": 100,
                 "2.proteins": 100
             }},

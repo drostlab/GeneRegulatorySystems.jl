@@ -51,8 +51,6 @@ end
 end
 
 @kwdef struct Template
-    ribosomes::Int
-    proteasomes::Int
     base_rates::BaseRatesTemplate
     activation::Union{Some{ActivationNetworkTemplate}, Nothing} = nothing
     repression::Union{Some{RepressionNetworkTemplate}, Nothing} = nothing
@@ -208,8 +206,6 @@ function Base.rand(randomness::AbstractRNG, template::Template)
         end
 
     Vanilla.Definition(;
-        template.ribosomes,
-        template.proteasomes,
         genes = [
             Vanilla.Gene(
                 name = Symbol(i),

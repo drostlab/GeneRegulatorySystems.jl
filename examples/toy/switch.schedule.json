@@ -16,8 +16,6 @@
     },
     "step": {
         "do": {"{regulation/vanilla}": {
-            "ribosomes": 5537,
-            "proteasomes": 2215,
             "genes": [
                 {
                     "$": "gene",
@@ -45,6 +43,8 @@
                     "step": [
                         {"{set}": {
                             "polymerases": 500000,
+                            "ribosomes": 5537,
+                            "proteasomes": 2215,
                             "1.proteins": {"$": "a"},
                             "2.proteins": {"$": "b"}
                         }},

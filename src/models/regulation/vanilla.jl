@@ -65,11 +65,8 @@ end
 
 @kwdef struct Definition
     polymerases::Symbol = :polymerases
-    ribosomes::Float64
-    proteasomes::Float64
-    # ^ Due to a bug in ModelingToolkit when using mixed-type parameter maps,
-    # we have to temporarily define these as Float64; see ModelingToolkit.jl
-    # issue #2366.
+    ribosomes::Symbol = :ribosomes
+    proteasomes::Symbol = :proteasomes
     genes::Vector{Gene}
 end
 
@@ -154,11 +151,11 @@ gene(name::Symbol; polymerases, ribosomes, proteasomes) =
         trigger, promoter + $polymerases --> promoter + elongations
         transcription, elongations --> premrnas + $polymerases
         splicing, premrnas --> mrnas
-        translation * $ribosomes, mrnas --> mrnas + proteins
+        translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
         abortion, elongations --> $polymerases
         premrna_decay, premrnas --> 0
         mrna_decay, mrnas --> 0
-        protein_decay * $proteasomes, proteins --> 0
+        protein_decay, proteins + $proteasomes --> $proteasomes
     end
 
 # issue: proteins = 0 AND repression/activation = 0 -> NaN
@@ -253,21 +250,22 @@ SciML.JumpModel{Definition}(specification::AbstractDict{Symbol}) =
         method = Symbol(get(specification, :method, "default"))
     )
 
+function species_variable(name::Symbol; t)
+    # Replace only the last '.' in the name with the scope separator '₊'
+    # because the gene names may contain dots while the kind names certainly do
+    # not.
+    name = Symbol(replace(String(name), r"\.(?=[^.]*$)" => '₊'))
+    only(@species $name(t))
+end
+
 function SciML.JumpModel{Definition}(
     definition::Definition;
     method::Symbol
 )
     @variables t
-    @parameters ribosomes proteasomes
-
-    polymerases, =
-        let name = definition.polymerases
-            # Replace the only the last '.' in the name with the scope
-            # separator '₊' because the gene names may contain dots while the
-            # kind names certainly do not.
-            name = Symbol(replace(String(name), r"\.(?=[^.]*$)" => '₊'))
-            @species $name(t)
-        end
+    polymerases = species_variable(definition.polymerases; t)
+    ribosomes = species_variable(definition.ribosomes; t)
+    proteasomes = species_variable(definition.proteasomes; t)
 
     genes_by_name = Dict(
         g.name => gene(
@@ -288,16 +286,12 @@ function SciML.JumpModel{Definition}(
         definition,
         system = convert(JumpSystem, reaction_system),
         method = pick_method(reaction_system; method)(),
-        parameters = (
-            ribosomes => definition.ribosomes,
-            proteasomes => definition.proteasomes,
-            (
-                getproperty(genes_by_name[g.name], kind) =>
-                    getfield(g.base_rates, kind)
-                for g in definition.genes
-                for kind in fieldnames(BaseRates)
-                if kind ∉ (:activation, :deactivation)
-            )...
+        parameters = Tuple(
+            getproperty(genes_by_name[g.name], kind) =>
+                getfield(g.base_rates, kind)
+            for g in definition.genes
+            for kind in fieldnames(BaseRates)
+            if kind ∉ (:activation, :deactivation)
         ),
     )
 end

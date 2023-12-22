@@ -16,12 +16,15 @@
     },
     "step": {
         "step": [
-            {"{set}": {"polymerases": 500000, "1.mrnas": 40}},
+            {"{set}": {
+                "polymerases": 500000,
+                "ribosomes": 5537,
+                "proteasomes": 2215,
+                "1.mrnas": 40
+            }},
             {"to": 8000}
         ],
         "do": {"{regulation/vanilla}": {
-            "ribosomes": 5537,
-            "proteasomes": 2215,
             "genes": [
                 {
                     "base_rates": {

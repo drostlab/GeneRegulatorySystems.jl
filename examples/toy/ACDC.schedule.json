@@ -1,6 +1,8 @@
 [
     {"{set}": {
         "polymerases": 500000,
+        "ribosomes": 5537,
+        "proteasomes": 2215,
         "1.proteins": 20,
         "2.proteins": 20,
         "3.proteins": 20
@@ -32,8 +34,6 @@
                 "step": 1000.0,
                 "to": 200000.0,
                 "do": {"{regulation/vanilla}": {
-                    "ribosomes": 5537,
-                    "proteasomes": 2215,
                     "genes": [
                         {
                             "$": "gene",

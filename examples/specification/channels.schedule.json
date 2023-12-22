@@ -1,6 +1,8 @@
 [
     {"{set}": {
         "polymerases": 500000,
+        "ribosomes": 5537,
+        "proteasomes": 2215,
         "G1": {"proteins": 100},
         "G2": {"proteins": 200}
     }},
@@ -48,9 +50,7 @@
                             },
                             "repression": [{"from": "G1", "at": {"$": "repression_at"}}]
                         }
-                    ],
-                    "ribosomes": 5537,
-                    "proteasomes": 2215
+                    ]
                 }}
             }
         }

@@ -1,8 +1,5 @@
 [
     {"{regulation/vanilla}": {
-        "polymerases": 50,
-        "ribosomes": 5537,
-        "proteasomes": 2215,
         "genes": [
             {
                 "base_rates": {
@@ -37,9 +34,6 @@
     }},
     {"{regulation/kronecker}": {
         "seed": "kronecker-seed",
-        "polymerases": 50,
-        "ribosomes": 5537,
-        "proteasomes": 2215,
         "base_rates": {
             "activation": 0.05,
             "deactivation": 10.0,

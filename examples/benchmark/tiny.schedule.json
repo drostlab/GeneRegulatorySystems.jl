@@ -3,7 +3,11 @@
     "each": {"start": 2, "stop": 4},
     "as": "k",
     "step": [
-        {"{set}": {"polymerases": 500000}},
+        {"{set}": {
+            "polymerases": 500000,
+            "ribosomes": 5537,
+            "proteasomes": 2215
+        }},
         {
             "into": "${into}-k${k}",
             "label": "benchmark-SKG-k${k}",
@@ -14,8 +18,6 @@
                 "to": 20000.0,
                 "step": {"{regulation/kronecker}": {
                     "seed": "${seed}-${label}-${replicate}",
-                    "ribosomes": 5537,
-                    "proteasomes": 2215,
                     "base_rates": {
                         "activation": 2.5,
                         "deactivation": 10.0,

@@ -1,11 +1,13 @@
 {
     "to": 10000.0,
     "step": [
-        {"{set}": {"polymerases": 500000}},
+        {"{set}": {
+            "polymerases": 500000,
+            "ribosomes": 5537,
+            "proteasomes": 2215
+        }},
         {"{regulation/kronecker}": {
             "seed": "kronecker-${seed}",
-            "ribosomes": 5537,
-            "proteasomes": 2215,
             "base_rates": {
                 "activation": 2.5,
                 "deactivation": 10.0,

@@ -3,14 +3,14 @@
     "step": [
         {"{set}": {
             "polymerases": 500000,
+            "ribosomes": 5537,
+            "proteasomes": 2215,
             "1": {"proteins": 400, "mrnas": 20},
             "2": {"proteins": 400, "mrnas": 20}
         }},
         {"to": 2000.0}
     ],
     "do": {"{regulation/vanilla}": {
-        "ribosomes": 5537,
-        "proteasomes": 2215,
         "genes": [
             {
                 "base_rates": {

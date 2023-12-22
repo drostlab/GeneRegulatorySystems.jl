@@ -24,8 +24,6 @@
                 "do": {
                     "{regulation/vanilla}": {
                         "method": {"$": "method"},
-                        "ribosomes": 5537,
-                        "proteasomes": 2215,
                         "genes": [
                             {"$": "typical_gene", "name": "Gene 1"},
                             {
@@ -46,6 +44,8 @@
                     "step": [
                         {"{set}": {
                             "polymerases": 500000,
+                            "ribosomes": 5537,
+                            "proteasomes": 2215,
                             "Gene 1": {"proteins": {"$": "proteins"}},
                             "Gene 2": {"proteins": {"$": "proteins"}}
                         }},
@@ -61,11 +61,13 @@
         {
             "to": 1000.0,
             "step": [
-                {"{set}": {"polymerases": 500000}},
+                {"{set}": {
+                    "polymerases": 500000,
+                    "ribosomes": 5537,
+                    "proteasomes": 2215
+                }},
                 {"{regulation/kronecker}": {
                     "seed": "kronecker-$seed",
-                    "ribosomes": 5537,
-                    "proteasomes": 2215,
                     "base_rates": {"$": ["typical_gene", "base_rates"]},
                     "activation": {
                         "adjacency": [
