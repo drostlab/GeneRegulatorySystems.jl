@@ -11,7 +11,18 @@ using JumpProcesses
 using ModelingToolkit
 using StatsBase
 
-@kwdef struct BaseRates
+@kwdef struct ProkaryoteBaseRates
+    activation::Float64
+    deactivation::Float64
+    trigger::Float64
+    transcription::Float64
+    translation::Float64
+    abortion::Float64
+    mrna_decay::Float64
+    protein_decay::Float64
+end
+
+@kwdef struct EukaryoteBaseRates
     activation::Float64
     deactivation::Float64
     trigger::Float64
@@ -55,7 +66,7 @@ end
     slots::Vector{DirectRegulator} = []
 end
 
-@kwdef struct Gene
+@kwdef struct Gene{BaseRates}
     name::Symbol
     base_rates::BaseRates
     activation::Activation = Activation()
@@ -63,39 +74,55 @@ end
     proteolysis::Proteolysis = Proteolysis()
 end
 
-@kwdef struct Definition
+const ProkaryoteGene = Gene{ProkaryoteBaseRates}
+const EukaryoteGene = Gene{EukaryoteBaseRates}
+
+@kwdef struct Definition{G <: Gene}
     polymerases::Symbol = :polymerases
     ribosomes::Symbol = :ribosomes
     proteasomes::Symbol = :proteasomes
-    genes::Vector{Gene}
+    genes::Vector{G}
 end
 
-cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
-    cast(Gene, merge(Dict(:name => i), x); context)
+cast(
+    ::Type{Vector{G}},
+    xs::AbstractVector;
+    context,
+) where {G <: Gene} = [
+    cast(G, merge(Dict(:name => i), x); context)
     for (i, x) in enumerate(xs)
 ]
-cast(::Type{Gene}, x::AbstractDict{Symbol}; context) = @invoke cast(
-    Gene::Type,
+
+cast(
+    ::Type{G},
+    x::AbstractDict{Symbol};
+    context,
+) where {G <: Gene} = @invoke cast(
+    G::Type,
     # Ensure we descend on these, even if they are not in x, because we will
     # look up model-wide defaults further down:
     merge(
         Dict(:activation => empty(x), :repression => empty(x)),
         x
     )::AbstractDict{Symbol};
-    context
+    context,
 )
+
 cast(T::Type{<:Regulation}, xs::AbstractVector; context) =
     cast(T, Dict(:slots => xs); context)
+
 cast(::Type{Activation}, x::AbstractDict{Symbol}; context) = @invoke cast(
     Activation::Type,
     merge(get(context, :activation, empty(x)), x)::AbstractDict{Symbol};
     context
 )
+
 cast(::Type{Repression}, x::AbstractDict{Symbol}; context) = @invoke cast(
     Repression::Type,
     merge(get(context, :repression, empty(x)), x)::AbstractDict{Symbol};
     context
 )
+
 cast(
     ::Type{<:Regulation},
     x::AbstractDict{Symbol},
@@ -120,13 +147,16 @@ aggregation(::Val{:generalized_mean}, p::Float64) =
     p == Inf ? maximum :
     Base.Fix2(genmean, p)
 
-const REACTION_KINDS = collect(fieldnames(BaseRates))
-const SPECIES_KINDS = [:promoter, :elongations, :premrnas, :mrnas, :proteins]
+species_kinds(::Definition{ProkaryoteGene}) =
+    [:promoter, :elongations, :mrnas, :proteins]
+
+species_kinds(::Definition{EukaryoteGene}) =
+    [:promoter, :elongations, :premrnas, :mrnas, :proteins]
 
 Models.describe(definition::Definition) = Models.Network(
     label =
         "'regulation/vanilla' network with $(length(definition.genes)) nodes",
-    species_kinds = SPECIES_KINDS,
+    species_kinds = species_kinds(definition),
     species_groups = [gene.name for gene in definition.genes],
     links = mapreduce(vcat, definition.genes) do gene
         vcat(
@@ -146,7 +176,30 @@ Models.describe(definition::Definition) = Models.Network(
     end
 )
 
-gene(name::Symbol; polymerases, ribosomes, proteasomes) =
+function gene(
+    definition::ProkaryoteGene;
+    polymerases,
+    ribosomes,
+    proteasomes,
+)
+    name = definition.name
+    @reaction_network $name begin
+        trigger, promoter + $polymerases --> promoter + elongations
+        transcription, elongations --> mrnas + $polymerases
+        translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
+        abortion, elongations --> $polymerases
+        mrna_decay, mrnas --> 0
+        protein_decay, proteins + $proteasomes --> $proteasomes
+    end
+end
+
+function gene(
+    definition::EukaryoteGene;
+    polymerases,
+    ribosomes,
+    proteasomes,
+)
+    name = definition.name
     @reaction_network $name begin
         trigger, promoter + $polymerases --> promoter + elongations
         transcription, elongations --> premrnas + $polymerases
@@ -157,6 +210,7 @@ gene(name::Symbol; polymerases, ribosomes, proteasomes) =
         mrna_decay, mrnas --> 0
         protein_decay, proteins + $proteasomes --> $proteasomes
     end
+end
 
 # issue: proteins = 0 AND repression/activation = 0 -> NaN
 hill2(X, v, K, n) = v / (1.0 + ifelse(iszero(K), 0.0, K / X) ^ n)
@@ -244,9 +298,11 @@ pick_method(system; method) = get(JUMP_PROCESSES_METHODS, method) do
     end
 end
 
-SciML.JumpModel{Definition}(specification::AbstractDict{Symbol}) =
-    SciML.JumpModel{Definition}(
-        cast(Definition, specification),
+SciML.JumpModel{D}(
+    specification::AbstractDict{Symbol}
+) where {D <: Definition} =
+    SciML.JumpModel{D}(
+        cast(D, specification),
         method = Symbol(get(specification, :method, "default"))
     )
 
@@ -258,10 +314,10 @@ function species_variable(name::Symbol; t)
     only(@species $name(t))
 end
 
-function SciML.JumpModel{Definition}(
-    definition::Definition;
-    method::Symbol
-)
+function SciML.JumpModel{D}(
+    definition::D;
+    method::Symbol,
+) where {BaseRates, D <: Definition{Gene{BaseRates}}}
     @variables t
     polymerases = species_variable(definition.polymerases; t)
     ribosomes = species_variable(definition.ribosomes; t)
@@ -269,7 +325,7 @@ function SciML.JumpModel{Definition}(
 
     genes_by_name = Dict(
         g.name => gene(
-            g.name,
+            g,
             polymerases = ParentScope(polymerases),
             ribosomes = ParentScope(ribosomes),
             proteasomes = ParentScope(proteasomes),
@@ -282,7 +338,7 @@ function SciML.JumpModel{Definition}(
         systems = collect(values(genes_by_name)),
     )
 
-    SciML.JumpModel{Definition}(;
+    SciML.JumpModel{D}(;
         definition,
         system = convert(JumpSystem, reaction_system),
         method = pick_method(reaction_system; method)(),
@@ -296,7 +352,13 @@ function SciML.JumpModel{Definition}(
     )
 end
 
+Specifications.constructor(::Val{Symbol("regulation/vanilla-prokaryote")}) =
+    SciML.JumpModel{Definition{ProkaryoteGene}}
+
+Specifications.constructor(::Val{Symbol("regulation/vanilla-eukaryote")}) =
+    SciML.JumpModel{Definition{EukaryoteGene}}
+
 Specifications.constructor(::Val{Symbol("regulation/vanilla")}) =
-    SciML.JumpModel{Definition}
+    SciML.JumpModel{Definition{EukaryoteGene}}
 
 end

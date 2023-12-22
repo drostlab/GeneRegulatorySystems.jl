@@ -176,9 +176,9 @@ Base.rand(randomness::AbstractRNG, d::Nonnegative{<:UnivariateDistribution}) =
     rand(randomness, d.inner)
 
 Base.rand(randomness::AbstractRNG, template::BaseRatesTemplate) =
-    Vanilla.BaseRates(; (
+    Vanilla.EukaryoteBaseRates(; (
         field => rand(randomness, getfield(template, field))
-        for field in fieldnames(Vanilla.BaseRates)
+        for field in fieldnames(Vanilla.EukaryoteBaseRates)
     )...)
 
 function Base.rand(randomness::AbstractRNG, template::Template)
@@ -207,7 +207,7 @@ function Base.rand(randomness::AbstractRNG, template::Template)
 
     Vanilla.Definition(;
         genes = [
-            Vanilla.Gene(
+            Vanilla.EukaryoteGene(
                 name = Symbol(i),
                 base_rates = rand(randomness, template.base_rates);
                 activation,
@@ -228,7 +228,10 @@ function SciML.JumpModel{Definition}(specification::AbstractDict{Symbol})
 
     synthesized = rand(randomness(definition.seed), definition.template)
     method = Symbol(get(specification, :method, "default"))
-    vanilla = SciML.JumpModel{Vanilla.Definition}(synthesized; method)
+    vanilla = SciML.JumpModel{Vanilla.Definition{Vanilla.EukaryoteGene}}(
+        synthesized;
+        method,
+    )
 
     SciML.JumpModel{Definition}(;
         definition,
