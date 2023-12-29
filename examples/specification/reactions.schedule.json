@@ -1,0 +1,64 @@
+[
+    {"{set}": {
+        "polymerases": 500000,
+        "ribosomes": 5537,
+        "proteasomes": 2215,
+        "1.proteins": 100,
+        "2.proteins": 100
+    }},
+    {
+        "to": 5000.0,
+        "do": {
+            "{regulation/vanilla}": {
+                "genes": [
+                    {
+                        "base_rates": {
+                            "activation": 2.5,
+                            "deactivation": 10.0,
+                            "trigger": 0.00000066,
+                            "transcription": 0.001,
+                            "splicing": 1.0,
+                            "translation": 0.0000009,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.01,
+                            "mrna_decay": 0.001,
+                            "protein_decay": 0.000000136
+                        }
+                    },
+                    {
+                        "base_rates": {
+                            "activation": 2.5,
+                            "deactivation": 10.0,
+                            "trigger": 0.00000066,
+                            "transcription": 0.001,
+                            "splicing": 1.0,
+                            "translation": 0.0000009,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.01,
+                            "mrna_decay": 0.001,
+                            "protein_decay": 0.000000136
+                        },
+                        "repression": [{"from": 1, "at": 5.0}]
+                    }
+                ],
+                "reactions": [
+                    {
+                        "from": ["1.proteins", "2.proteins"],
+                        "k": 0.00001,
+                        "to": ["2.proteins"]
+                    },
+                    {
+                        "from": {"2.proteins": 6},
+                        "k": 0.0000001,
+                        "to": ["polymerases"]
+                    },
+                    {
+                        "from": ["polymerases"],
+                        "k": 0.0000001,
+                        "to": []
+                    }
+                ]
+            }
+        }
+    }
+]

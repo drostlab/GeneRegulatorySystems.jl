@@ -35,6 +35,16 @@ end
     protein_decay::Float64
 end
 
+struct Reagents
+    counts::Dict{Symbol, Int}
+end
+
+@kwdef struct ReactionDefinition
+    from::Reagents = Reagents(Dict{Symbol, Int}())
+    to::Reagents = Reagents(Dict{Symbol, Int}())
+    k::Float64
+end
+
 @kwdef struct DirectRegulator
     from::Symbol
     k::Float64
@@ -82,6 +92,7 @@ const EukaryoteGene = Gene{EukaryoteBaseRates}
     ribosomes::Symbol = :ribosomes
     proteasomes::Symbol = :proteasomes
     genes::Vector{G}
+    reactions::Vector{ReactionDefinition} = ReactionDefinition[]
 end
 
 cast(
@@ -107,6 +118,19 @@ cast(
     )::AbstractDict{Symbol};
     context,
 )
+
+cast(::Type{Reagents}, x::AbstractDict{Symbol}; _...) = Reagents(x)
+
+function cast(::Type{Reagents}, xs::AbstractVector; _...)
+    result = Dict{Symbol, Int}()
+
+    for x in xs
+        reagent = Symbol(x)
+        result[reagent] = get(result, reagent, 0) + 1
+    end
+
+    Reagents(result)
+end
 
 cast(T::Type{<:Regulation}, xs::AbstractVector; context) =
     cast(T, Dict(:slots => xs); context)
@@ -212,12 +236,21 @@ function gene(
     end
 end
 
+function species_variable(name::Symbol; t)
+    # Replace only the last '.' in the name with the scope separator '₊'
+    # because the gene names may contain dots while the kind names certainly do
+    # not.
+    name = Symbol(replace(String(name), r"\.(?=[^.]*$)" => '₊'))
+    only(@species $name(t))
+end
+
 # issue: proteins = 0 AND repression/activation = 0 -> NaN
 hill2(X, v, K, n) = v / (1.0 + ifelse(iszero(K), 0.0, K / X) ^ n)
 
 function regulation(
     genes_by_name::Dict{Symbol,<:ModelingToolkit.AbstractSystem};
     definition::Definition,
+    t::Num,
 )
     # NOTE: cannot use algebraic equations (x ~ y) because Catalyst cannot turn
     #   them into a JumpSystem; need to use Reactions with a symbolic rate law
@@ -247,40 +280,63 @@ function regulation(
         )
     )
 
-    # Regulation for the whole network: for each target...
-    mapreduce(vcat, definition.genes) do target::Gene
-        [
-            # ...activation (by tempering promoter deactivation)
-            Reaction(
-                deactivation_rate(target),
-                [genes_by_name[target.name].promoter],
-                nothing,
-                only_use_rate = true
-            )
+    # Regulation for the whole network:
+    [
+        # For each gene...
+        mapreduce(vcat, definition.genes) do target::Gene
+            [
+                # ...activation (by tempering promoter deactivation)
+                Reaction(
+                    deactivation_rate(target),
+                    [genes_by_name[target.name].promoter],
+                    nothing,
+                    only_use_rate = true
+                )
 
-            # ...repression (by tempering promoter activation)
-            Reaction(
-                activation_rate(target),
-                nothing,
-                [genes_by_name[target.name].promoter],
-                only_use_rate = true
-            )
+                # ...repression (by tempering promoter activation)
+                Reaction(
+                    activation_rate(target),
+                    nothing,
+                    [genes_by_name[target.name].promoter],
+                    only_use_rate = true
+                )
 
-            # ...repression (by proteolysis)
-            map(target.proteolysis.slots) do (; from, k)
-                proteases = genes_by_name[from].proteins
-                proteins = genes_by_name[target.name].proteins
+                # ...repression (by proteolysis)
+                map(target.proteolysis.slots) do (; from, k)
+                    proteases = genes_by_name[from].proteins
+                    proteins = genes_by_name[target.name].proteins
 
-                if from == target.name
-                    # This is a loop in the proteolysis repression network and
-                    # means that the protein decays without another protease.
-                    Reaction(k, [proteins], [proteins], [2], [1])
-                else
-                    Reaction(k, [proteases, proteins], [proteases])
+                    if from == target.name
+                        # This is a loop in the proteolysis repression network
+                        # and means that the protein decays without another
+                        # protease.
+                        Reaction(k, [proteins], [proteins], [2], [1])
+                    else
+                        Reaction(k, [proteases, proteins], [proteases])
+                    end
                 end
-            end
-        ]
-    end
+                # ^ Although this case could now be expressed with additional
+                # reactions as defined below, we keep the mechanism working for
+                # now because it is shorter to type and because it is used by
+                # KroneckerNetworks and makes their construction simpler.
+            ]
+        end
+
+        # Additionally, we add arbitrary mass-action reactions as specified.
+        map(definition.reactions) do (; from, to, k)
+            Reaction(
+                k,
+                species_variable.(keys(from.counts); t),
+                species_variable.(keys(to.counts); t),
+                collect(values(from.counts)),
+                collect(values(to.counts)),
+            )
+        end
+        # TODO ^ This seems to break for moderate stoichiometries (≥ ~12) and
+        # I don't yet know why. Building the function for the corresponding
+        # `Catalyst.jumpratelaw` and calling it with typical values returns
+        # plausible results, but I suspect an overflow issue somewhere.
+    ]
 end
 
 const JUMP_PROCESSES_METHODS = Dict(
@@ -306,14 +362,6 @@ SciML.JumpModel{D}(
         method = Symbol(get(specification, :method, "default"))
     )
 
-function species_variable(name::Symbol; t)
-    # Replace only the last '.' in the name with the scope separator '₊'
-    # because the gene names may contain dots while the kind names certainly do
-    # not.
-    name = Symbol(replace(String(name), r"\.(?=[^.]*$)" => '₊'))
-    only(@species $name(t))
-end
-
 function SciML.JumpModel{D}(
     definition::D;
     method::Symbol,
@@ -333,7 +381,7 @@ function SciML.JumpModel{D}(
         for g in definition.genes
     )
     @named reaction_system = ReactionSystem(
-        regulation(genes_by_name; definition),
+        regulation(genes_by_name; definition, t),
         t,
         systems = collect(values(genes_by_name)),
     )
