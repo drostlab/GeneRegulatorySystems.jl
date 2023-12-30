@@ -347,6 +347,9 @@ SciML.JumpModel{Definition}(specification::AbstractDict{Symbol}) =
     )
 
 function SciML.JumpModel{Definition}(definition::Definition; method::Symbol)
+    allequal(typeof.(definition.genes)) ||
+        error("mixing eukaryotic and prokaryotic genes is forbidden")
+
     @variables t
     polymerases = species_variable(definition.polymerases; t)
     ribosomes = species_variable(definition.ribosomes; t)
