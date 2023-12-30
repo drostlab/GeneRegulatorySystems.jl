@@ -12,7 +12,7 @@
         "protein_decay": 0.0000225
     },
     "step": {
-        "do": {"{regulation/vanilla}": {
+        "do": {"{regulation/v1}": {
             "genes": [
                 {
                     "base_rates" : {

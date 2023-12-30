@@ -2,7 +2,7 @@ module KroneckerNetworks
 
 import ...Conversion: cast
 using ...GeneRegulatorySystems: randomness, σ, logit
-using ..Models: Models, SciML, Vanilla
+using ..Models: Models, SciML, V1
 import ..Specifications
 
 using Random
@@ -77,7 +77,7 @@ regulator(
     template::Union{ActivationNetworkTemplate, RepressionNetworkTemplate};
     from::Symbol,
     randomness::AbstractRNG,
-) = Vanilla.HillRegulator(
+) = V1.HillRegulator(
     at = rand(randomness, template.at),
     k = rand(randomness, template.k);
     from
@@ -87,22 +87,16 @@ regulator(
     template::ProteolysisNetworkTemplate;
     from::Symbol,
     randomness::AbstractRNG,
-) = Vanilla.DirectRegulator(k = rand(randomness, template.k); from)
+) = V1.DirectRegulator(k = rand(randomness, template.k); from)
 
-regulation(
-    ::ActivationNetworkTemplate;
-    slots::Vector{Vanilla.HillRegulator},
-) = Vanilla.Activation(aggregate = minimum; slots)
+regulation(::ActivationNetworkTemplate; slots::Vector{V1.HillRegulator}) =
+    V1.Activation(aggregate = minimum; slots)
 
-regulation(
-    ::RepressionNetworkTemplate;
-    slots::Vector{Vanilla.HillRegulator},
-) = Vanilla.Repression(aggregate = minimum; slots)
+regulation(::RepressionNetworkTemplate; slots::Vector{V1.HillRegulator}) =
+    V1.Repression(aggregate = minimum; slots)
 
-regulation(
-    ::ProteolysisNetworkTemplate;
-    slots::Vector{Vanilla.DirectRegulator},
-) = Vanilla.Proteolysis(; slots)
+regulation(::ProteolysisNetworkTemplate; slots::Vector{V1.DirectRegulator}) =
+    V1.Proteolysis(; slots)
 
 function regulations(template::NetworkTemplate; n, randomness::AbstractRNG)
     size(template.adjacency) == (n, n) ||
@@ -176,9 +170,9 @@ Base.rand(randomness::AbstractRNG, d::Nonnegative{<:UnivariateDistribution}) =
     rand(randomness, d.inner)
 
 Base.rand(randomness::AbstractRNG, template::BaseRatesTemplate) =
-    Vanilla.EukaryoteBaseRates(; (
+    V1.EukaryoteBaseRates(; (
         field => rand(randomness, getfield(template, field))
-        for field in fieldnames(Vanilla.EukaryoteBaseRates)
+        for field in fieldnames(V1.EukaryoteBaseRates)
     )...)
 
 function Base.rand(randomness::AbstractRNG, template::Template)
@@ -186,28 +180,28 @@ function Base.rand(randomness::AbstractRNG, template::Template)
 
     activations =
         if isnothing(template.activation)
-            fill(Vanilla.Activation(), n)
+            fill(V1.Activation(), n)
         else
             regulations(something(template.activation); n, randomness)
         end
 
     repressions =
         if isnothing(template.repression)
-            fill(Vanilla.Repression(), n)
+            fill(V1.Repression(), n)
         else
             regulations(something(template.repression); n, randomness)
         end
 
     proteolyses =
         if isnothing(template.proteolysis)
-            fill(Vanilla.Proteolysis(), n)
+            fill(V1.Proteolysis(), n)
         else
             regulations(something(template.proteolysis); n, randomness)
         end
 
-    Vanilla.Definition(;
+    V1.Definition(;
         genes = [
-            Vanilla.EukaryoteGene(
+            V1.Gene(
                 name = Symbol(i),
                 base_rates = rand(randomness, template.base_rates);
                 activation,
@@ -221,23 +215,25 @@ function Base.rand(randomness::AbstractRNG, template::Template)
 end
 
 function SciML.JumpModel{Definition}(specification::AbstractDict{Symbol})
+    # Pick a specific model instance by fixing the randomness:
     definition = Definition(
         seed = specification[:seed],
         template = cast(Template, specification),
     )
 
+    # Deterministically fill in the template and create a concrete V1
+    # regulation model from it:
     synthesized = rand(randomness(definition.seed), definition.template)
     method = Symbol(get(specification, :method, "default"))
-    vanilla = SciML.JumpModel{Vanilla.Definition{Vanilla.EukaryoteGene}}(
-        synthesized;
-        method,
-    )
+    v1 = SciML.JumpModel{V1.Definition}(synthesized; method)
 
+    # Repackage it with its original definition so we can later identify it as
+    # created from an SKG template:
     SciML.JumpModel{Definition}(;
         definition,
-        vanilla.system,
-        vanilla.method,
-        vanilla.parameters,
+        v1.system,
+        v1.method,
+        v1.parameters,
     )
 end
 

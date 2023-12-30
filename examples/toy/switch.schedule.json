@@ -15,7 +15,7 @@
         }
     },
     "step": {
-        "do": {"{regulation/vanilla}": {
+        "do": {"{regulation/v1}": {
             "genes": [
                 {
                     "$": "gene",

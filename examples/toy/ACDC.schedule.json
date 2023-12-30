@@ -33,7 +33,7 @@
                 "label": "ACDC-${1->3}-${2->3}",
                 "step": 1000.0,
                 "to": 200000.0,
-                "do": {"{regulation/vanilla}": {
+                "do": {"{regulation/v1}": {
                     "genes": [
                         {
                             "$": "gene",

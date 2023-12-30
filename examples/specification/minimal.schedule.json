@@ -6,7 +6,7 @@
             "ribosomes": 5537,
             "proteasomes": 2215
         }},
-        {"{regulation/vanilla}": {"genes": [
+        {"{regulation/v1}": {"genes": [
             {
                 "base_rates": {
                     "activation": 2.5,

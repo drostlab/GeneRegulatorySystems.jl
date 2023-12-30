@@ -19,7 +19,7 @@
     "as": "method",
     "step": {
         "do": {
-            "{regulation/vanilla}": {
+            "{regulation/v1}": {
                 "method": {"$": "method"},
                 "genes": [
                     {"$": "typical_gene", "name": "Gene 1"},

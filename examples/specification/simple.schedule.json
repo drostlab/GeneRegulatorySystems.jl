@@ -9,7 +9,7 @@
     {
         "to": 5000.0,
         "do": {
-            "{regulation/vanilla}": {
+            "{regulation/v1}": {
                 "genes": [
                     {
                         "base_rates": {

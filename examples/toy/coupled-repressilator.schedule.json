@@ -31,7 +31,7 @@
             }},
             {"to": 1000000.0, "step": 10000.0}
         ],
-        "do": {"{regulation/vanilla}": {
+        "do": {"{regulation/v1}": {
             "genes": [
                 {
                     "$": "gene",

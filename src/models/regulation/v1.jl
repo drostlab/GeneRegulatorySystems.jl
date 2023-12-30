@@ -1,4 +1,4 @@
-module Vanilla
+module V1
 
 import ...Conversion: cast
 using ..Models: Models, SciML
@@ -84,40 +84,38 @@ end
     proteolysis::Proteolysis = Proteolysis()
 end
 
-const ProkaryoteGene = Gene{ProkaryoteBaseRates}
-const EukaryoteGene = Gene{EukaryoteBaseRates}
-
-@kwdef struct Definition{G <: Gene}
+@kwdef struct Definition
     polymerases::Symbol = :polymerases
     ribosomes::Symbol = :ribosomes
     proteasomes::Symbol = :proteasomes
-    genes::Vector{G}
+    genes::Vector{Gene}
     reactions::Vector{ReactionDefinition} = ReactionDefinition[]
 end
 
-cast(
-    ::Type{Vector{G}},
-    xs::AbstractVector;
-    context,
-) where {G <: Gene} = [
-    cast(G, merge(Dict(:name => i), x); context)
+cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
+    cast(Gene, merge(Dict(:name => i), x); context)
     for (i, x) in enumerate(xs)
 ]
 
-cast(
-    ::Type{G},
-    x::AbstractDict{Symbol};
-    context,
-) where {G <: Gene} = @invoke cast(
-    G::Type,
-    # Ensure we descend on these, even if they are not in x, because we will
-    # look up model-wide defaults further down:
-    merge(
-        Dict(:activation => empty(x), :repression => empty(x)),
-        x
-    )::AbstractDict{Symbol};
-    context,
-)
+function cast(::Type{Gene}, x::AbstractDict{Symbol}; context)
+    Rates =
+        if haskey(x[:base_rates], :splicing)
+            EukaryoteBaseRates
+        else
+            ProkaryoteBaseRates
+        end
+
+    @invoke cast(
+        Gene{Rates}::Type,
+        # Ensure we descend on these, even if they are not in x, because we will
+        # look up model-wide defaults further down:
+        merge(
+            Dict(:activation => empty(x), :repression => empty(x)),
+            x
+        )::AbstractDict{Symbol};
+        context,
+    )
+end
 
 cast(::Type{Reagents}, x::AbstractDict{Symbol}; _...) = Reagents(x)
 
@@ -147,12 +145,8 @@ cast(::Type{Repression}, x::AbstractDict{Symbol}; context) = @invoke cast(
     context
 )
 
-cast(
-    ::Type{<:Regulation},
-    x::AbstractDict{Symbol},
-    ::Val{:aggregate};
-    _...
-) = aggregation(Val(Symbol(x[:aggregate])), x)
+cast(::Type{<:Regulation}, x::AbstractDict{Symbol}, ::Val{:aggregate}; _...) =
+    aggregation(Val(Symbol(x[:aggregate])), x)
 
 aggregation(::Val{:neutral}, _) = one ∘ typeof ∘ first
 aggregation(::Val{:minimum}, _) = minimum
@@ -171,16 +165,8 @@ aggregation(::Val{:generalized_mean}, p::Float64) =
     p == Inf ? maximum :
     Base.Fix2(genmean, p)
 
-species_kinds(::Definition{ProkaryoteGene}) =
-    [:promoter, :elongations, :mrnas, :proteins]
-
-species_kinds(::Definition{EukaryoteGene}) =
-    [:promoter, :elongations, :premrnas, :mrnas, :proteins]
-
 Models.describe(definition::Definition) = Models.Network(
-    label =
-        "'regulation/vanilla' network with $(length(definition.genes)) nodes",
-    species_kinds = species_kinds(definition),
+    label = "'regulation/v1' network with $(length(definition.genes)) nodes",
     species_groups = [gene.name for gene in definition.genes],
     links = mapreduce(vcat, definition.genes) do gene
         vcat(
@@ -201,7 +187,7 @@ Models.describe(definition::Definition) = Models.Network(
 )
 
 function gene(
-    definition::ProkaryoteGene;
+    definition::Gene{ProkaryoteBaseRates};
     polymerases,
     ribosomes,
     proteasomes,
@@ -218,7 +204,7 @@ function gene(
 end
 
 function gene(
-    definition::EukaryoteGene;
+    definition::Gene{EukaryoteBaseRates};
     polymerases,
     ribosomes,
     proteasomes,
@@ -354,18 +340,13 @@ pick_method(system; method) = get(JUMP_PROCESSES_METHODS, method) do
     end
 end
 
-SciML.JumpModel{D}(
-    specification::AbstractDict{Symbol}
-) where {D <: Definition} =
-    SciML.JumpModel{D}(
-        cast(D, specification),
+SciML.JumpModel{Definition}(specification::AbstractDict{Symbol}) =
+    SciML.JumpModel{Definition}(
+        cast(Definition, specification),
         method = Symbol(get(specification, :method, "default"))
     )
 
-function SciML.JumpModel{D}(
-    definition::D;
-    method::Symbol,
-) where {BaseRates, D <: Definition{Gene{BaseRates}}}
+function SciML.JumpModel{Definition}(definition::Definition; method::Symbol)
     @variables t
     polymerases = species_variable(definition.polymerases; t)
     ribosomes = species_variable(definition.ribosomes; t)
@@ -386,7 +367,7 @@ function SciML.JumpModel{D}(
         systems = collect(values(genes_by_name)),
     )
 
-    SciML.JumpModel{D}(;
+    SciML.JumpModel{Definition}(;
         definition,
         system = convert(JumpSystem, reaction_system),
         method = pick_method(reaction_system; method)(),
@@ -394,19 +375,13 @@ function SciML.JumpModel{D}(
             getproperty(genes_by_name[g.name], kind) =>
                 getfield(g.base_rates, kind)
             for g in definition.genes
-            for kind in fieldnames(BaseRates)
+            for kind in fieldnames(typeof(g.base_rates))
             if kind ∉ (:activation, :deactivation)
         ),
     )
 end
 
-Specifications.constructor(::Val{Symbol("regulation/vanilla-prokaryote")}) =
-    SciML.JumpModel{Definition{ProkaryoteGene}}
-
-Specifications.constructor(::Val{Symbol("regulation/vanilla-eukaryote")}) =
-    SciML.JumpModel{Definition{EukaryoteGene}}
-
-Specifications.constructor(::Val{Symbol("regulation/vanilla")}) =
-    SciML.JumpModel{Definition{EukaryoteGene}}
+Specifications.constructor(::Val{Symbol("regulation/v1")}) =
+    SciML.JumpModel{Definition}
 
 end

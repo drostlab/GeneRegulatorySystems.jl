@@ -60,7 +60,6 @@ end
 
 @kwdef struct Network <: Description
     label::String = ""
-    species_kinds::Vector{Symbol}
     species_groups::Vector{Symbol}
     links
 end
@@ -71,7 +70,7 @@ include("plumbing.jl")
 include("scheduling.jl")
 include("resampling.jl")
 include("sciml.jl")
-include("regulation/vanilla.jl")
+include("regulation/v1.jl")
 include("regulation/kronecker_networks.jl")
 include("extraction.jl")
 

@@ -24,7 +24,7 @@
             "3.proteins": 100
         }},
         {
-            "do": {"{regulation/vanilla}": {
+            "do": {"{regulation/v1}": {
                 "genes": [
                     {
                         "$": "gene",

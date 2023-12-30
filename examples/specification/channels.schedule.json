@@ -17,7 +17,7 @@
             "step": {
                 "to": 1000.0,
                 "channel": "${anchor}",
-                "step": {"{regulation/vanilla}": {
+                "step": {"{regulation/v1}": {
                     "genes": [
                         {
                             "name": "G1",
