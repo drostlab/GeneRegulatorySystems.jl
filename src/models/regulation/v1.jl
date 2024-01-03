@@ -42,7 +42,8 @@ end
 @kwdef struct ReactionDefinition
     from::Reagents = Reagents(Dict{Symbol, Int}())
     to::Reagents = Reagents(Dict{Symbol, Int}())
-    k::Float64
+    k₊::Float64 = 0.0
+    k₋::Float64 = 0.0
 end
 
 @kwdef struct DirectRegulator
@@ -116,6 +117,20 @@ function cast(::Type{Gene}, x::AbstractDict{Symbol}; context)
         context,
     )
 end
+
+cast(::Type{ReactionDefinition}, x::AbstractDict{Symbol}; context) =
+    @invoke cast(
+        ReactionDefinition::Type,
+        if haskey(x, :rates)
+            merge(x, Dict(zip((:k₊, :k₋), x[:rates])))
+        elseif haskey(x, :rate)
+            merge(x, Dict(:k₊ => x[:rate]))
+        else
+            error("missing rates in reaction specification")
+        end::AbstractDict{Symbol};
+        context
+    )
+
 
 cast(::Type{Reagents}, x::AbstractDict{Symbol}; _...) = Reagents(x)
 
@@ -230,6 +245,13 @@ function species_variable(name::Symbol; t)
     only(@species $name(t))
 end
 
+species_reference(name::Symbol; t, genes_by_name) =
+    if haskey(genes_by_name, name)
+        genes_by_name[name].proteins
+    else
+        species_variable(name; t)
+    end
+
 # issue: proteins = 0 AND repression/activation = 0 -> NaN
 hill2(X, v, K, n) = v / (1.0 + ifelse(iszero(K), 0.0, K / X) ^ n)
 
@@ -247,7 +269,7 @@ function regulation(
         * target.base_rates.activation
         * target.repression(
             (  # ^ arguments and value go towards 0 as repression increases
-                hill2(genes_by_name[from].proteins, 1.0, at, k)
+                hill2(species_reference(from; t, genes_by_name), 1.0, at, k)
                 for (; from, k, at) in target.repression.slots
             );
             T = Num
@@ -259,7 +281,7 @@ function regulation(
         * target.base_rates.deactivation
         * target.activation(
             (  # ^ arguments and value go towards 0 as activation increases
-                hill2(genes_by_name[from].proteins, 1.0, at, k)
+                hill2(species_reference(from; t, genes_by_name), 1.0, at, k)
                 for (; from, k, at) in target.activation.slots
             );
             T = Num
@@ -289,7 +311,7 @@ function regulation(
 
                 # ...repression (by proteolysis)
                 map(target.proteolysis.slots) do (; from, k)
-                    proteases = genes_by_name[from].proteins
+                    proteases = species_reference(from; t, genes_by_name)
                     proteins = genes_by_name[target.name].proteins
 
                     if from == target.name
@@ -309,19 +331,31 @@ function regulation(
         end
 
         # Additionally, we add arbitrary mass-action reactions as specified.
-        map(definition.reactions) do (; from, to, k)
+        # Bidirectional pairs are broken up, and reactions are only included if
+        # their rate is nonzero.
+        [
             Reaction(
-                k,
-                species_variable.(keys(from.counts); t),
-                species_variable.(keys(to.counts); t),
+                k₊,
+                species_reference.(keys(from.counts); t, genes_by_name),
+                species_reference.(keys(to.counts); t, genes_by_name),
                 collect(values(from.counts)),
                 collect(values(to.counts)),
             )
-        end
-        # TODO ^ This seems to break for moderate stoichiometries (≥ ~12) and
-        # I don't yet know why. Building the function for the corresponding
-        # `Catalyst.jumpratelaw` and calling it with typical values returns
-        # plausible results, but I suspect an overflow issue somewhere.
+            for (; from, k₊, to) in definition.reactions
+            if k₊ > 0.0
+        ]
+
+        [
+            Reaction(
+                k₋,
+                species_reference.(keys(to.counts); t, genes_by_name),
+                species_reference.(keys(from.counts); t, genes_by_name),
+                collect(values(to.counts)),
+                collect(values(from.counts)),
+            )
+            for (; from, k₋, to) in definition.reactions
+            if k₋ > 0.0
+        ]
     ]
 end
 

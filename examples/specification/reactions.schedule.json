@@ -43,19 +43,24 @@
                 ],
                 "reactions": [
                     {
-                        "from": ["1.proteins", "2.proteins"],
-                        "k": 0.00001,
-                        "to": ["2.proteins"]
+                        "from": [1, 2],
+                        "rate": 0.00001,
+                        "to": [2]
                     },
                     {
-                        "from": {"2.proteins": 6},
-                        "k": 0.0000001,
+                        "from": {"2.proteins": 18},
+                        "rate": 0.0000001,
                         "to": ["polymerases"]
                     },
                     {
                         "from": ["polymerases"],
-                        "k": 0.0000001,
+                        "rate": 0.0000001,
                         "to": []
+                    },
+                    {
+                        "from": [2],
+                        "rates": [0.00001, 0.00002],
+                        "to": {"3": 2, "4": 1}
                     }
                 ]
             }
