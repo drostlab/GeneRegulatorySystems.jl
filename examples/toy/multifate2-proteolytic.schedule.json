@@ -1,0 +1,64 @@
+{
+    "label": "multifate2-p",
+    "gene": {
+        "base_rates": {
+            "activation": 2.5,
+            "deactivation": 10.0,
+            "trigger": 0.00000066,
+            "transcription": 0.001,
+            "splicing": 1.0,
+            "translation": 0.0000009,
+            "abortion": 0.01,
+            "premrna_decay": 0.01,
+            "mrna_decay": 0.001,
+            "protein_decay": 0.000000136
+        }
+    },
+    "each": {"length": 5},
+    "step": {
+        "to": 60000.0,
+        "step": [
+            {"{set}": {
+                "polymerases": 500000,
+                "ribosomes": 5537,
+                "proteasomes": 2215,
+                "1.proteins": 100,
+                "2.proteins": 100,
+                "3.proteins": 100,
+                "1.mrnas": 100,
+                "2.mrnas": 0,
+                "3.mrnas": 0
+            }},
+            {"do": {"{regulation/v1}": {
+                "genes": [
+                    {
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.0,
+                            "protein_decay": 0.000000136
+
+                        }
+
+                    },
+                    {
+                        "$": "gene",
+                        "activation": [{"from": 2, "at": 2.0}],
+                        "proteolysis": [
+                            {"from": 1, "k": 0.001},
+                            {"from": 3, "k": 0.001}
+                        ]
+
+                    },
+                    {
+                        "$": "gene",
+                        "activation": [{"from": 3, "at": 2.0}],
+                        "proteolysis": [
+                            {"from": 1, "k": 0.001}, 
+                            {"from": 2, "k": 0.001}
+                        ]
+                    }
+                ]
+            }}}
+        ]
+    }
+}
