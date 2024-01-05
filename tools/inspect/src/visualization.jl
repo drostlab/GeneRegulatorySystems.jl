@@ -282,8 +282,10 @@ function attach_model!(figure, network::Models.Network; group_colors)
         for (i, group) in enumerate(network.species_groups)
     )
     links_by_edge = reduce(network.links, init = Dict()) do by_edge, link
-        edge = groups_index[link.from] => groups_index[link.to]
-        push!(get!(Vector, by_edge, edge), link)
+        if haskey(groups_index, link.from) && haskey(groups_index, link.to)
+            edge = groups_index[link.from] => groups_index[link.to]
+            push!(get!(Vector, by_edge, edge), link)
+        end
         by_edge
     end
 
