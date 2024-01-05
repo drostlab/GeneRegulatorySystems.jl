@@ -4,22 +4,22 @@
         "base_rates": {
             "activation": 0.027,
             "deactivation": 0.0023,
-            "trigger": 0.000000066,
+            "trigger": 6.6e-8,
             "transcription": 1.0,
             "splicing": 1.0,
-            "translation": 0.0018,
+            "translation": 5e-6,
             "abortion": 0.001,
             "premrna_decay": 0.01,
             "mrna_decay": 0.0011,
-            "protein_decay": 0.0004514
+            "protein_decay": 1e-6
         }
     },
     "step": {
         "step": [
-            {"{set}": {
-                "polymerases": 500000,
-                "ribosomes": 5537,
-                "proteasomes": 2215,
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
                 "1.mrnas": 40
             }},
             {"to": 8000}
@@ -30,9 +30,9 @@
                     "base_rates": {
                         "$": ["gene", "base_rates"],
                         "deactivation": 10.0,
-                        "trigger": 0.0000000066,
-                        "translation": 0.00018,
-                        "protein_decay": 0.00004514
+                        "trigger": 6.6e-9,
+                        "translation": 5e-7,
+                        "protein_decay": 1e-7
                     }
                 },
                 {

@@ -3,14 +3,14 @@
     "base_rates": {
         "activation": 0.1,
         "deactivation": 10.0,
-        "trigger": 0.00000066,
+        "trigger": 6.6e-7,
         "transcription": 0.001,
         "splicing": 1.0,
-        "translation": 0.0000009,
+        "translation": 2.5e-9,
         "abortion": 0.01,
         "premrna_decay": 0.01,
         "mrna_decay": 0.001,
-        "protein_decay": 0.000000436
+        "protein_decay": 1e-9
     },
     "step": {
         "do": {"{regulation/v1}": {
@@ -19,7 +19,7 @@
                     "name": "A",
                     "base_rates": {
                         "$": "base_rates",
-                        "protein_decay": 0.00000140
+                        "protein_decay": 3.1e-9
                     },
                     "activation": [{"from": "AA", "at": 2.0}]
                 },
@@ -27,7 +27,7 @@
                     "name": "B",
                     "base_rates": {
                         "$": "base_rates",
-                        "protein_decay": 0.00000140
+                        "protein_decay": 3.1e-9
                     },
                     "activation": [{"from": "BB", "at": 2.0}]
                 }
@@ -41,10 +41,10 @@
         "branch": true,
         "each": {"length": 25},
         "step": [
-            {"{set}": {
-                "polymerases": 500000,
-                "ribosomes": 5537,
-                "proteasomes": 2215,
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
                 "A.proteins": 100,
                 "B.proteins": 100,
                 "A.mrnas": 30,

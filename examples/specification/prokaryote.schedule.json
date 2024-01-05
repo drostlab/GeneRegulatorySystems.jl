@@ -1,8 +1,8 @@
 [
-    {"{set}": {
-        "polymerases": 500000,
-        "ribosomes": 5537,
-        "proteasomes": 2215,
+    {"{add}": {
+        "polymerases": 1000,
+        "ribosomes": 50000,
+        "proteasomes": 500,
         "1.proteins": 100,
         "2.proteins": 100
     }},
@@ -15,12 +15,12 @@
                         "base_rates": {
                             "activation": 2.5,
                             "deactivation": 10.0,
-                            "trigger": 0.00000066,
+                            "trigger": 0.00033,
                             "transcription": 0.001,
-                            "translation": 0.0000009,
+                            "translation": 1e-7,
                             "abortion": 0.01,
                             "mrna_decay": 0.001,
-                            "protein_decay": 0.000000136
+                            "protein_decay": 6e-7
                         },
                         "proteolysis": [{"from": 2, "k": 0.00001}]
                     },
@@ -28,12 +28,12 @@
                         "base_rates": {
                             "activation": 2.5,
                             "deactivation": 10.0,
-                            "trigger": 0.00000066,
+                            "trigger": 0.00033,
                             "transcription": 0.001,
-                            "translation": 0.0000009,
+                            "translation": 1e-7,
                             "abortion": 0.01,
                             "mrna_decay": 0.001,
-                            "protein_decay": 0.000000136
+                            "protein_decay": 6e-7
                         },
                         "repression": [{"from": 1, "at": 5.0}]
                     }

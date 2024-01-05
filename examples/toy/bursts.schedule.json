@@ -2,14 +2,14 @@
     "label": "bursts",
     "base_rates": {
         "deactivation": 0.0023,
-        "trigger": 0.00000066,
+        "trigger": 6.6e-7,
         "transcription": 0.01,
         "splicing": 1.0,
-        "translation": 0.00018,
+        "translation": 5e-7,
         "abortion": 0.01,
         "premrna_decay": 0.01,
         "mrna_decay": 0.01,
-        "protein_decay": 0.0000225
+        "protein_decay": 5e-8
     },
     "step": {
         "do": {"{regulation/v1}": {
@@ -29,10 +29,10 @@
             ]
         }},
         "step": [
-            {"{set}": {
-                "polymerases": 500000,
-                "ribosomes": 5537,
-                "proteasomes": 2215,
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
                 "1.proteins": 100,
                 "2.proteins": 100
             }},
