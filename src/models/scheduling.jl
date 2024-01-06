@@ -73,15 +73,15 @@ function (primitive!::Primitive)(
 
     @logmsg Progress :advancing at = path
     if trace === nothing
-        f!(x, Δt; path, context...)
+        x = f!(x, Δt; path, context...)
     elseif primitive!.skip > 0.0
-        f!(x, Δt; path, context...)
+        x = f!(x, Δt; path, context...)
         trace(nothing, x; path, primitive!, from)
         if primitive!.into !== nothing
             trace(primitive!.into, x; path, primitive!, from = Models.t(x))
         end
     else
-        f!(x, Δt; path, context..., primitive!.into)
+        x = f!(x, Δt; path, context..., primitive!.into)
         trace(primitive!.into, x; path, primitive!, from)
     end
 
@@ -99,6 +99,8 @@ end
     branch::Bool = false
     path::String = ""
 end
+
+Models.adapt(x, ::Schedule, _copy::Val{false}) = x
 
 function sink(bindings::Dict{Symbol, Any})
     into = get(bindings, :into, nothing)

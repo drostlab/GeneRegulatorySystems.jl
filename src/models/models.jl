@@ -31,11 +31,11 @@ abstract type Model{State} end
 abstract type Instant{State} <: Model{State} end
 
 adapt(x, f!::Model; copy = false) = _adapt(x, f!, Val(copy))
+adapt(x, f!::Model, _copy) = _adapt(cast(FlatState, x), f!, Val(false))
 
 _adapt(x, f!::Model, copy::Val) = adapt(x, f!, copy)
 _adapt(x::Branched, ::Model{Branched}, ::Val{false}) = x
-_adapt(x::Branched, f!::Model, ::Val{false}) = _adapt(x.stem, f!, Val(false))
-_adapt(x::Branched, f!::Model, ::Val{true}) = _adapt(x.step, f!, Val(true))
+_adapt(x::Branched, f!::Model, copy::Val) = _adapt(x.stem, f!, copy)
 _adapt(x::FlatState, ::Model{FlatState}, ::Val{false}) = x
 _adapt(x::FlatState, ::Model{Any}, ::Val{false}) = x
 _adapt(x::FlatState, f!::Model, ::Val{true}) =

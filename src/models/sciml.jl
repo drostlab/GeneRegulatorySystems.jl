@@ -69,23 +69,17 @@ Models.describe(f!::SciML.JumpModel) = Models.describe(f!.definition)
 
 Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where Copy =
     if x.f! === f! && !Copy
-        # We need to drop any previous solution transcripts, but there doesn't
-        # seem to be a way to clear x.integrator.sol, and reinit!, set_t! and
-        # empty! are not implemented for JumpProcesses.SSAIntegrator so that we
-        # cannot just call init again either, thus we have to remake the
-        # problem with the new starting time point. Since according to
-        # documentation remaking JumpProblems will partially alias state, in
-        # case a copy is required we will take the detour via FlatState in the
-        # other branch.
-        JumpState(
-            problem = ModelingToolkit.remake(
-                x.problem,
-                tspan = (x.integrator.t, Inf),
-                u0 = x.integrator.u,
-            );
-            f!,
-        )
+        x
     else
+        # Since SciML problems and integrators are tightly coupled we need to
+        # remake the problem and then reinitialize the integrator if we want
+        # a Model copy. Remaking JumpProblem only allows changing a limited
+        # subset of the properties, and I am unsure which ones are aliased in
+        # the process. To avoid trouble, we choose to simply extract the
+        # current state to a FlatState and then proceed as if this were a new
+        # model. Presumably this is slower than calling remake, yet safer, and
+        # anyway could only be avoided when we are branching the simulation
+        # without changing models.
         adapt(cast(FlatState, x), f!)
     end
 
@@ -106,9 +100,6 @@ Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
     );
     f!,
 )
-
-Models.adapt(x::JumpState, f!::Model, _copy) =
-    Models.adapt(cast(FlatState, x), f!)
 
 function Models.each_event(callback::Function, x::JumpState)
     solution = x.integrator.sol
@@ -141,6 +132,9 @@ end
 
 function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
     isfinite(Δt) || error("cannot do this forever")
+
+    empty!(x.integrator.sol.u)
+    empty!(x.integrator.sol.t)
 
     @logmsg Progress :stepping at = "JumpModel" todo = Δt
     if into !== nothing
