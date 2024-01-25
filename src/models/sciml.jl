@@ -14,20 +14,24 @@ Progress = LogLevel(-2)
 normalize_name(s) =
     Symbol(replace(String(ModelingToolkit.getname(s)), '₊' => '.'))
 
-@kwdef mutable struct ProgressTrigger
+@kwdef mutable struct TriggerProgress
     i::Int = 0
 end
 
-function (trigger::ProgressTrigger)(_u, _t, _integrator)
+function (trigger::TriggerProgress)(_u, _t, _integrator)
     trigger.i += 1
     trigger.i % 10000 == 0
 end
 
-progress(integrator) = @logmsg(
+@kwdef mutable struct EmitProgress
+    t0::Float64 = 0.0
+end
+
+(progress::EmitProgress)(integrator) = @logmsg(
     Progress,
     :stepping,
     at = "JumpModel",
-    done = integrator.t - integrator.sol.prob.tspan[1],
+    done = integrator.t - progress.t0,
 )
 
 @kwdef struct JumpState
@@ -38,8 +42,8 @@ progress(integrator) = @logmsg(
         JumpProcesses.SSAStepper(),
         save_start = false,
         callback = JumpProcesses.DiscreteCallback(
-            ProgressTrigger(),
-            progress,
+            TriggerProgress(),
+            EmitProgress(),
             save_positions = (false, false),
         ),
     )
@@ -67,7 +71,7 @@ end
 
 Models.describe(f!::SciML.JumpModel) = Models.describe(f!.definition)
 
-Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where Copy =
+Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
     if x.f! === f! && !Copy
         x
     else
@@ -135,6 +139,7 @@ function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
 
     empty!(x.integrator.sol.u)
     empty!(x.integrator.sol.t)
+    x.integrator.opts.callback.discrete_callbacks[1].affect!.t0 = Models.t(x)
 
     @logmsg Progress :stepping at = "JumpModel" todo = Δt
     if into !== nothing
