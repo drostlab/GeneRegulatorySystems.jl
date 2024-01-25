@@ -64,8 +64,8 @@
                     {"{filter}": ".(pre)?mrnas$"},
                     {"{resample-each-binomial}": 0.9},
                     {"each": {"length": 5}, "step": {
-                        "{resample-each-accumulate}": [0.05, 0.15, 0.8]}
-                    },
+                        "{resample-each-accumulate}": [0.05, 0.15, 0.8]
+                    }},
                     {"{resample-hypergeometric}": 50},
                     {"channel": {"$": "channel'"}, "into": {"$": "into'"}, "step": {}}
                 ]

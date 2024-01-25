@@ -233,8 +233,6 @@ function (f!::Schedule{Scope})(
     x = Models.adapt(x, f!)  # potentially unwrap Branched
     bindings = evaluate_bindings(f!)
     path = "$(f!.path)$(f!.specification.branch ? '/' : '+')"
-    to = get(bindings, :to, Inf)
-    Δt = min(Δt, to)
     step! = model(
         f!.specification.step;
         bindings,
@@ -242,17 +240,22 @@ function (f!::Schedule{Scope})(
         path,
     )
 
-    @logmsg Progress :repeating at = f!.path todo = Δt
-    done = 0.0
-    while 0.0 < Δt
-        current = Models.t(x)
+    if haskey(bindings, :to) && bindings[Symbol("^to")].path == f!.path
+        Δt = min(Δt, bindings[:to])
+        @logmsg Progress :repeating at = f!.path todo = Δt
+        done = 0.0
+        while 0.0 < Δt
+            current = Models.t(x)
+            x = step!(x, Δt; context..., path)
+            advance = Models.t(x) - current
+            0.0 < advance || error("cannot progress")
+            Δt -= advance
+            done += advance
+            @logmsg Progress :repeating at = f!.path done
+        end
+    else
+        @logmsg Progress :descending at = f!.path
         x = step!(x, Δt; context..., path)
-        isfinite(Δt) || break
-        advance = Models.t(x) - current
-        0.0 < advance || error("cannot progress")
-        Δt -= advance
-        done += advance
-        @logmsg Progress :repeating at = f!.path done
     end
 
     @logmsg Progress :done at = f!.path

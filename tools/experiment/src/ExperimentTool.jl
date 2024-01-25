@@ -67,8 +67,8 @@ function Logging.handle_message(
 
     id = get!(uuid4, logger.ids, at)
 
-    if message == :done || message == :advanced
-        @info ProgressLogging.Progress(id, done = true, name = "$at done")
+    if message == :done || message == :advanced || message == :descending
+        @info ProgressLogging.Progress(id, done = true, name = "$at $message")
         delete!(logger.ids, at)
         delete!(logger.todo, at)
         return
