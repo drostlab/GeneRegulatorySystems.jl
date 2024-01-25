@@ -1,6 +1,6 @@
 {
     "into": "${channel}",
-    "each": {"start": 8, "stop": 9},
+    "each": {"start": 10, "stop": 12},
     "as": "k",
     "step": [
         {"{add}": {

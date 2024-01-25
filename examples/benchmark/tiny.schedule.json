@@ -40,7 +40,7 @@
                             "power": {"$": "k"},
                             "expected_links_per_gene": 0.8
                         },
-                        "at": ["LogNormal", -5.0, 2.0]
+                        "at": ["LogNormal", 2.0, 1.0]
                     },
                     "repression": {
                         "adjacency": {
@@ -51,18 +51,7 @@
                             "power": {"$": "k"},
                             "expected_links_per_gene": 0.7
                         },
-                        "at": ["LogNormal", -5.0, 2.0]
-                    },
-                    "proteolysis": {
-                        "adjacency": {
-                            "initiator": [
-                                [0.4, 0.3],
-                                [0.2, 0.1]
-                            ],
-                            "power": {"$": "k"},
-                            "expected_links_per_gene": 0.5
-                        },
-                        "k": ["LogNormal", -5.0, 2.0]
+                        "at": ["LogNormal", 2.0, 1.0]
                     }
                 }}
             }
