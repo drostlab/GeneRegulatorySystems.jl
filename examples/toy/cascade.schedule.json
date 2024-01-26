@@ -9,7 +9,7 @@
             "splicing": 0.02,
             "translation": 5e-6,
             "abortion": 0.001,
-            "premrna_decay": 0.01,
+            "premrna_decay": 0.001,
             "mrna_decay": 0.0011,
             "protein_decay": 1e-6
         }
