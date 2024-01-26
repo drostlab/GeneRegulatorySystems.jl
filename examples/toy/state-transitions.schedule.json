@@ -1,0 +1,210 @@
+{
+    "label": "state-transitions",
+    "gene": {
+        "base_rates": {
+            "activation": 2.5,
+            "deactivation": 10.0,
+            "trigger": 6.6e-7,
+            "transcription": 0.0015,
+            "splicing": 0.02,
+            "translation": 2.5e-9,
+            "abortion": 0.01,
+            "premrna_decay": 0.01,
+            "mrna_decay": 0.001,
+            "protein_decay": 3.0e-10
+        }
+    },
+    "each": [8e-10, 6e-10, 4e-10],
+    "as": "m",
+    "branch": true,
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "name": "A",
+                    "$": "gene",
+                    "activation": [{"from": "A", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "C", "k": 0.0001},
+                        {"from": "B", "k": 0.0001}
+                    ]
+                },
+                {
+                    "name": "B",
+                    "$": "gene",
+                    "activation": [{"from": "B", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "C", "k": 0.0001},
+                        {"from": "A", "k": 0.0001}
+                    ]
+                },
+                {
+                    "name": "C",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "activation": 0.0,
+                        "protein_decay": 3e-10
+                    }
+                },
+                {
+                    "name": "D",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "activation": 0.1,
+                        "deactivation": 0.1,
+                        "transcription": 0.0007,
+                        "protein_decay": {"$": "m"}
+                    },
+                    "repression":[{"from":"A", "at": 0.5},
+                    {"from":"E", "at": 2.0},
+                    {"from":"F", "at": 2.0}],
+                    "activation":[{"from":"B", "at": 0.5}],
+                    "proteolysis": [
+                        {"from": "E", "k": 0.000002},
+                        {"from": "F", "k": 0.000002}
+                    ]
+                },
+                {
+                    "name": "E",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "protein_decay": 3e-10
+                    },
+                    "activation": [{"from": "E", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "D", "k": 0.0001},
+                        {"from": "F", "k": 0.0001}
+                    ]
+                },
+                {
+                    "name": "F",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "protein_decay": 3e-10
+                    },
+                    "activation": [{"from": "F", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "D", "k": 0.0001},
+                        {"from": "E", "k": 0.0001}
+                    ]
+                },
+                {
+                    "name": "G",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "activation": 0.1,
+                        "deactivation": 0.1,
+                        "transcription": 0.0007,
+                        "protein_decay": {"$": "m"}
+                    },
+                    "repression":[{"from":"E", "at": 0.5},
+                    {"from":"E1", "at": 2.0},
+                    {"from":"F1", "at": 2.0}],
+                    "activation":[{"from":"F", "at": 0.5}],
+                    "proteolysis": [
+                        {"from": "E1", "k": 0.000002},
+                        {"from": "F1", "k": 0.000002}
+                    ]
+                },
+                {
+                    "name": "E1",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "protein_decay": 3e-10
+                    },
+                    "activation": [{"from": "E1", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "G", "k": 0.0001},
+                        {"from": "F1", "k": 0.0001}
+                    ]
+                },
+                {
+                    "name": "F1",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "protein_decay": 3e-10
+                    },
+                    "activation": [{"from": "F1", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "G", "k": 0.0001},
+                        {"from": "E1", "k": 0.0001}
+                    ]
+                },
+                {
+                    "name": "H",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "activation": 0.1,
+                        "deactivation": 0.1,
+                        "transcription": 0.0007,
+                        "protein_decay": 9e-10
+                    },
+                    "repression":[{"from":"F", "at": 0.5},
+                    {"from":"E2", "at": 2.0},
+                    {"from":"F2", "at": 2.0}],
+                    "activation":[{"from":"E", "at": 0.5}],
+                    "proteolysis": [
+                        {"from": "E2", "k": 0.000002},
+                        {"from": "F2", "k": 0.000002}
+                    ]
+                },
+                {
+                    "name": "E2",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "protein_decay": 3e-10
+                    },
+                    "activation": [{"from": "E2", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "H", "k": 0.0001},
+                        {"from": "F2", "k": 0.0001}
+                    ]
+                },
+                {
+                    "name": "F2",
+                    "base_rates": {
+                        "$": ["gene", "base_rates"],
+                        "protein_decay": 3e-10
+                    },
+                    "activation": [{"from": "F2", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "H", "k": 0.0001},
+                        {"from": "E2", "k": 0.0001}
+                    ]
+                }
+                
+            ],
+            "reactions": [
+                {"from": ["C", "C"], "rates": [0.002, 0.002], "to": ["CC"]},
+                {"from": ["D", "D"], "rates": [0.002, 0.008], "to": ["DD"]},
+                {"from": ["G", "G"], "rates": [0.002, 0.008], "to": ["GG"]},
+                {"from": ["H", "H"], "rates": [0.002, 0.008], "to": ["HH"]}
+                ]
+            
+        }},
+        "branch": true,
+        "each": {"length": 5},
+        "step": [
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
+                "A.proteins": 100,
+                "B.proteins": 100,
+                "C.proteins": 500,
+                "D.proteins": 30,
+                "DD": 500,
+                "E.proteins": 100,
+                "F.proteins": 100,
+                "C.mrnas": 50,
+                "D.mrnas": 5,
+                "G.proteins": 30,
+                "GG": 500,
+                "E1.proteins": 100,
+                "F1.proteins": 100,
+                "G.mrnas": 5
+            }},
+            {"to": 900000.0, "step":5000.0}
+        ]
+    }
+}

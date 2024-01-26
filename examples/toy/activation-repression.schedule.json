@@ -1,0 +1,89 @@
+{
+    "label": "activation-repression",
+    "gene": {
+        "base_rates": {
+            "activation": 1.0,
+            "deactivation": 1.0,
+            "trigger": 6.6e-7,
+            "transcription": 0.0015,
+            "splicing": 0.02,
+            "translation": 2.5e-9,
+            "abortion": 0.01,
+            "premrna_decay": 0.01,
+            "mrna_decay": 0.001,
+            "protein_decay": 3.0e-10
+        }
+    },
+    "each": [[1.0, 1.0],[1.0, 10.0],[10.0, 1.0]],
+    "as": "m",
+    "step":{
+        "each": [1, 2, 5, 10, 20 , 50, 100, 150, 200],
+        "as": "n",
+        "branch": true,
+        "step": {
+            "do": {"{regulation/v1}": {
+                "genes": [
+                    
+                    {
+                        "name": "upstream1",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.0,
+                            "protein_decay": 0.00
+                        }
+                    },
+                    {
+                        "name": "upstream2",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.0,
+                            "protein_decay": 0.00
+                        }
+                    },
+                    
+                    {
+                        "name": "state1",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": {"$": ["m",1]},
+                            "deactivation": {"$": ["m",2]}
+                        },
+                        "activation": [{"from": "upstream1", "at": {"$": "n"}}]
+                    },
+                    {
+                        "name": "state2",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": {"$": ["m",1]},
+                            "deactivation": {"$": ["m",2]}
+                        },
+                        "repression": [{"from": "upstream1", "at": {"$": "n"}}]
+                    }
+                    
+                ],
+                "reactions": [
+                    ]
+                
+            }},
+            "branch": true,
+            "each": [[1, 0],[2, 0],[5, 0],[10, 0],[50, 0],[50, 0],[100, 0],[150, 0],[200, 0],[300, 0],[400, 0]],
+            "as": "in",
+            "step":{
+                "each": {"length": 1},
+                "branch": true,
+                "step": [
+                    {"{add}": {
+                        "polymerases": 5e5,
+                        "ribosomes": 2e6,
+                        "proteasomes": 1e6,
+                        "state1.proteins": 100,
+                        "state2.proteins": 100,
+                        "upstream1.proteins": {"$": ["in",1]},
+                        "upstream2.proteins": {"$": ["in",2]}               
+                    }},
+                    {"to": 90000.0, "step":1000.0}
+                ]
+            }
+        }
+    }
+}
