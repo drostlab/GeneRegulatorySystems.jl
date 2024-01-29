@@ -47,6 +47,8 @@
                             "$": ["gene", "base_rates"],
                             "activation": 0.1,
                             "deactivation": 0.1,
+                            "mrna_decay": 0.01,
+                            "translation": 1e-9,
                             "transcription": {"$": ["timer",2]},
                             "protein_decay": {"$": ["timer",1]}
                         },
