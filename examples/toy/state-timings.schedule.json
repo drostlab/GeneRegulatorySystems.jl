@@ -9,8 +9,8 @@
             "splicing": 0.02,
             "translation": 2.5e-9,
             "abortion": 0.01,
-            "premrna_decay": 0.01,
-            "mrna_decay": 0.01,
+            "premrna_decay": 0.001,
+            "mrna_decay": 0.0075,
             "protein_decay": 2.0e-10
         }
     },
@@ -68,7 +68,7 @@
                     "name": "E",
                     "base_rates": {
                         "$": ["gene", "base_rates"],
-                        "protein_decay": 3e-10
+                        "protein_decay": 2e-10
                     },
                     "activation": [{"from": "E", "at": 2.0}],
                     "proteolysis": [
@@ -80,7 +80,7 @@
                     "name": "F",
                     "base_rates": {
                         "$": ["gene", "base_rates"],
-                        "protein_decay": 3e-10
+                        "protein_decay": 2e-10
                     },
                     "activation": [{"from": "F", "at": 2.0}],
                     "proteolysis": [

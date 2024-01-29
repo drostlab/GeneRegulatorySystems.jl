@@ -10,7 +10,7 @@
             "translation": 2.5e-9,
             "abortion": 0.01,
             "premrna_decay": 0.001,
-            "mrna_decay": 0.001,
+            "mrna_decay": 0.0075,
             "protein_decay": 2.0e-10
         }
     },
