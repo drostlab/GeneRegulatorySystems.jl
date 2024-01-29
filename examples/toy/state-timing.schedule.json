@@ -1,0 +1,157 @@
+{
+    "label": "state-timing",
+    "gene": {
+        "base_rates": {
+            "activation": 2.5,
+            "deactivation": 10.0,
+            "trigger": 6.6e-7,
+            "transcription": 0.015,
+            "splicing": 0.02,
+            "translation": 2.5e-9,
+            "abortion": 0.01,
+            "premrna_decay": 0.001,
+            "mrna_decay": 0.0075,
+            "protein_decay": 2.0e-10
+        }
+    },
+    "each": [[1E-12,2.4999999999999998E-5],[1.43844988828766E-12,3.59612472071915E-5],[2.06913808111479E-12,5.1728452027869749E-5],[2.9763514416313131E-12,7.4408786040782834E-5],[4.2813323987193956E-12,0.00010703330996798489],[6.1584821106602544E-12,0.00015396205276650636],[8.8586679041008326E-12,0.0002214666976025208],[1.2742749857031321E-11,0.00031856874642578303],[1.8329807108324375E-11,0.00045824517770810938],[2.6366508987303556E-11,0.00065916272468258892],[3.7926901907322536E-11,0.00094817254768306334],[5.4555947811685145E-11,0.0013638986952921287],[7.8475997035146225E-11,0.0019618999258786554],[1.1288378916846884E-10,0.0028220947292117208],[1.6237767391887243E-10,0.00405944184797181],[2.3357214690901213E-10,0.0058393036727253031],[3.3598182862837882E-10,0.00839954571570947],[4.8329302385717525E-10,0.012082325596429381],[6.9519279617755912E-10,0.017379819904438976],[1E-9,0.025]],
+    "as": "timer",
+    "step":{
+        "each": [[0.0001,0.0001]],
+        "as": "prop",
+        "branch": true,
+        "step": {
+            "do": {"{regulation/v1}": {
+                "genes": [
+                    
+                    {
+                        "name": "upstream1",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.0,
+                            "protein_decay": 0.00
+                        }
+                    },
+                    {
+                        "name": "upstream2",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.0,
+                            "protein_decay": 0.00
+                        }
+                    },
+                    
+                    {
+                        "name": "controller",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.1,
+                            "deactivation": 0.1,
+                            "mrna_decay": 0.01,
+                            "translation": 1e-9,
+                            "transcription": 5e-3,
+                            "protein_decay": 2e-10 
+                        },
+                        "repression":[{"from":"upstream1", "at": 0.5},
+                        {"from":"state1", "at": 2.0},
+                        {"from":"state2", "at": 2.0}],
+                        "activation":[{"from":"upstream2", "at": 0.5}],
+                        "proteolysis": [
+                            {"from": "state1", "k": 0.000002},
+                            {"from": "state2", "k": 0.000002}
+                        ]
+                    },
+                    {
+                        "name": "state1",
+                        "$": "gene",
+                        "activation": [{"from": "state1", "at": 2.0}],
+                        "proteolysis": [
+                            {"from": "controller", "k": 0.0001},
+                            {"from": "state2", "k": {"$": ["prop",1]}}
+                        ]
+                    },
+                    {
+                        "name": "state2",
+                        "$": "gene",
+                        "activation": [{"from": "state2", "at": 2.0}],
+                        "proteolysis": [
+                            {"from": "controller", "k": 0.0001},
+                            {"from": "state1", "k": {"$": ["prop",2]}}
+                        ]
+                    },
+
+                    {
+                        "name": "controller1",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.1,
+                            "deactivation": 0.1,
+                            "mrna_decay": 0.01,
+                            "translation": 1e-9,
+                            "transcription": {"$": ["timer",2]},
+                            "protein_decay": {"$": ["timer",1]}
+                        },
+                        "repression":[{"from":"state1", "at": 0.5},
+                        {"from":"state11", "at": 2.0},
+                        {"from":"state12", "at": 2.0}],
+                        "activation":[{"from":"state2", "at": 0.5}],
+                        "proteolysis": [
+                            {"from": "state11", "k": 0.000002},
+                            {"from": "state12", "k": 0.000002}
+                        ]
+                    },
+                    {
+                        "name": "state11",
+                        "$": "gene",
+                        "activation": [{"from": "state11", "at": 2.0}],
+                        "proteolysis": [
+                            {"from": "controller1", "k": 0.0001},
+                            {"from": "state12", "k": {"$": ["prop",1]}}
+                        ]
+                    },
+                    {
+                        "name": "state12",
+                        "$": "gene",
+                        "activation": [{"from": "state12", "at": 2.0}],
+                        "proteolysis": [
+                            {"from": "controller1", "k": 0.0001},
+                            {"from": "state11", "k": {"$": ["prop",2]}}
+                        ]
+                    }
+                ],
+                "reactions": [
+                    {"from": ["controller", "controller"], "rates": [0.002, 0.008], "to": ["controller_buffer"]},
+                    {"from": ["controller1", "controller1"], "rates": [0.002, 0.008], "to": ["controller1_buffer"]}
+                    ]
+                
+            }},
+            "branch": true,
+            "each": [[500, 0]],
+            "as": "in",
+            "step":{
+                "each": {"length": 100},
+                "branch": true,
+                "step": [
+                    {"{add}": {
+                        "polymerases": 5e5,
+                        "ribosomes": 2e6,
+                        "proteasomes": 1e6,
+                        "state1.proteins": 100,
+                        "state2.proteins": 100,
+                        "controller.proteins": 30,
+                        "controller_buffer": 500,
+                        "controller.mrnas": 5,
+                        "state11.proteins": 100,
+                        "state12.proteins": 100,
+                        "controller1.proteins": 30,
+                        "controller1_buffer": 500,
+                        "controller1.mrnas": 5,
+                        "upstream1.proteins": {"$": ["in",1]},
+                        "upstream2.proteins": {"$": ["in",2]}               
+                    }},
+                    {"to": 700000.0, "step": 7000.0}
+                ]
+            }
+        }
+    }
+}
