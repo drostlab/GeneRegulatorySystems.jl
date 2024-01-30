@@ -170,7 +170,7 @@
             "each": [[500, 0]],
             "as": "in",
             "step":{
-                "each": {"length": 20},
+                "each": {"length": 100},
                 "branch": true,
                 "step": [
                     {"{add}": {
