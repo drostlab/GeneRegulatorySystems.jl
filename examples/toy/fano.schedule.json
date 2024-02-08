@@ -1,0 +1,75 @@
+{
+    "label": "fano",
+    "base_rates": {
+        "trigger": 6.6e-7,
+        "transcription": 0.01,
+        "splicing": 0.02,
+        "translation": 5e-7,
+        "abortion": 0.01,
+        "premrna_decay": 0.001,
+        "mrna_decay": 0.01,
+        "protein_decay": 5e-8
+    },
+    "each": [1,2,3,4,5,7,10,13,17,23,31,42,56,74,100,133,177,237,316,421,562,749,1000],
+    "as": "n",
+    "branch": true,
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "base_rates" : {
+                        "$": "base_rates",
+                        "activation": 0.0027,
+                        "deactivation": 0.00023
+                    },
+                    "repression": [{"from": "C", "at": 4.0}]
+                },
+                {
+                    "base_rates" : {
+                        "$": "base_rates",
+                        "activation": 0.0027,
+                        "deactivation": 0.00023,
+                        "transcription": 0.02
+                    },
+                    "repression": [{"from": "C", "at": 4.0}]
+                },
+                {
+                    "base_rates" : {
+                        "$": "base_rates",
+                        "activation": 0.0027,
+                        "deactivation": 0.0023,
+                        "transcription": 0.02,
+                        "splicing": 0.002,
+                        "premrna_decay": 0.0001
+
+                    },
+                    "repression": [{"from": "C", "at": 4.0}]
+                },
+                {
+                    "name": "C",
+                    "base_rates" : {
+                        "$": "base_rates",
+                        "activation": 0.0,
+                        "deactivation": 0.0,
+                        "protein_decay": 0.0
+                    }
+                }
+            ]
+        }},
+        "branch": true,
+        "each": {"length": 5},
+        "step": [
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
+                "1.proteins": 100,
+                "2.proteins": 100,
+                "C.proteins":{"$":"n"}
+            }},
+            {"to": 100000.0, "step": [
+                10.0
+            ]}
+        ]
+    }
+}

@@ -23,7 +23,8 @@
                 {
                     "base_rates" : {
                         "$": "base_rates",
-                        "activation": 27.0
+                        "activation": 27.0,
+                        "transcription": 0.0035
                     }
                 }
             ]
@@ -32,7 +33,9 @@
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
                 "1.proteins": 100,
-                "2.proteins": 100
+                "3.proteins": 100,
+                "1.mrnas": 10,
+                "2.mrnas": 10
             }},
             {"to": 16000.0, "step": [
                 10.0,
