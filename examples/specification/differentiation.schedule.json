@@ -1,0 +1,81 @@
+{
+    "differentiation": {
+        "differentiator": {
+            "base_rates": {
+                "activation": 2.5,
+                "deactivation": 10.0,
+                "trigger": 6.6e-7,
+                "transcription": 0.015,
+                "splicing": 0.02,
+                "translation": 2.5e-9,
+                "abortion": 0.01,
+                "premrna_decay": 0.001,
+                "mrna_decay": 0.0075,
+                "protein_decay": 2e-10
+            }
+        },
+        "timer": {
+            "base_rates": {
+                "activation": 0.1,
+                "deactivation": 0.1,
+                "trigger": 6.6e-7,
+                "transcription": 2.5e7,
+                "splicing": 0.02,
+                "translation": 1e-9,
+                "abortion": 0.01,
+                "premrna_decay": 0.001,
+                "mrna_decay": 0.01,
+                "protein_decay": 1.0
+            }
+        },
+        "timer_deposit": {"mrnas": 5, "proteins": 30},
+        "buffer": [0.002, 0.008],
+        "buffer_deposit": 500
+    },
+    "step": {
+        "step": [
+            {"{add}": {"polymerases": 5e5, "ribosomes": 2e6, "proteasomes": 1e6}},
+            {"{bootstrap/differentiation}": {"$": "do"}},
+            {"to": 50000.0}
+        ],
+        "do": {"{regulation/differentiation}": {
+            "differentiation": {
+                "$": "differentiation",
+                "differentiator": "trigger",
+                "timer": {"$": ["differentiation", "timer"]},
+                "duration": 10000.0,
+                "ratio": 0.8,
+                "next": {
+                    "$": "differentiation",
+                    "differentiator": {"$": ["differentiation", "differentiator"], "name": "specialized"},
+                    "duration": 15000.0,
+                    "next": {"$": ["differentiation", "differentiator"], "name": "specialized_A"},
+                    "alternative": "specialized_B"
+                },
+                "alternative": {"$": ["differentiation", "differentiator"], "name": "other"}
+            },
+            "genes": [
+                {
+                    "name": "regulated_by_A",
+                    "base_rates": {
+                        "activation": 2.5,
+                        "deactivation": 10.0,
+                        "trigger": 6.6e-7,
+                        "transcription": 0.015,
+                        "splicing": 0.02,
+                        "translation": 2.5e-9,
+                        "abortion": 0.01,
+                        "premrna_decay": 0.001,
+                        "mrna_decay": 0.0075,
+                        "protein_decay": 2e-10
+                    },
+                    "activation": [{"from": "specialized_A", "at": 5.0}]
+                },
+                {
+                    "$": ["differentiation", "differentiator"],
+                    "name": "specialized_B"
+                }
+            ]
+        }}
+    }
+}

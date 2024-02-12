@@ -9,6 +9,8 @@ cast(T::Type{<:Real}, x::AbstractString; _...) = parse(T, x)
 cast(::Type{Vector{T}}, xs::Vector{T}; _...) where {T} = xs
 cast(::Type{Vector{T}}, xs::AbstractVector; context = nothing) where {T} =
     cast.(T, xs; context)
+cast(::Type{Dict{Symbol, T}}, x::AbstractDict{Symbol}; context) where {T} =
+    Dict(key => cast(T, value; context) for (key, value) in x)
 cast(T::Type, x::AbstractDict{Symbol}; context = x) = T(; (
     key => cast(T, x, Val(key); context)
     for key in keys(x)

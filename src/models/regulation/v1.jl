@@ -85,11 +85,20 @@ end
     proteolysis::Proteolysis = Proteolysis()
 end
 
+Gene(gene::Gene{BaseRates}; name::Symbol) where {BaseRates} =
+    Gene{BaseRates}(;
+        name,
+        gene.base_rates,
+        gene.activation,
+        gene.repression,
+        gene.proteolysis,
+    )
+
 @kwdef struct Definition
     polymerases::Symbol = :polymerases
     ribosomes::Symbol = :ribosomes
     proteasomes::Symbol = :proteasomes
-    genes::Vector{Gene}
+    genes::Vector{Gene} = Gene[]
     reactions::Vector{ReactionDefinition} = ReactionDefinition[]
 end
 
