@@ -55,7 +55,6 @@
                         "repression":[{"from":"upstream1", "at": 0.5},
                         {"from":"state1", "at": 2.0},
                         {"from":"state2", "at": 2.0}],
-                        "activation":[{"from":"upstream2", "at": 0.5}],
                         "proteolysis": [
                             {"from": "state1", "k": 0.000002},
                             {"from": "state2", "k": 0.000002}
@@ -94,7 +93,6 @@
                         "repression":[{"from":"state1", "at": 0.5},
                         {"from":"state11", "at": 2.0},
                         {"from":"state12", "at": 2.0}],
-                        "activation":[{"from":"state2", "at": 0.5}],
                         "proteolysis": [
                             {"from": "state11", "k": 0.000002},
                             {"from": "state12", "k": 0.000002}
@@ -133,7 +131,6 @@
                         "repression":[{"from":"state2", "at": 0.5},
                         {"from":"state21", "at": 2.0},
                         {"from":"state22", "at": 2.0}],
-                        "activation":[{"from":"state1", "at": 0.5}],
                         "proteolysis": [
                             {"from": "state21", "k": 0.000002},
                             {"from": "state22", "k": 0.000002}
@@ -170,7 +167,7 @@
             "each": [[500, 0]],
             "as": "in",
             "step":{
-                "each": {"length": 100},
+                "each": {"length": 10},
                 "branch": true,
                 "step": [
                     {"{add}": {

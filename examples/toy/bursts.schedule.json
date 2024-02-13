@@ -33,7 +33,7 @@
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
                 "1.proteins": 100,
-                "3.proteins": 100,
+                "2.proteins": 100,
                 "1.mrnas": 10,
                 "2.mrnas": 10
             }},
