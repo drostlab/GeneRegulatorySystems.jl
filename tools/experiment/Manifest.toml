@@ -318,9 +318,9 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 
 [[deps.DiffEqBase]]
 deps = ["ArrayInterface", "DataStructures", "DocStringExtensions", "EnumX", "EnzymeCore", "FastBroadcast", "ForwardDiff", "FunctionWrappers", "FunctionWrappersWrappers", "LinearAlgebra", "Logging", "Markdown", "MuladdMacro", "Parameters", "PreallocationTools", "PrecompileTools", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "Setfield", "SparseArrays", "Static", "StaticArraysCore", "Statistics", "Tricks", "TruncatedStacktraces"]
-git-tree-sha1 = "6af33c2eb7478db06bcf5c810e6f3dda53aac2ac"
+git-tree-sha1 = "3089c8295ab6d7c728cd6929121c1b4567457306"
 uuid = "2b5f629d-d688-5b77-993f-72d75c75574e"
-version = "6.146.0"
+version = "6.147.0"
 
     [deps.DiffEqBase.extensions]
     DiffEqBaseChainRulesCoreExt = "ChainRulesCore"
@@ -545,7 +545,7 @@ uuid = "46192b85-c4d5-4398-a991-12ede77f4527"
 version = "0.1.5"
 
 [[deps.GeneRegulatorySystems]]
-deps = ["Catalyst", "DiffEqBase", "Distributions", "JSON", "JumpProcesses", "Kronecker", "Logging", "ModelingToolkit", "PrecompileTools", "Random", "Roots", "SHA", "SparseArrays", "StatsBase"]
+deps = ["Catalyst", "Distributions", "JSON", "JumpProcesses", "Kronecker", "Logging", "ModelingToolkit", "PrecompileTools", "Random", "Roots", "SHA", "SparseArrays", "StatsBase"]
 path = "../.."
 uuid = "321a2579-640d-4198-9790-c715c19becf3"
 version = "0.1.0"
@@ -651,9 +651,9 @@ version = "0.21.4"
 
 [[deps.JuliaFormatter]]
 deps = ["CSTParser", "Combinatorics", "CommonMark", "DataStructures", "Glob", "Pkg", "PrecompileTools", "Tokenize"]
-git-tree-sha1 = "170109a75b0035e502a0a6c75d5d432ae1cc1737"
+git-tree-sha1 = "40f1eb7837b7b75d07c062790942406b9a010725"
 uuid = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
-version = "1.0.48"
+version = "1.0.49"
 
 [[deps.JumpProcesses]]
 deps = ["ArrayInterface", "DataStructures", "DiffEqBase", "DocStringExtensions", "FunctionWrappers", "Graphs", "LinearAlgebra", "Markdown", "PoissonRandom", "Random", "RandomNumbers", "RecursiveArrayTools", "Reexport", "SciMLBase", "StaticArrays", "UnPack"]
@@ -819,9 +819,9 @@ version = "2.22.1"
 
 [[deps.LogExpFunctions]]
 deps = ["DocStringExtensions", "IrrationalConstants", "LinearAlgebra"]
-git-tree-sha1 = "7d6dd4e9212aebaeed356de34ccf262a3cd415aa"
+git-tree-sha1 = "18144f3e9cbe9b15b070288eef858f71b291ce37"
 uuid = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
-version = "0.3.26"
+version = "0.3.27"
 
     [deps.LogExpFunctions.extensions]
     LogExpFunctionsChainRulesCoreExt = "ChainRulesCore"
@@ -982,9 +982,9 @@ version = "1.2.0"
 
 [[deps.NonlinearSolve]]
 deps = ["ADTypes", "ArrayInterface", "ConcreteStructs", "DiffEqBase", "FastBroadcast", "FastClosures", "FiniteDiff", "ForwardDiff", "LazyArrays", "LineSearches", "LinearAlgebra", "LinearSolve", "MaybeInplace", "PrecompileTools", "Preferences", "Printf", "RecursiveArrayTools", "Reexport", "SciMLBase", "SimpleNonlinearSolve", "SparseArrays", "SparseDiffTools", "StaticArraysCore", "TimerOutputs"]
-git-tree-sha1 = "2d0fff5b88cb528c7c908eb2421f77658fc70344"
+git-tree-sha1 = "b377521f4810057a99b0fa8cb7a1311c6cb1c8cd"
 uuid = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
-version = "3.5.4"
+version = "3.5.6"
 
     [deps.NonlinearSolve.extensions]
     NonlinearSolveBandedMatricesExt = "BandedMatrices"
@@ -1042,9 +1042,9 @@ version = "1.6.3"
 
 [[deps.OrdinaryDiffEq]]
 deps = ["ADTypes", "Adapt", "ArrayInterface", "DataStructures", "DiffEqBase", "DocStringExtensions", "ExponentialUtilities", "FastBroadcast", "FastClosures", "FillArrays", "FiniteDiff", "ForwardDiff", "FunctionWrappersWrappers", "IfElse", "InteractiveUtils", "LineSearches", "LinearAlgebra", "LinearSolve", "Logging", "MacroTools", "MuladdMacro", "NonlinearSolve", "Polyester", "PreallocationTools", "PrecompileTools", "Preferences", "RecursiveArrayTools", "Reexport", "SciMLBase", "SciMLOperators", "SimpleNonlinearSolve", "SimpleUnPack", "SparseArrays", "SparseDiffTools", "StaticArrayInterface", "StaticArrays", "TruncatedStacktraces"]
-git-tree-sha1 = "c99ec5e4da0dabe068e5f6af1e157e70f233996b"
+git-tree-sha1 = "ed171bfea6156d6458007b19790a22f4754bd501"
 uuid = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
-version = "6.70.1"
+version = "6.71.0"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
