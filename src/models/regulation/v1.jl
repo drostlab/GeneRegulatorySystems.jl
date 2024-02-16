@@ -35,17 +35,6 @@ end
     protein_decay::Float64
 end
 
-struct Reagents
-    counts::Dict{Symbol, Int}
-end
-
-@kwdef struct ReactionDefinition
-    from::Reagents = Reagents(Dict{Symbol, Int}())
-    to::Reagents = Reagents(Dict{Symbol, Int}())
-    k₊::Float64 = 0.0
-    k₋::Float64 = 0.0
-end
-
 @kwdef struct DirectRegulator
     from::Symbol
     k::Float64
@@ -99,7 +88,7 @@ Gene(gene::Gene{BaseRates}; name::Symbol) where {BaseRates} =
     ribosomes::Symbol = :ribosomes
     proteasomes::Symbol = :proteasomes
     genes::Vector{Gene} = Gene[]
-    reactions::Vector{ReactionDefinition} = ReactionDefinition[]
+    reactions::Vector{Models.MassActionReaction} = Models.MassActionReaction[]
 end
 
 cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
@@ -125,33 +114,6 @@ function cast(::Type{Gene}, x::AbstractDict{Symbol}; context)
         )::AbstractDict{Symbol};
         context,
     )
-end
-
-cast(::Type{ReactionDefinition}, x::AbstractDict{Symbol}; context) =
-    @invoke cast(
-        ReactionDefinition::Type,
-        if haskey(x, :rates)
-            merge(x, Dict(zip((:k₊, :k₋), x[:rates])))
-        elseif haskey(x, :rate)
-            merge(x, Dict(:k₊ => x[:rate]))
-        else
-            error("missing rates in reaction specification")
-        end::AbstractDict{Symbol};
-        context
-    )
-
-
-cast(::Type{Reagents}, x::AbstractDict{Symbol}; _...) = Reagents(x)
-
-function cast(::Type{Reagents}, xs::AbstractVector; _...)
-    result = Dict{Symbol, Int}()
-
-    for x in xs
-        reagent = Symbol(x)
-        result[reagent] = get(result, reagent, 0) + 1
-    end
-
-    Reagents(result)
 end
 
 cast(T::Type{<:Regulation}, xs::AbstractVector; context) =
@@ -189,26 +151,35 @@ aggregation(::Val{:generalized_mean}, p::Float64) =
     p == Inf ? maximum :
     Base.Fix2(genmean, p)
 
-Models.describe(definition::Definition) = Models.Network(
-    label = "'regulation/v1' network with $(length(definition.genes)) nodes",
-    species_groups = [gene.name for gene in definition.genes],
-    links = mapreduce(vcat, definition.genes) do gene
-        vcat(
-            map(gene.activation.slots) do (; from, at, k)
-                properties = Dict(:at => at, :k => k)
-                (; to = gene.name, from, kind = :activation, properties)
-            end,
-            map(gene.repression.slots) do (; from, at, k)
-                properties = Dict(:at => at, :k => k)
-                (; to = gene.name, from, kind = :repression, properties)
-            end,
-            map(gene.proteolysis.slots) do (; from, k)
-                properties = Dict(:k => k)
-                (; to = gene.name, from, kind = :proteolysis, properties)
-            end,
-        )
-    end
-)
+Models.describe(definition::Definition) = Models.Descriptions([
+    Models.Label(
+        "'regulation/v1' network with $(length(definition.genes)) genes"
+    )
+    Models.Network(
+        species_groups = [gene.name for gene in definition.genes],
+        links = mapreduce(vcat, definition.genes) do gene
+            vcat(
+                map(gene.activation.slots) do (; from, at, k)
+                    properties = Dict(:at => at, :k => k)
+                    (; to = gene.name, from, kind = :activation, properties)
+                end,
+                map(gene.repression.slots) do (; from, at, k)
+                    properties = Dict(:at => at, :k => k)
+                    (; to = gene.name, from, kind = :repression, properties)
+                end,
+                map(gene.proteolysis.slots) do (; from, k)
+                    properties = Dict(:k => k)
+                    (; to = gene.name, from, kind = :proteolysis, properties)
+                end,
+            )
+        end,
+        aliases = Dict(
+            Symbol("$(gene.name).proteins") => gene.name
+            for gene in definition.genes
+        ),
+    )
+    Models.MassActionNetwork(definition.reactions)
+])
 
 function gene(
     definition::Gene{ProkaryoteBaseRates};

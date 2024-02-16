@@ -121,9 +121,9 @@ function make_timer!(
         else
             error("timer dimerization buffer reaction has too many rates")
         end
-        from = V1.Reagents(Dict(timer.name => 2))
-        to = V1.Reagents(Dict(Symbol("$(timer.name)_buffer") => 1))
-        push!(reactions, V1.ReactionDefinition(; from, to, k₊, k₋))
+        from = Models.Reagents(Dict(timer.name => 2))
+        to = Models.Reagents(Dict(Symbol("$(timer.name)_buffer") => 1))
+        push!(reactions, Models.MassActionReaction(; from, to, k₊, k₋))
     end
 
     genes[timer.name] = timer

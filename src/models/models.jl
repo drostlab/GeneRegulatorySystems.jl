@@ -50,18 +50,63 @@ each_event(callback::Function, x::Branched) = each_event(callback, x.stem)
 
 (f!::Model)(_x, _Δt::Float64; _...) = error("unimplemented")
 
+@kwdef struct Reagents
+    counts::Dict{Symbol, Int} = Dict{Symbol, Int}()
+end
+
+@kwdef struct MassActionReaction
+    from::Reagents = Reagents()
+    to::Reagents = Reagents()
+    k₊::Float64 = 0.0
+    k₋::Float64 = 0.0
+end
+
+cast(::Type{MassActionReaction}, x::AbstractDict{Symbol}; context) =
+    @invoke cast(
+        MassActionReaction::Type,
+        if haskey(x, :rates)
+            merge(x, Dict(zip((:k₊, :k₋), x[:rates])))
+        elseif haskey(x, :rate)
+            merge(x, Dict(:k₊ => x[:rate]))
+        else
+            error("missing rates in reaction specification")
+        end::AbstractDict{Symbol};
+        context
+    )
+
+cast(::Type{Reagents}, x::AbstractDict{Symbol}; _...) = Reagents(x)
+
+function cast(::Type{Reagents}, xs::AbstractVector; _...)
+    result = Reagents()
+
+    for x in xs
+        reagent = Symbol(x)
+        result.counts[reagent] = get(result.counts, reagent, 0) + 1
+    end
+
+    result
+end
+
 abstract type Description end
 
 struct EmptyDescription <: Description end
 
-struct LabelDescription <: Description
-    label::String
+struct Descriptions <: Description
+    descriptions::Vector{Description}
+end
+
+@kwdef struct Label <: Description
+    label::String = ""
 end
 
 @kwdef struct Network <: Description
-    label::String = ""
     species_groups::Vector{Symbol}
     links
+    aliases::Dict{Symbol, Symbol} = Dict{Symbol, Symbol}()
+end
+
+@kwdef struct MassActionNetwork <: Description
+    reactions::Vector{MassActionReaction} = MassActionReaction[]
 end
 
 describe(::Model) = EmptyDescription()

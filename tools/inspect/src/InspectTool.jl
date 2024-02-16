@@ -409,6 +409,8 @@ function attach_display!(figure, ::Val{:legend}; data, _...)
                     marker = :circle,
                     markersize = 32,
                     color = data.group_colors[group],
+                    strokewidth = 2,
+                    strokecolor = :black,
                 )
             end,
             groups,

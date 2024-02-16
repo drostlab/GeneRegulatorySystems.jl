@@ -264,37 +264,114 @@ end
 attach_model!(figure, ::Models.Description; _...) =
     Label(figure, "(model has no visual summary)", tellheight = false)
 
-attach_model!(figure, description::Models.LabelDescription; _...) =
-    Label(figure, description.label, tellheight = false)
+attach_model!(figure, label::Models.Label; _...) =
+    Label(figure, label.label, tellheight = false)
 
-function attach_model!(figure, network::Models.Network; group_colors)
-    axis = Axis(figure, autolimitaspect = 1)
+function attach_model!(figure, composite::Models.Descriptions; group_colors)
+    components = Dict(typeof(d) => d for d in composite.descriptions)
+    attach_model!(
+        figure,
+        components[Models.Network],
+        get(Models.Label, components, Models.Label),
+        get(Models.MassActionNetwork, components, Models.MassActionNetwork);
+        group_colors,
+    )
+end
 
-    styles = Dict(
+function attach_model!(
+    figure,
+    network::Models.Network,
+    label::Models.Label,
+    reactions::Models.MassActionNetwork;
+    group_colors,
+)
+    axis = Axis(figure, autolimitaspect = 1, title = label.label)
+
+    node_style = (color = :gray, strokecolor = :gray)
+    edge_styles = Dict(
         :activation => (color = :black, linestyle = :solid),
         :repression => (color = :red, linestyle = :solid),
         :proteolysis => (color = :red, linestyle = :dash),
         :multiple => (color = :darkred, linestyle = :dash),
+        :massaction => (color = :gray, linestyle = :solid),
     )
 
-    groups_index = Dict(
-        group => i
-        for (i, group) in enumerate(network.species_groups)
+    ungrouped = Symbol[]
+    for reaction in reactions.reactions
+        reagents = Iterators.flatten((reaction.from.counts, reaction.to.counts))
+        for (species, _count) in reagents
+            union!(ungrouped, (get(network.aliases, species, species),))
+        end
+    end
+    setdiff!(ungrouped, network.species_groups)
+
+    nodes = [
+        map(network.species_groups) do g
+            properties = (;
+                node_style...,
+                label = "",
+                color = group_colors[g],
+                strokecolor = :black,
+                size = 16,
+            )
+            (:species, g, properties)
+        end
+
+        map(ungrouped) do s
+            properties = (;
+                node_style...,
+                label = "",
+                color = :white,
+                size = 8,
+            )
+            (:species, s, properties)
+        end
+
+        [
+            (
+                :forward_reaction,
+                i,
+                (; node_style..., label = @sprintf("%.2g", r.k₊), size = 3)
+            )
+            for (i, r) in enumerate(reactions.reactions)
+            if r.k₊ > 0.0
+        ]
+
+        [
+            (
+                :backward_reaction,
+                i,
+                (; node_style..., label = @sprintf("%.2g", r.k₋), size = 3)
+            )
+            for (i, r) in enumerate(reactions.reactions)
+            if r.k₋ > 0.0
+        ]
+    ]
+
+    nodes_index = Dict(
+        (kind, node) => i
+        for (i, (kind, node, _properties)) in enumerate(nodes)
     )
+    for (alias, species) in network.aliases
+        nodes_index[(:species, alias)] = nodes_index[(:species, species)]
+    end
+
     links_by_edge = reduce(network.links, init = Dict()) do by_edge, link
-        if haskey(groups_index, link.from) && haskey(groups_index, link.to)
-            edge = groups_index[link.from] => groups_index[link.to]
-            push!(get!(Vector, by_edge, edge), link)
+        source = get(nodes_index, (:species, link.from), nothing)
+        target = get(nodes_index, (:species, link.to), nothing)
+        if source !== nothing && target !== nothing
+            push!(get!(Vector, by_edge, source => target), link)
         end
         by_edge
     end
 
-    edges = reduce(links_by_edge, init = Dict()) do edges, (edge, links)
+    edges = Dict()
+    for (edge, links) in links_by_edge
         edges[edge] =
             if length(links) == 1
                 link = only(links)
                 value = link.properties[link.kind == :proteolysis ? :k : :at]
-                (; label = @sprintf("%.2g", value), styles[link.kind]...)
+                (; label = @sprintf("%.2g", value), edge_styles[link.kind]...)
             else
                 values = ["", "", ""]
                 for link in links
@@ -306,13 +383,46 @@ function attach_model!(figure, network::Models.Network; group_colors)
                         values[3] = @sprintf("%.2g", link.properties[:k])
                     end
                 end
-                (; label = join(values, "/"), styles[:multiple]...)
+                (; label = join(values, "/"), edge_styles[:multiple]...)
             end
-        edges
     end
 
-    graph = Graphs.DiGraph(length(network.species_groups))
+    for (i, reaction) in enumerate(reactions.reactions)
+        forward_node = get(nodes_index, (:forward_reaction, i), nothing)
+        if forward_node !== nothing
+            for (source, count) in reaction.from.counts
+                source_node = nodes_index[(:species, source)]
+                edges[source_node => forward_node] =
+                    (; label = string(count), edge_styles[:massaction]...)
+            end
+            for (target, count) in reaction.to.counts
+                target_node = nodes_index[(:species, target)]
+                edges[forward_node => target_node] =
+                    (; label = string(count), edge_styles[:massaction]...)
+            end
+        end
+
+        backward_node = get(nodes_index, (:backward_reaction, i), nothing)
+        if backward_node !== nothing
+            for (source, count) in reaction.to.counts
+                source_node = nodes_index[(:species, source)]
+                edges[source_node => backward_node] =
+                    (; label = string(count), edge_styles[:massaction]...)
+            end
+            for (target, count) in reaction.from.counts
+                target_node = nodes_index[(:species, target)]
+                edges[backward_node => target_node] =
+                    (; label = string(count), edge_styles[:massaction]...)
+            end
+        end
+    end
+
+    graph = Graphs.DiGraph(length(nodes))
     Graphs.add_edge!.(Ref(graph), keys(edges))
+
+    node_properties(property) = map(nodes) do (_, _, node)
+        getproperty(node, property)
+    end
 
     edge_properties(property) = map(Graphs.edges(graph)) do edge
         getproperty(edges[Graphs.src(edge) => Graphs.dst(edge)], property)
@@ -321,8 +431,8 @@ function attach_model!(figure, network::Models.Network; group_colors)
     edge_attributes = Graphs.ne(graph) == 0 ? (;) : (
         elabels = edge_properties(:label),
         elabels_color = edge_properties(:color),
-        elabels_distance = 24,
-        elabels_fontsize = 12,
+        elabels_distance = 12,
+        elabels_fontsize = 8,
         edge_plottype = :beziersegments,
         edge_attr = (
             linestyle = edge_properties(:linestyle),
@@ -337,11 +447,14 @@ function attach_model!(figure, network::Models.Network; group_colors)
     GraphMakie.graphplot!(
         axis,
         graph,
-        node_size = 16,
-        node_color = [
-            group_colors[network.species_groups[i]]
-            for i in Graphs.vertices(graph)
-        ];
+        nlabels = node_properties(:label),
+        nlabels_fontsize = 8,
+        nlabels_distance = 3,
+        nlabels_color = :gray,
+        node_size = node_properties(:size),
+        node_strokewidth = 2,
+        node_attr = (; strokecolor = node_properties(:strokecolor),),
+        node_color = node_properties(:color);
         edge_attributes...
     )
 
