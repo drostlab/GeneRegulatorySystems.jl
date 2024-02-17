@@ -460,6 +460,12 @@ function attach_model!(
 
     hidespines!(axis)
     hidedecorations!(axis)
+    deregister_interaction!(axis, :rectanglezoom)
+    register_interaction!(
+        axis,
+        :nodedrag,
+        GraphMakie.NodeDrag(only(axis.scene.plots))
+    )
 
     axis
 end

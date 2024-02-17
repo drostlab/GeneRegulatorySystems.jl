@@ -262,6 +262,8 @@ function prepare(index; selection, location)
         )
         if length(groups) > 32
             groups = nothing
+        else
+            sort!(groups)
         end
     end
 
