@@ -30,26 +30,32 @@
         },
         "timer_deposit": {"mrnas": 5, "proteins": 30},
         "buffer": [0.002, 0.008],
-        "buffer_deposit": 500
+        "buffer_deposit": 300
     },
     "step": {
         "do": {"{regulation/differentiation}": {
             "differentiation": {
                 "$": "differentiation",
                 "differentiator": "trigger",
-                "duration": 10000.0,
+                "duration": 50000.0,
                 "ratio": 0.8,
                 "next": {
                     "$": "differentiation",
-                    "differentiator": {"$": ["differentiation", "differentiator"], "name": "state0"},
-                    "duration": 15000.0,
+                    "differentiator": {
+                        "$": ["differentiation", "differentiator"],
+                        "name": "state0"
+                    },
+                    "duration": 20000.0,
                     "next": {"$": ["differentiation", "differentiator"]},
                     "alternative": {"$": ["differentiation", "differentiator"]}
                 },
                 "alternative": {
                     "$": "differentiation",
-                    "differentiator": {"$": ["differentiation", "differentiator"], "name": "state1"},
-                    "duration": 20000.0,
+                    "differentiator": {
+                        "$": ["differentiation", "differentiator"],
+                        "name": "state1"
+                    },
+                    "duration": 40000.0,
                     "next": {"$": ["differentiation", "differentiator"]},
                     "alternative": {"$": ["differentiation", "differentiator"]}
                 }
@@ -60,17 +66,11 @@
                 "polymerases": 5e5,
                 "ribosomes": 2e6,
                 "proteasomes": 1e6,
-                "trigger": 500,
-                "state0.proteins": 100,
-                "state1.proteins": 100,
-                "state00.proteins": 100,
-                "state01.proteins": 100,
-                "state10.proteins": 100,
-                "state11.proteins": 100
+                "trigger": 500
             }},
             {"{bootstrap/differentiation}": {"$": "do"}},
-            {"each": {"length": 5}, "branch": true, "step": {
-                "to": 50000.0
+            {"each": {"length": 10}, "branch": true, "step": {
+                "to": 100000.0
             }}
         ]
     }

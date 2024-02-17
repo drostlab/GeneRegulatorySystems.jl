@@ -78,7 +78,7 @@ cast(::Type{Definition}, x::AbstractDict{Symbol}, context = x) = Definition(
 timing_factor(duration::Float64) =
     if 600.0 ≤ duration ≤ 943200.0
         # duration is between 10 minutes and 26 hours
-        9.251e-11 * (102542.4 / (95652.0 - duration) - 1.0) ^ -0.947867298578199
+        0.00001982551383307971duration^-0.973
     else
         error(
             "duration is '$duration'," *
@@ -152,7 +152,7 @@ obtain_differentiator!(transient::Transient; default_name, genes) =
     obtain_differentiator!(transient.differentiator; default_name, genes)
 
 proportion_adjustment(target::Float64) =
-    clamp(-2.0078e-6 * log(1.0 / target - 1.0), -0.00001, 0.00001)
+    clamp(2.0078e-6 * log(1.0 / target - 1.0), -0.00001, 0.00001)
 
 descend!(::Any; _...) = nothing
 function descend!(
