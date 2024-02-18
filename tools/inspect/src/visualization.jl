@@ -261,13 +261,48 @@ function attach_trajectory!(figure; index, events, kinds, group_colors)
     grid
 end
 
-attach_model!(figure, ::Models.Description; _...) =
-    Label(figure, "(model has no visual summary)", tellheight = false)
+provenance_chain(description::Models.Description) = [description]
+provenance_chain(provenance::Models.Provenance) = [
+    provenance.description
+    provenance_chain(provenance.source)
+]
 
-attach_model!(figure, label::Models.Label; _...) =
-    Label(figure, label.label, tellheight = false)
+attach_model!(figure, ::Models.Description; tellheight = true, _...) =
+    Label(figure, "(no description)", tellwidth = false; tellheight)
 
-function attach_model!(figure, composite::Models.Descriptions; group_colors)
+attach_model!(figure, label::Models.Label; tellheight = true, _...) =
+    Label(figure, label.label, tellwidth = false; tellheight)
+
+function attach_model!(
+    figure,
+    provenance::Models.Provenance;
+    group_colors,
+    _...,
+)
+    grid = GridLayout()
+
+    actual, sources = Iterators.peel(provenance_chain(provenance))
+    grid[1, 1] = attach_model!(figure, actual; group_colors)
+    for (i, source) in enumerate(sources)
+        grid[i + 1, 1] = Label(
+            figure,
+            "constructed from:",
+            fontsize = 10,
+            tellwidth = false,
+            tellheight = true,
+        )
+        grid[i + 2, 1] = attach_model!(figure, source; group_colors)
+    end
+
+    grid
+end
+
+function attach_model!(
+    figure,
+    composite::Models.Descriptions;
+    group_colors,
+    _...,
+)
     components = Dict(typeof(d) => d for d in composite.descriptions)
     attach_model!(
         figure,
@@ -284,6 +319,7 @@ function attach_model!(
     label::Models.Label,
     reactions::Models.MassActionNetwork;
     group_colors,
+    _...,
 )
     axis = Axis(figure, autolimitaspect = 1, title = label.label)
 

@@ -65,7 +65,7 @@ function (primitive!::Primitive)(
         Progress,
         :adapting,
         at = path,
-        todo = "$(nameof(typeof(x))) to $(nameof(typeof(f!))) \
+        todo = "$(nameof(typeof(x))) to $(nameof(typeof(Models.unwrap(f!)))) \
             ($(primitive!.path))",
     )
     x = Models.adapt(x, f!)

@@ -305,7 +305,7 @@ function simulate!(; location, progress, dry)
     )
 
     function dryrun(primitive!, x, Δt; path, into, _...)
-        modelname = nameof(typeof(primitive!.f!))
+        modelname = nameof(typeof(Models.unwrap(primitive!.f!)))
         maybe_source = primitive!.path == path ? "" : " ($(primitive!.path))"
         isinterval = isfinite(Δt) && 0.0 < Δt
         interval = isinterval ? "from $(x.t) to $(x.t + Δt)" : "at $(x.t)"

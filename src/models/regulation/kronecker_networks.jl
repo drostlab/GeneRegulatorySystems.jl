@@ -64,14 +64,8 @@ end
     template::Template
 end
 
-function Models.describe(definition::Definition)
-    n = definition.template.n
-    if n ≤ 32
-        Models.describe(rand(randomness(definition.seed), definition.template))
-    else
-        Models.LabelDescription("(large network with $n nodes omitted)")
-    end
-end
+Models.describe(definition::Definition) =
+    Models.Label("'regulation/kronecker' template")
 
 regulator(
     template::Union{ActivationNetworkTemplate, RepressionNetworkTemplate};
@@ -214,7 +208,7 @@ function Base.rand(randomness::AbstractRNG, template::Template)
     )
 end
 
-function SciML.JumpModel{Definition}(specification::AbstractDict{Symbol})
+function build(specification::AbstractDict{Symbol})
     # Pick a specific model instance by fixing the randomness:
     definition = Definition(
         seed = specification[:seed],
@@ -225,19 +219,12 @@ function SciML.JumpModel{Definition}(specification::AbstractDict{Symbol})
     # regulation model from it:
     synthesized = rand(randomness(definition.seed), definition.template)
     method = Symbol(get(specification, :method, "default"))
-    v1 = SciML.JumpModel{V1.Definition}(synthesized; method)
+    model = V1.build(synthesized; method)
 
-    # Repackage it with its original definition so we can later identify it as
-    # created from an SKG template:
-    SciML.JumpModel{Definition}(;
-        definition,
-        v1.system,
-        v1.method,
-        v1.parameters,
-    )
+    # Package them up together:
+    Models.Derived(; definition, model)
 end
 
-Specifications.constructor(::Val{Symbol("regulation/kronecker")}) =
-    SciML.JumpModel{Definition}
+Specifications.constructor(::Val{Symbol("regulation/kronecker")}) = build
 
 end

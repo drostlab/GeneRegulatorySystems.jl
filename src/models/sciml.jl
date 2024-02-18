@@ -62,14 +62,13 @@ cast(::Type{FlatState}, x::JumpState) = FlatState(
     x.integrator.t,
 )
 
-@kwdef struct JumpModel{Definition} <: Model{JumpState}
-    definition::Definition
+@kwdef struct JumpModel <: Model{JumpState}
     system::ModelingToolkit.JumpSystem
     method::JumpProcesses.AbstractAggregatorAlgorithm
     parameters
 end
 
-Models.describe(f!::SciML.JumpModel) = Models.describe(f!.definition)
+Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")
 
 Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
     if x.f! === f! && !Copy

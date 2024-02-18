@@ -37,7 +37,7 @@ end
 end
 
 Models.describe(definition::Definition) =
-    Models.describe(synthesize(definition).v1_definition)
+    Models.Label("'regulation/differentiation' tree")
 
 function cast(
     ::Type{Transient},
@@ -279,7 +279,12 @@ function descend!(
     )
 end
 
-function synthesize(definition::Definition)
+build(specification::AbstractDict{Symbol}) = build(
+    cast(Definition, specification),
+    method = Symbol(get(specification, :method, "default"))
+)
+
+function build(definition::Definition; method::Symbol)
     # Shallow-copy genes, reactions and deposit:
     genes = Dict(gene.name => gene for gene in definition.peripheral.genes)
     reactions = copy(definition.peripheral.reactions)
@@ -290,53 +295,37 @@ function synthesize(definition::Definition)
     trigger = root isa V1.Gene ? root.name : root
     descend!(definition.differentiation; trigger, genes, reactions, deposit)
 
-    # Assemble the extended regulatory model, but also return the original
-    # definition with the now populated deposit definition:
-    (;
-        v1_definition = V1.Definition(
+    # Compile down to a V1 model:
+    model = V1.build(
+        V1.Definition(
             genes = collect(values(genes));
             definition.peripheral.polymerases,
             definition.peripheral.ribosomes,
             definition.peripheral.proteasomes,
             reactions,
-        ),
-        definition = Definition(;
-            definition.trigger,
-            definition.differentiation,
-            definition.peripheral,
-            deposit,
-        ),
-    )
-end
-
-function SciML.JumpModel{Definition}(specification::AbstractDict{Symbol})
-    definition = cast(Definition, specification)
-
-    # Compile a V1.Definition, but also replace the original
-    # Differentiation.Definition by an extended variant defining which species
-    # to deposit for the newly created timers when we later bootstrap their
-    # states (if requested):
-    (; v1_definition, definition) = synthesize(definition)
-    v1 = SciML.JumpModel{V1.Definition}(
-        v1_definition,
-        method = Symbol(get(specification, :method, "default"))
+        );
+        method,
     )
 
-    # Repackage it with its Differentiation.Definition so we can later identify
-    # it as created from a differentiation template:
-    SciML.JumpModel{Definition}(;
-        definition,
-        v1.system,
-        v1.method,
-        v1.parameters,
+    # Replace the original Differentiation.Definition by an extended variant
+    # defining which species to deposit for the newly created timers when we
+    # later bootstrap their states (if requested):
+    definition = Definition(;
+        definition.trigger,
+        definition.differentiation,
+        definition.peripheral,
+        deposit,
     )
+
+    Models.Derived(; definition, model)
 end
 
 Specifications.constructor(::Val{Symbol("regulation/differentiation")}) =
-    SciML.JumpModel{Definition}
+    build
 
-bootstrap(model::SciML.JumpModel{Definition}) =
-    Plumbing.setter(model.definition.deposit)
+bootstrap(model::Models.Derived) = bootstrap(model.definition, model.model)
+bootstrap(d::Definition, _model::Models.Model) = Plumbing.setter(d.deposit)
+bootstrap(_definition::Any, model::Models.Model) = bootstrap(model)
 
 Specifications.constructor(::Val{Symbol("bootstrap/differentiation")}) =
     bootstrap

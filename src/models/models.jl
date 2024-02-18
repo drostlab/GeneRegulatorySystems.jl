@@ -30,8 +30,17 @@ t(x::Branched) = t(x.stem)
 abstract type Model{State} end
 abstract type Instant{State} <: Model{State} end
 
+@kwdef struct Derived{State} <: Model{State}
+    definition
+    model::Model{State}
+end
+
+unwrap(model) = model
+unwrap(derived::Derived) = unwrap(derived.model)
+
 adapt(x, f!::Model; copy = false) = _adapt(x, f!, Val(copy))
 adapt(x, f!::Model, _copy) = _adapt(cast(FlatState, x), f!, Val(false))
+adapt(x, f!::Derived, copy) = _adapt(x, f!.model, copy)
 
 _adapt(x, f!::Model, copy::Val) = adapt(x, f!, copy)
 _adapt(x::Branched, ::Model{Branched}, ::Val{false}) = x
@@ -49,6 +58,7 @@ each_event(callback::Function, x::FlatState) =
 each_event(callback::Function, x::Branched) = each_event(callback, x.stem)
 
 (f!::Model)(_x, _Δt::Float64; _...) = error("unimplemented")
+(f!::Derived)(x, Δt::Float64; arguments...) = f!.model(x, Δt; arguments...)
 
 @kwdef struct Reagents
     counts::Dict{Symbol, Int} = Dict{Symbol, Int}()
@@ -95,6 +105,11 @@ struct Descriptions <: Description
     descriptions::Vector{Description}
 end
 
+@kwdef struct Provenance <: Description
+    source::Description
+    description::Description
+end
+
 @kwdef struct Label <: Description
     label::String = ""
 end
@@ -109,7 +124,11 @@ end
     reactions::Vector{MassActionReaction} = MassActionReaction[]
 end
 
-describe(::Model) = EmptyDescription()
+describe(::Any) = EmptyDescription()
+describe(derived::Derived) = Provenance(
+    source = describe(derived.definition),
+    description = describe(derived.model),
+)
 
 include("plumbing.jl")
 include("scheduling.jl")

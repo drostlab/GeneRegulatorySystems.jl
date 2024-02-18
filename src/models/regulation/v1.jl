@@ -354,13 +354,12 @@ pick_method(system; method) = get(JUMP_PROCESSES_METHODS, method) do
     end
 end
 
-SciML.JumpModel{Definition}(specification::AbstractDict{Symbol}) =
-    SciML.JumpModel{Definition}(
-        cast(Definition, specification),
-        method = Symbol(get(specification, :method, "default"))
-    )
+build(specification::AbstractDict{Symbol}) = build(
+    cast(Definition, specification),
+    method = Symbol(get(specification, :method, "default"))
+)
 
-function SciML.JumpModel{Definition}(definition::Definition; method::Symbol)
+function build(definition::Definition; method::Symbol)
     allequal(typeof.(definition.genes)) ||
         error("mixing eukaryotic and prokaryotic genes is forbidden")
 
@@ -384,21 +383,22 @@ function SciML.JumpModel{Definition}(definition::Definition; method::Symbol)
         systems = collect(values(genes_by_name)),
     )
 
-    SciML.JumpModel{Definition}(;
+    Models.Derived(;
         definition,
-        system = convert(JumpSystem, reaction_system),
-        method = pick_method(reaction_system; method)(),
-        parameters = Tuple(
-            getproperty(genes_by_name[g.name], kind) =>
-                getfield(g.base_rates, kind)
-            for g in definition.genes
-            for kind in fieldnames(typeof(g.base_rates))
-            if kind ∉ (:activation, :deactivation)
-        ),
+        model = SciML.JumpModel(
+            system = convert(JumpSystem, reaction_system),
+            method = pick_method(reaction_system; method)(),
+            parameters = Tuple(
+                getproperty(genes_by_name[g.name], kind) =>
+                    getfield(g.base_rates, kind)
+                for g in definition.genes
+                for kind in fieldnames(typeof(g.base_rates))
+                if kind ∉ (:activation, :deactivation)
+            ),
+        )
     )
 end
 
-Specifications.constructor(::Val{Symbol("regulation/v1")}) =
-    SciML.JumpModel{Definition}
+Specifications.constructor(::Val{Symbol("regulation/v1")}) = build
 
 end
