@@ -282,16 +282,29 @@ function attach_model!(
     grid = GridLayout()
 
     actual, sources = Iterators.peel(provenance_chain(provenance))
-    grid[1, 1] = attach_model!(figure, actual; group_colors)
-    for (i, source) in enumerate(sources)
-        grid[i + 1, 1] = Label(
-            figure,
-            "constructed from:",
-            fontsize = 10,
-            tellwidth = false,
-            tellheight = true,
-        )
-        grid[i + 2, 1] = attach_model!(figure, source; group_colors)
+    i = 1
+    grid[i, 1] = attach_model!(figure, actual; group_colors)
+    for source in sources
+        i += 1
+        if source isa Models.Label
+            grid[i, 1] = Label(
+                figure,
+                "constructed from: $(source.label)",
+                fontsize = 10,
+                tellwidth = false,
+                tellheight = true,
+            )
+        else
+            grid[i, 1] = Label(
+                figure,
+                "constructed from:",
+                fontsize = 10,
+                tellwidth = false,
+                tellheight = true,
+            )
+            i += 1
+            grid[i, 1] = attach_model!(figure, source; group_colors)
+        end
     end
 
     grid

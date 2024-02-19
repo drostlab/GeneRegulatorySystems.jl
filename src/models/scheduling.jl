@@ -26,6 +26,9 @@ end
 Specifications.paste(locator::Locator) =
     join("-$s" for s in split(locator.path, r"[+-/]") if length(s) > 0)
 
+Models.describe(locator::Locator) =
+    Models.Label("specification at '$(locator.path)'")
+
 @kwdef struct Primitive <: Model{Any}
     f!::Model
     skip::Float64 = 0.0
@@ -44,14 +47,14 @@ function (primitive!::Primitive)(
     dryrun = nothing,
     context...,
 )
-    f! = primitive!.f!
+    f! = Models.unwrap(primitive!.f!)
     if primitive!.skip > 0.0
         Δt = min(Δt, primitive!.skip)
     end
 
     if dryrun !== nothing
         x = cast(FlatState, x)
-        if primitive!.f! isa Models.Instant
+        if f! isa Models.Instant
             Δt = 0.0
         end
         dryrun(primitive!, x, Δt; path, primitive!.into, context...)
@@ -65,7 +68,7 @@ function (primitive!::Primitive)(
         Progress,
         :adapting,
         at = path,
-        todo = "$(nameof(typeof(x))) to $(nameof(typeof(Models.unwrap(f!)))) \
+        todo = "$(nameof(typeof(x))) to $(nameof(typeof(f!))) \
             ($(primitive!.path))",
     )
     x = Models.adapt(x, f!)
@@ -132,7 +135,7 @@ evaluate_bindings(f!::Schedule{Scope}) = merge(
 
     # evaluated definitions:
     Dict{Symbol, Any}(
-        name => evaluate(specification; f!.bindings)
+        name => evaluate(specification, path = "$(f!.path).$name"; f!.bindings)
         for (name, specification) in f!.specification.definitions
     ),
 
@@ -143,12 +146,17 @@ evaluate_bindings(f!::Schedule{Scope}) = merge(
     )
 )
 
-evaluate(template::Template; bindings) =
-    Specifications.expand(template; bindings)
+track_model(model::Model; locator) = Models.Derived(definition = locator; model)
+track_model(x; _...) = x
+
+evaluate(template::Template; bindings, path) = track_model(
+    Specifications.expand(template; bindings),
+    locator = Locator(path),
+)
 evaluate(x; _...) = x
 
 model(template::Template; bindings, branch, path) =
-    model(Specifications.expand(template; bindings); bindings, branch, path)
+    model(evaluate(template; bindings, path); bindings, branch, path)
 
 model(specification::Specification; bindings, branch, path) =
     Schedule(; specification, bindings, branch, path)
@@ -160,20 +168,16 @@ end
 
 function model(at::Float64; bindings, branch, path)
     branch && error("cannot branch here: not a Sequence")
-    Primitive(
-        f! = bindings[:do],
-        skip = at,
-        into = sink(bindings),
-        path = "$(bindings[Symbol("^do")].path).do";
-        bindings,
-    )
+    f! = bindings[:do]
+    path = "$(bindings[Symbol("^do")].path).do"
+    Primitive(skip = at, into = sink(bindings); f!, path, bindings)
 end
 
 item(x; i, inject = nothing, as = Symbol(), bindings, path) = model(
     x,
     bindings = as == Symbol() ? bindings : merge(
         descended(bindings, i),
-        Dict(as => evaluate(inject; bindings)),
+        Dict(as => evaluate(inject, path = "$path$i"; bindings)),
     ),
     branch = false,
     path = "$path$i",
@@ -186,7 +190,7 @@ models(list::List; bindings, path) = (
 
 models(each::Each; bindings, path) = (
     item(each.step; i, inject = x, each.as, bindings, path)
-    for (i, x) in enumerate(evaluate(each.items; bindings))
+    for (i, x) in enumerate(evaluate(each.items; bindings, path))
 )
 
 load_schedule(f!::Schedule{Load}; load) = Schedule(
@@ -216,7 +220,7 @@ end
 
 (f!::Schedule{Template})(x, Δt::Float64; path, context...) =
     model(
-        evaluate(f!.specification; f!.bindings);
+        evaluate(f!.specification; f!.bindings, path);
         f!.bindings,
         f!.branch,
         path,
@@ -304,10 +308,10 @@ reify(x::AbstractDict{Symbol}, path::AbstractString; load = nothing) =
 
 reify(f!::Schedule{Template}, path::AbstractString; load) = reify(
     model(
-        evaluate(f!.specification; f!.bindings);
+        evaluate(f!.specification; f!.bindings, f!.path);
         f!.bindings,
         f!.branch,
-        path,
+        f!.path,
     ),
     path;
     load
@@ -371,7 +375,7 @@ function reify(
     step! = item(
         each.step;
         i,
-        inject = evaluate(each.items; f!.bindings)[i],
+        inject = evaluate(each.items; f!.bindings, f!.path)[i],
         each.as,
         f!.bindings,
         path = "$(f!.path)$prefix",
