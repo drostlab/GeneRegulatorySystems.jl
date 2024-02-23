@@ -67,6 +67,8 @@ end
 Models.describe(definition::Definition) =
     Models.Label("'regulation/kronecker' template")
 
+gene_name(i; n) = Symbol(lpad(i, ndigits(n), '0'))
+
 regulator(
     template::Union{ActivationNetworkTemplate, RepressionNetworkTemplate};
     from::Symbol,
@@ -99,7 +101,7 @@ function regulations(template::NetworkTemplate; n, randomness::AbstractRNG)
         error("invalid initiator: must be probabilities")
     map(eachcol(template.adjacency)) do column
         slots = [
-            regulator(template; from = Symbol(i), randomness)
+            regulator(template; from = gene_name(i; n), randomness)
             for (i, cell) in enumerate(column)
             if rand(randomness) < cell
         ]
@@ -196,7 +198,7 @@ function Base.rand(randomness::AbstractRNG, template::Template)
     V1.Definition(;
         genes = [
             V1.Gene(
-                name = Symbol(i),
+                name = gene_name(i; n),
                 base_rates = rand(randomness, template.base_rates);
                 activation,
                 repression,

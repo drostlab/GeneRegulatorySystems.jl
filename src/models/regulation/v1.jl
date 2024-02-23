@@ -92,7 +92,11 @@ Gene(gene::Gene{BaseRates}; name::Symbol) where {BaseRates} =
 end
 
 cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
-    cast(Gene, merge(Dict(:name => i), x); context)
+    cast(
+        Gene,
+        merge(Dict(:name => lpad(i, ndigits(length(xs)), '0')), x);
+        context,
+    )
     for (i, x) in enumerate(xs)
 ]
 
