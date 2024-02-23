@@ -135,8 +135,10 @@ include("scheduling.jl")
 include("resampling.jl")
 include("sciml.jl")
 include("regulation/v1.jl")
-include("regulation/kronecker_networks.jl")
 include("regulation/differentiation.jl")
+include("regulation/sampling.jl")
+include("regulation/kronecker_networks.jl")
+include("regulation/random_differentiation.jl")
 include("extraction.jl")
 
 end

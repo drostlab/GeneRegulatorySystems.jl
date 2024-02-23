@@ -30,14 +30,13 @@ import ..Specifications
 end
 
 @kwdef struct Definition
-    trigger::Union{Symbol, Nothing}
     differentiation::Transient
     peripheral::V1.Definition
     deposit::Dict{Symbol, Int} = Dict{Symbol, Int}()
 end
 
-Models.describe(definition::Definition) =
-    Models.Label("'regulation/differentiation' tree")
+Models.describe(::Definition) =
+    Models.Label("'regulation/differentiation' definition")
 
 function cast(
     ::Type{Transient},
@@ -69,22 +68,13 @@ cast(
         cast(V1.Gene, merge(Dict(:name => ""), x); context)
     end
 
-cast(::Type{Definition}, x::AbstractDict{Symbol}, context = x) = Definition(
-    trigger = get(x, :trigger, nothing),
-    differentiation = cast(Transient, x[:differentiation]),
-    peripheral = cast(V1.Definition, x),
+cast(::Type{Definition}, x::AbstractDict{Symbol}; context = x) = Definition(
+    differentiation = cast(Transient, x[:differentiation]; context),
+    peripheral = cast(V1.Definition, x; context),
 )
 
 timing_factor(duration::Float64) =
-    if 600.0 ≤ duration ≤ 943200.0
-        # duration is between 10 minutes and 26 hours
-        0.00001982551383307971duration^-0.973
-    else
-        error(
-            "duration is '$duration'," *
-            " outside its allowed range of [600.0, 943200.0]"
-        )
-    end
+    0.00001982551383307971 * max(600.0, duration)^-0.973
 
 function make_timer!(
     gene::V1.Gene;
@@ -292,7 +282,19 @@ function build(definition::Definition; method::Symbol)
 
     # Extend them according to the differentiation definition:
     root = definition.differentiation.differentiator
-    trigger = root isa V1.Gene ? root.name : root
+    trigger =
+        if root isa V1.Gene
+            obtain_differentiator!(
+                root,
+                default_name = "differentiator";
+                genes,
+            ).name
+        else
+            # Exclusively for the root differentiator, we allow it to to alias
+            # a non-gene species. (All consequent differentiators must be genes
+            # because they will be transcriptionally regulated.)
+            root
+        end
     descend!(definition.differentiation; trigger, genes, reactions, deposit)
 
     # Compile down to a V1 model:
@@ -311,7 +313,6 @@ function build(definition::Definition; method::Symbol)
     # defining which species to deposit for the newly created timers when we
     # later bootstrap their states (if requested):
     definition = Definition(;
-        definition.trigger,
         definition.differentiation,
         definition.peripheral,
         deposit,

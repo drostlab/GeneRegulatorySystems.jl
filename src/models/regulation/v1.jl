@@ -74,7 +74,7 @@ end
     proteolysis::Proteolysis = Proteolysis()
 end
 
-Gene(gene::Gene{BaseRates}; name::Symbol) where {BaseRates} =
+Gene(gene::Gene{BaseRates}; name) where {BaseRates} =
     Gene{BaseRates}(;
         name,
         gene.base_rates,

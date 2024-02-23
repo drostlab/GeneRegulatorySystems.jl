@@ -34,6 +34,8 @@ const SPECIFICATION_EXAMPLES = "$(@__DIR__)/../examples/specification"
     )
     dryrun(_primitive!, _x, _Δt; _...) = nothing
     trace(_into, _state; _...) = nothing
+
+    # Load and dry-run all specification examples:
     for filename in readdir(SPECIFICATION_EXAMPLES)
         schedule! = Schedule(
             specification = Specification(
@@ -43,21 +45,22 @@ const SPECIFICATION_EXAMPLES = "$(@__DIR__)/../examples/specification"
         schedule!(Models.FlatState(); load, dryrun)
     end
 
-    kronecker_schedule! = Schedule(
-        specification = Specification(
-            Dict(:step => Dict(:< => "SKG.schedule.json"))
+    # Load and additionally describe and simulate some examples:
+    examples = [
+        (filename = "kronecker.schedule.json", path = "+++-2"),
+        (filename = "templating.schedule.json", path = "+++-1.do"),
+        (filename = "differentiation.schedule.json", path = "+++.do"),
+        #(filename = "random-differentiation.schedule.json", path = "+++.do"),
+    ]
+    for (; filename, path) in examples
+        schedule! = Schedule(
+            specification = Specification(
+                Dict(:step => Dict(:< => filename))
+            )
         )
-    )
-    Models.describe(Scheduling.reify(kronecker_schedule!, "+++-2"; load))
-    kronecker_schedule!(Models.FlatState(); load, trace)
-
-    templating_schedule! = Schedule(
-        specification = Specification(
-            Dict(:step => Dict(:< => "templating.schedule.json"))
-        )
-    )
-    Models.describe(Scheduling.reify(templating_schedule!, "+++-1.do"; load))
-
+        Models.describe(Scheduling.reify(schedule!, path; load))
+        schedule!(Models.FlatState(); load, trace)
+    end
 end
 
 end

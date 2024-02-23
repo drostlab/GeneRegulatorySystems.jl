@@ -2,7 +2,8 @@ module KroneckerNetworks
 
 import ...Conversion: cast
 using ...GeneRegulatorySystems: randomness, σ, logit
-using ..Models: Models, SciML, V1
+using ..Models: Models, V1
+using ..Sampling: Nonnegative, BaseRatesTemplate
 import ..Specifications
 
 using Random
@@ -11,23 +12,6 @@ using SparseArrays
 using Distributions
 using Kronecker
 using Roots
-
-struct Nonnegative{T <: UnivariateDistribution}
-    inner::T
-end
-
-@kwdef struct BaseRatesTemplate
-    activation::Nonnegative{UnivariateDistribution}
-    deactivation::Nonnegative{UnivariateDistribution}
-    trigger::Nonnegative{UnivariateDistribution}
-    transcription::Nonnegative{UnivariateDistribution}
-    splicing::Nonnegative{UnivariateDistribution}
-    translation::Nonnegative{UnivariateDistribution}
-    abortion::Nonnegative{UnivariateDistribution}
-    premrna_decay::Nonnegative{UnivariateDistribution}
-    mrna_decay::Nonnegative{UnivariateDistribution}
-    protein_decay::Nonnegative{UnivariateDistribution}
-end
 
 abstract type NetworkTemplate end
 
@@ -55,8 +39,9 @@ end
     activation::Union{Some{ActivationNetworkTemplate}, Nothing} = nothing
     repression::Union{Some{RepressionNetworkTemplate}, Nothing} = nothing
     proteolysis::Union{Some{ProteolysisNetworkTemplate}, Nothing} = nothing
-    n::Int =
+    count::Int =
         first(size(@something(activation, repression, proteolysis).adjacency))
+    prefix::String = ""
 end
 
 @kwdef struct Definition
@@ -64,10 +49,12 @@ end
     template::Template
 end
 
-Models.describe(definition::Definition) =
-    Models.Label("'regulation/kronecker' template")
+Models.describe(definition::Definition) = Models.Label("\
+    'regulation/kronecker' definition with seed '$(definition.seed)' \
+    and $(definition.template.count)² initiators\
+")
 
-gene_name(i; n) = Symbol(lpad(i, ndigits(n), '0'))
+gene_name(i; n, prefix) = Symbol("$prefix$(lpad(i, ndigits(n), '0'))")
 
 regulator(
     template::Union{ActivationNetworkTemplate, RepressionNetworkTemplate};
@@ -94,14 +81,19 @@ regulation(::RepressionNetworkTemplate; slots::Vector{V1.HillRegulator}) =
 regulation(::ProteolysisNetworkTemplate; slots::Vector{V1.DirectRegulator}) =
     V1.Proteolysis(; slots)
 
-function regulations(template::NetworkTemplate; n, randomness::AbstractRNG)
+function regulations(
+    template::NetworkTemplate;
+    n,
+    prefix,
+    randomness::AbstractRNG,
+)
     size(template.adjacency) == (n, n) ||
         error("invalid initiator: must have size ($n, $n)")
     isprob(template.adjacency) ||
         error("invalid initiator: must be probabilities")
     map(eachcol(template.adjacency)) do column
         slots = [
-            regulator(template; from = gene_name(i; n), randomness)
+            regulator(template; from = gene_name(i; n, prefix), randomness)
             for (i, cell) in enumerate(column)
             if rand(randomness) < cell
         ]
@@ -129,21 +121,6 @@ end
 
 factor(xs::AbstractVector) = vcat(adjoint.(xs)...)
 
-cast(::Type{UnivariateDistribution}, x::Real; _...) = Dirac(x)
-
-function cast(::Type{UnivariateDistribution}, xs::AbstractVector; _...)
-    T = getfield(Distributions, Symbol(xs[1]))
-    T <: UnivariateDistribution || error("not a UnivariateDistribution")
-    T(xs[2:end]...)
-end
-
-function cast(::Type{Nonnegative{T}}, x; _...) where {T}
-    result = cast(T, x)
-    minimum(result) ≥ 0.0 ||
-        error("distribution must have nonnegative support")
-    Nonnegative{UnivariateDistribution}(result)
-end
-
 function cast(::Type{AbstractMatrix}, xs::AbstractVector; _...)
     factors = factor.(xs)
     result = adjacency(factors)
@@ -162,43 +139,35 @@ function cast(T::Type{AbstractMatrix}, x::AbstractDict{Symbol}; _...)
     adjacency(initiator; k)
 end
 
-Base.rand(randomness::AbstractRNG, d::Nonnegative{<:UnivariateDistribution}) =
-    rand(randomness, d.inner)
-
-Base.rand(randomness::AbstractRNG, template::BaseRatesTemplate) =
-    V1.EukaryoteBaseRates(; (
-        field => rand(randomness, getfield(template, field))
-        for field in fieldnames(V1.EukaryoteBaseRates)
-    )...)
-
 function Base.rand(randomness::AbstractRNG, template::Template)
-    n = template.n
+    n = template.count
+    prefix = template.prefix
 
     activations =
         if isnothing(template.activation)
-            fill(V1.Activation(), n)
+            [V1.Activation() for _ in 1:n]
         else
-            regulations(something(template.activation); n, randomness)
+            regulations(something(template.activation); n, prefix, randomness)
         end
 
     repressions =
         if isnothing(template.repression)
-            fill(V1.Repression(), n)
+            [V1.Repression() for _ in 1:n]
         else
-            regulations(something(template.repression); n, randomness)
+            regulations(something(template.repression); n, prefix, randomness)
         end
 
     proteolyses =
         if isnothing(template.proteolysis)
-            fill(V1.Proteolysis(), n)
+            [V1.Proteolysis() for _ in 1:n]
         else
-            regulations(something(template.proteolysis); n, randomness)
+            regulations(something(template.proteolysis); n, prefix, randomness)
         end
 
     V1.Definition(;
         genes = [
             V1.Gene(
-                name = gene_name(i; n),
+                name = gene_name(i; n, prefix),
                 base_rates = rand(randomness, template.base_rates);
                 activation,
                 repression,
