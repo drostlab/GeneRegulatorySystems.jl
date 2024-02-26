@@ -2,7 +2,7 @@ module Differentiation
 
 import ...Conversion: cast
 using ..Models: Models, SciML, V1, Plumbing
-import ..Specifications
+import ..Specifications: Specifications, representation
 
 @kwdef struct Transient
     differentiator::Union{V1.Gene, Symbol}
@@ -34,6 +34,28 @@ end
     peripheral::V1.Definition
     deposit::Dict{Symbol, Int} = Dict{Symbol, Int}()
 end
+
+representation(x::Transient) = representation(
+    x,
+    simple = true,
+    omit_defaults = [
+        :buffer => []
+        :timer_deposit => Dict()
+        :buffer_deposit => 0
+        :timer_trigger_at => 0.5
+        :timer_brake_at => 0.5
+        :timer_repression => 2.0
+        :differentiator_self_activation => 2.0
+        :differentiator_mutual_proteolysis_around => 0.0001
+        :differentiator_proteolysis => 0.0001
+    ]
+)
+representation(x::Definition) = Dict{Symbol, Any}(
+    Symbol("{regulation/differentiation}") => merge(
+        only(values(representation(x.peripheral))),
+        Dict{Symbol, Any}(:differentation => representation(x.differentiation))
+    )
+)
 
 Models.describe(::Definition) =
     Models.Label("'regulation/differentiation' definition")

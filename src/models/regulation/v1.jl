@@ -2,7 +2,7 @@ module V1
 
 import ...Conversion: cast
 using ..Models: Models, SciML
-import ...Specifications
+import ...Specifications: Specifications, representation
 
 using Base: @invoke
 
@@ -50,14 +50,14 @@ abstract type Regulation end
 
 @kwdef struct Activation <: Regulation
     slots::Vector{HillRegulator} = []
-    aggregate::Function = minimum
+    aggregate::Function = geomean
 end
 (activation::Activation)(xs; T) =
     isempty(activation.slots) ? one(T) : activation.aggregate(xs)
 
 @kwdef struct Repression <: Regulation
     slots::Vector{HillRegulator} = []
-    aggregate::Function = minimum
+    aggregate::Function = geomean
 end
 (repression::Repression)(xs; T) =
     isempty(repression.slots) ? one(T) : repression.aggregate(xs)
@@ -143,7 +143,6 @@ aggregation(::Val{:minimum}, _) = minimum
 aggregation(::Val{:maximum}, _) = maximum
 aggregation(::Val{:mean}, _) = mean
 aggregation(::Val{:geometric_mean}, _) = geomean
-aggregation(::Val{:complement_geometric_mean}, _) = xs -> geomean(1.0 .- xs)
 aggregation(::Val{:harmonic_mean}, _) = harmmean
 aggregation(k::Val{:generalized_mean}, x) =
     aggregation(k, cast(Float64, get(x, :p, 0.0)))
@@ -154,6 +153,50 @@ aggregation(::Val{:generalized_mean}, p::Float64) =
     p == 1.0 ? mean :
     p == Inf ? maximum :
     Base.Fix2(genmean, p)
+
+aggregation_name(::typeof(one ∘ typeof ∘ first)) = "neutral"
+aggregation_name(::typeof(geomean)) = "geometric_mean"
+aggregation_name(::typeof(harmmean)) = "harmonic_mean"
+aggregation_name(f::Function) = nameof(f)
+
+regulation_representation(slots, ::typeof(geomean)) = representation(slots)
+regulation_representation(slots, aggregation::Function) = Dict(
+    :slots => representation(slots),
+    :aggregation => aggregation_name(aggregation),
+)
+regulation_representation(slots, ::Base.Fix2{typeof(genmean), P}) where {P} =
+    Dict(
+        :slots => representation(slots),
+        :aggregation => "generalized_mean",
+        :p => P,
+    )
+
+representation(x::ProkaryoteBaseRates) = representation(x, simple = true)
+representation(x::EukaryoteBaseRates) = representation(x, simple = true)
+representation(x::DirectRegulator) = representation(x, simple = true)
+representation(x::HillRegulator) =
+    representation(x, simple = true, omit_defaults = [:k => -1.0])
+representation(x::Activation) = regulation_representation(x.slots, x.aggregate)
+representation(x::Repression) = regulation_representation(x.slots, x.aggregate)
+representation(x::Proteolysis) = representation(x.slots)
+representation(x::Gene) = representation(
+    x,
+    simple = true,
+    omit_defaults = [:activation => [], :repression => [], :proteolysis => []],
+)
+representation(x::Definition) = Dict{Symbol, Any}(
+    Symbol("{regulation/v1}") => representation(
+        x,
+        simple = true,
+        omit_defaults = [
+            :polymerases => "polymerases",
+            :ribosomes => "ribosomes",
+            :proteasomes => "proteasomes",
+            :genes => [],
+            :reactions => [],
+        ],
+    )
+)
 
 Models.describe(definition::Definition) = Models.Descriptions([
     Models.Label(

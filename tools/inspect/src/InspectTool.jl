@@ -3,7 +3,7 @@ module InspectTool
 include("$(@__DIR__)/../../common.jl")
 include("$(@__DIR__)/visualization.jl")
 
-using .Common: Dimension, artifact
+using .Common: Dimension, artifact, warn_incompatible_versions
 using .Visualization: Catenation
 
 import Arrow
@@ -490,6 +490,8 @@ function main(;
     size,
     wait_for_close,
 )
+    warn_incompatible_versions(location)
+
     selection = Observable(
         Selection(
             channel = something(channel, ""),

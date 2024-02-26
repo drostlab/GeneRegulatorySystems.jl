@@ -24,6 +24,34 @@ artifact(::Val{:specification}, ::Nothing) = "experiment.schedule.json"
 artifact(::Val{:index}, ::Nothing) = "index.arrow"
 artifact(::Val{:events}, into) = "events$into.stream.arrow"
 
+function warn_incompatible_versions(location)
+    specification = JSON.parsefile(artifact(:specification; prefix = location))
+    specification isa Dict || return
+    haskey(specification, "_version") || return
+
+    warned = false
+    if (specification["_julia_version"] != "v$VERSION")
+        @warn(
+            "Experiment was prepared with a different Julia version.",
+            specification["_julia_version"],
+            "v$VERSION",
+        )
+        warned = true
+    end
+    if (specification["_version"] != repository_version())
+        @warn(
+            "Experiment was prepared with a different " *
+            "GeneRegulatorySystems.jl version.",
+            specification["_version"],
+            repository_version(),
+        )
+        warned = true
+    end
+    warned && @info "Reified objects may be incorrect."
+
+    nothing
+end
+
 reify(path; location) = Scheduling.reify(
     Schedule(specification = Specifications.Load(
         basename(artifact(:specification, prefix = location))

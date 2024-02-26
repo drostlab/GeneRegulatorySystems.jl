@@ -73,10 +73,10 @@ regulator(
 ) = V1.DirectRegulator(k = rand(randomness, template.k); from)
 
 regulation(::ActivationNetworkTemplate; slots::Vector{V1.HillRegulator}) =
-    V1.Activation(aggregate = minimum; slots)
+    V1.Activation(; slots)
 
 regulation(::RepressionNetworkTemplate; slots::Vector{V1.HillRegulator}) =
-    V1.Repression(aggregate = minimum; slots)
+    V1.Repression(; slots)
 
 regulation(::ProteolysisNetworkTemplate; slots::Vector{V1.DirectRegulator}) =
     V1.Proteolysis(; slots)

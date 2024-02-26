@@ -1,0 +1,12 @@
+name = "ReifyTool"
+uuid = "9bef86cc-de69-49fa-a35f-e5bbc316489e"
+
+[deps]
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+GeneRegulatorySystems = "321a2579-640d-4198-9790-c715c19becf3"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LibGit2 = "76f85450-5226-5b5a-8eaa-529ad045b433"
+
+[compat]
+julia = "1.9"

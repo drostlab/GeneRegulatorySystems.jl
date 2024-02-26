@@ -301,9 +301,6 @@ end
     load_schedule(f!; load)(x, Δt; load, context..., f!.path)
 
 reify(x, path::AbstractString; load = nothing) =
-    isempty(path) ? x : error("cannot descend to '$path' in $(typeof(x))")
-
-reify(x::AbstractDict{Symbol}, path::AbstractString; load = nothing) =
     isempty(path) ? x : Specifications.pluck(x, split(path, '.'))
 
 reify(f!::Schedule{Template}, path::AbstractString; load) = reify(

@@ -1,7 +1,7 @@
 module Models
 
 import ..Conversion: cast
-import ..Specifications
+import ..Specifications: Specifications, representation
 
 using Random
 
@@ -96,6 +96,13 @@ function cast(::Type{Reagents}, xs::AbstractVector; _...)
 
     result
 end
+
+representation(x::Reagents) = x.counts
+representation(x::MassActionReaction) = Dict{Symbol, Any}(
+    :from => representation(x.from),
+    :to => representation(x.to),
+    :rates => [x.k₊, x.k₋]
+)
 
 abstract type Description end
 
