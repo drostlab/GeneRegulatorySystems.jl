@@ -16,6 +16,8 @@ using Distributions
     differentiator_base_rates::BaseRatesTemplate
     timer_base_rates::BaseRatesTemplate
     duration::Nonnegative{UnivariateDistribution}
+    trigger::Symbol = :trigger
+    trigger_deposit::Int = 0
     buffer::Vector{Float64} = Float64[]
     timer_deposit::Dict{Symbol, Int} = Dict{Symbol, Int}()
     buffer_deposit::Int = 0
@@ -59,7 +61,7 @@ assemble_differentiation(
 ) = (;
     differentiation = V1.Gene(
         name = Symbol(name),
-        base_rates = rand(randomness, template.differentiator_base_rates)
+        base_rates = rand(randomness, template.differentiator_base_rates),
     ),
     ratio,
     differentiators = [Symbol(name)],
@@ -69,6 +71,7 @@ function assemble_differentiation(
     node::Node;
     template,
     name = "differentiator",
+    trigger = nothing,  # We special-case the root node by providing trigger.
     randomness::AbstractRNG,
 )
     next = assemble_differentiation(
@@ -84,9 +87,12 @@ function assemble_differentiation(
         randomness,
     )
     ratio = next.ratio + alternative.ratio
-    differentiator = V1.Gene(
-        name = Symbol(name),
-        base_rates = rand(randomness, template.differentiator_base_rates),
+    differentiator = @something(
+        trigger,
+        V1.Gene(
+            name = Symbol(name),
+            base_rates = rand(randomness, template.differentiator_base_rates),
+        )
     )
     duration = rand(randomness, template.duration)
     timer = V1.Gene(
@@ -108,7 +114,7 @@ function assemble_differentiation(
         ),
         ratio,
         differentiators = [
-            differentiator.name
+            trigger === nothing ? [differentiator.name] : Symbol[]
             next.differentiators
             alternative.differentiators
         ]
@@ -156,7 +162,8 @@ function build(definition::Definition; method::Symbol, randomness::AbstractRNG)
     (; differentiation, differentiators) = assemble_differentiation(
         root,
         template = template.differentiation;
-        randomness
+        template.differentiation.trigger,
+        randomness,
     )
 
     # Sample a peripheral (Kronecker-linked) network, and have its genes
@@ -190,9 +197,14 @@ function build(definition::Definition; method::Symbol, randomness::AbstractRNG)
         end
     end
 
+    deposit = Dict(
+        template.differentiation.trigger =>
+            template.differentiation.trigger_deposit
+    )
+
     Models.Derived(
         model = Differentiation.build(
-            Differentiation.Definition(; differentiation, peripheral);
+            Differentiation.Definition(; differentiation, peripheral, deposit);
             method,
         );
         definition,

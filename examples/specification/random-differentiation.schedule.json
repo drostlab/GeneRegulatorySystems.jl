@@ -32,6 +32,7 @@
                     "protein_decay": 1.0
                 },
                 "duration": ["LogNormal", 10.0, 1.0],
+                "trigger_deposit": 500,
                 "timer_deposit": {"mrnas": 5, "proteins": 30},
                 "buffer": [0.002, 0.008],
                 "buffer_deposit": 300
