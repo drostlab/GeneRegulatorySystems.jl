@@ -53,7 +53,7 @@ representation(x::Transient) = representation(
 representation(x::Definition) = Dict{Symbol, Any}(
     Symbol("{regulation/differentiation}") => merge(
         only(values(representation(x.peripheral))),
-        Dict{Symbol, Any}(:differentation => representation(x.differentiation))
+        Dict{Symbol, Any}(:differentiation => representation(x.differentiation))
     )
 )
 

@@ -387,10 +387,10 @@ function regulation(
 end
 
 const JUMP_PROCESSES_METHODS = Dict(
-    "Direct" => Direct,
-    "SortingDirect" => SortingDirect,
-    "RSSA" => RSSA,
-    "RSSACR" => RSSACR,
+    :Direct => Direct,
+    :SortingDirect => SortingDirect,
+    :RSSA => RSSA,
+    :RSSACR => RSSACR,
 )
 
 pick_method(system; method) = get(JUMP_PROCESSES_METHODS, method) do
