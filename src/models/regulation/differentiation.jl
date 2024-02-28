@@ -24,6 +24,7 @@ import ..Specifications: Specifications, representation
     timer_trigger_at::Float64 = 0.5
     timer_brake_at::Float64 = 0.5
     timer_repression::Float64 = 2.0
+    timer_proteolysis::Float64 = 0.000002
     differentiator_self_activation::Float64 = 2.0
     differentiator_mutual_proteolysis_around::Float64 = 0.0001
     differentiator_proteolysis::Float64 = 0.0001
@@ -252,7 +253,7 @@ function descend!(
 
     # Repression from any downstream differentiator keeps the timer depleted
     # in the differentiated state:
-    let at = transient.timer_repression
+    let at = transient.timer_repression, k = transient.timer_proteolysis
         push!(
             timer.repression.slots,
             V1.HillRegulator(from = next.name; at),
@@ -260,6 +261,14 @@ function descend!(
         push!(
             timer.repression.slots,
             V1.HillRegulator(from = alternative.name; at),
+        )
+        push!(
+            timer.proteolysis.slots,
+            V1.DirectRegulator(from = next.name; k),
+        )
+        push!(
+            timer.proteolysis.slots,
+            V1.DirectRegulator(from = alternative.name; k),
         )
     end
 
