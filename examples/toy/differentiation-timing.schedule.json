@@ -32,11 +32,13 @@
         "buffer": [0.002, 0.008],
         "buffer_deposit": 300
     },
-    "each": {"start": 3600, "step": 3600, "stop": 90e3},
+    "each": {"start": 3600, "step": 3600, "stop": 3600},
     "as": "time",
     "branch": true,
     "step": {
         "do": {"{regulation/differentiation}": {
+            "activation": {"aggregate": "minimum"},
+            "repression": {"aggregate": "minimum"},
             "differentiation": {
                 "$": "differentiation",
                 "timer": {
@@ -70,15 +72,7 @@
                 "proteasomes": 1e6
             }},
             {"{bootstrap/differentiation}": {"$": "do"}},
-            {"step": {
-                "to":1000.0,
-                "{add}": {
-                    "trigger.proteins": 1000
-                },
-                "step": 100.0
-                }
-            },
-            {"each": {"length": 100}, "branch": true, "step":{
+            {"each": {"length": 1}, "branch": true, "step":{
                 "to": 1000000.0, "step": [
                     1000.0]}}
         ]
