@@ -183,7 +183,12 @@ representation(x::Proteolysis) = representation(x.slots)
 representation(x::Gene) = representation(
     x,
     simple = true,
-    omit_defaults = [:activation => [], :repression => [], :proteolysis => []],
+    omit_defaults = [
+        :activation => [],
+        :repression => [],
+        :proteolysis => [],
+        :unique => true,
+    ],
 )
 representation(x::Definition) = Dict{Symbol, Any}(
     Symbol("{regulation/v1}") => representation(

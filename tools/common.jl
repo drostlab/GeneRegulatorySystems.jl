@@ -52,13 +52,12 @@ function warn_incompatible_versions(location)
     nothing
 end
 
-reify(path; location) = Scheduling.reify(
-    Schedule(specification = Specifications.Load(
-        basename(artifact(:specification, prefix = location))
-    )),
+reify(path; location) = reify(artifact(:specification, prefix = location), path)
+reify(file, path) = Scheduling.reify(
+    Schedule(specification = Specifications.Load(basename(file))),
     path;
     load = filename -> JSON.parsefile(
-        "$(dirname(location))/$filename",
+        "$(dirname(file))/$filename",
         dicttype = Dict{Symbol, Any},
     )
 )

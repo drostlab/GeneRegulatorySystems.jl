@@ -110,10 +110,11 @@ paste(::Any) = "__omitted__"
 
 pluck(x, path::AbstractVector) = foldl(pluck, path, init = x)
 pluck(x::AbstractDict{Symbol}, key::AbstractString) = pluck(x, Symbol(key))
-pluck(x::AbstractDict{Symbol}, key::Symbol) = x[key]
+pluck(x::AbstractDict{Symbol}, key::Symbol) = key == Symbol("") ? x : x[key]
 pluck(xs::AbstractVector, key::AbstractString) = pluck(xs, parse(Int, key))
 pluck(xs::AbstractVector, i::Int) = xs[i]
-pluck(x, key::AbstractString) = getproperty(x, Symbol(key))
+pluck(x, key::AbstractString) =
+    isempty(key) ? x : getproperty(x, Symbol(key))
 
 function substituted(target::AbstractString; bindings::AbstractDict{Symbol})
     new = replace(
@@ -311,8 +312,9 @@ representation(x::Integer) = x
 representation(x::AbstractFloat) = x
 representation(x::AbstractString) = x
 representation(x::Symbol) = string(x)
-function representation(x; simple = false, omit_defaults = Pair{Symbol, Any}[])
-    simple || error("don't know how to represent value: $x")
+representation(x; simple = false, rest...) =
+    representation(x, Val(simple); rest...)
+function representation(x, ::Val{true}; omit_defaults = Pair{Symbol, Any}[])
     result = Dict{Symbol, Any}(
         key => representation(getproperty(x, key))
         for key in propertynames(x)

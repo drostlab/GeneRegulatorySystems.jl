@@ -312,6 +312,17 @@ end
 reify(x, path::AbstractString; load = nothing) =
     isempty(path) ? x : Specifications.pluck(x, split(path, '.'))
 
+reify(f!::Schedule{Slice}, path::AbstractString; load) = reify(
+    model(
+        get(f!.bindings, :do, Pass());
+        f!.bindings,
+        f!.branch,
+        path,
+    ),
+    path;
+    load,
+)
+
 reify(f!::Schedule{Template}, path::AbstractString; load) = reify(
     model(
         evaluate(f!.specification; f!.bindings, f!.path);
@@ -350,7 +361,7 @@ function reify(f!::Schedule{<:Sequence}, path::AbstractString; load)
         prefix, head, tail = m
         reify(f!, prefix, parse(Int, head), tail; load)
     else
-        error("cannot descend to '$path' in Sequence at '$(f!.path)'")
+        reify(f!.bindings, path; load)
     end
 end
 
@@ -397,7 +408,7 @@ function reify(primitive!::Primitive, path::AbstractString; load = nothing)
     token = path[1]
     tail = path[2:end]
     if token == '+'
-        primitive!.f!
+        reify(primitive!.f!, tail)
     elseif token == '.'
         reify(primitive!.bindings, tail)
     else

@@ -17,7 +17,7 @@ settings() = @add_arg_table! ArgParseSettings(
 
     "--format", "-x"
         arg_type = Symbol
-        default = :dump
+        default = :tree
 
     "--maxdepth", "-d"
         arg_type = Int
