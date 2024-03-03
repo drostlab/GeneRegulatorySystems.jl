@@ -35,22 +35,55 @@ Base.getindex(colors::GroupColors, group::Symbol) = colors[string(group)]
 Base.getindex(colors::GroupColors, group::String) =
     get(colors.colors, group, colorant"gray")
 
-kindtype(kind::Symbol) = kindtype(Val(kind))
-kindtype(::Val) = Float64
-kindtype(::Val{:promoter}) = Bool
-
 kindname(kind::Symbol) = kindname(Val(kind))
 kindname(::Val{Kind}) where {Kind} = String(Kind)
-kindname(::Val{:promoter}) = "promoter states"
+kindname(::Val{:activity}) = "promoter activity"
 kindname(::Val{:mrnas}) = "mRNAs"
 kindname(::Val{:premrnas}) = "pre-mRNAs"
 
-@kwdef struct Series{T <: Real}
+abstract type Series end
+
+@kwdef struct CountSeries <: Series
     ts::Vector{Float64} = Float64[]
-    ys::Vector{T} = T[]
+    ys::Vector{Int} = Int[]
 end
 
-seriestype(dimension::Dimension) = Series{kindtype(dimension.kind)}
+@kwdef struct FractionSeries <: Series
+    ts::Vector{Float64} = Float64[]
+    ys::Vector{Float64} = Float64[]
+end
+
+function FractionSeries(these::CountSeries, others::CountSeries)
+    ts = Float64[]
+    ys = Float64[]
+    xs1 = zip(these.ts, these.ys)
+    xs2 = zip(others.ts, others.ys)
+    t1 = t2 = 0.0
+    x1 = x2 = x1′ = x2′ = 0
+    next1 = next2 = (1, 1)
+    sentinel = ((Inf, 0), (0, 0))
+    while true
+        t1′ = t1
+        if t1 ≤ t2
+            ((t1, x1′), next1) = something(iterate(xs1, next1), sentinel)
+        end
+        if t2 ≤ t1′
+            ((t2, x2′), next2) = something(iterate(xs2, next2), sentinel)
+        end
+        isfinite(t1) || isfinite(t2) || break
+        t1 ≤ t2 && (x1 = x1′)
+        t2 ≤ t1 && (x2 = x2′)
+        push!(ts, min(t1, t2))
+        push!(ys, iszero(x1) ? 0.0 : x1 / (x1 + x2))
+    end
+
+    FractionSeries(; ts, ys)
+end
+
+seriestype(dimension::Dimension) = seriestype(dimension.kind)
+seriestype(kind::Symbol) = seriestype(Val(kind))
+seriestype(::Val) = CountSeries
+seriestype(::Val{:activity}) = FractionSeries
 
 @kwdef struct Catenation
     front::Int
@@ -79,7 +112,7 @@ end
 
 function attach_trajectory_components!(
     figure,
-    ::Type{<:Number};
+    ::Type{CountSeries};
     index,
     catenations,
     group_colors,
@@ -156,7 +189,7 @@ end
 
 function attach_trajectory_components!(
     figure,
-    ::Type{Bool};
+    ::Type{FractionSeries};
     index,
     catenations,
     group_colors,
@@ -214,7 +247,7 @@ attach_trajectory_components!(figure; events, kind, rest...) =
     if haskey(events, kind)
         attach_trajectory_components!(
             figure,
-            kindtype(kind);
+            seriestype(kind);
             catenations = events[kind],
             rest...,
         )

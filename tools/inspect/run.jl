@@ -20,7 +20,7 @@ settings() = @add_arg_table! ArgParseSettings(
         default = "selector,trajectory,model,legend,info"
 
     "--kinds", "-k"
-        default = "promoter,mrnas,proteins"
+        default = "activity,mrnas,proteins"
 
     "--size", "-s"
         default = "1280x720"

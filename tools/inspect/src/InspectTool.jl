@@ -122,6 +122,36 @@ function cut(filtered)
     result
 end
 
+function place!(catenation::Catenation, event)
+    dimension = Dimension(event.name)
+    series = get!(catenation.series, dimension) do
+        Visualization.seriestype(dimension)()
+    end
+
+    push!(series.ts, event.t)
+    push!(series.ys, event.value)
+
+    nothing
+end
+
+augment!(catenation::Catenation) =
+    for (dimension, active) in catenation.series
+        dimension.kind == :active || continue
+        inactive_dimension = Dimension(:inactive, dimension.group)
+        catenation.series[Dimension(:activity, dimension.group)] =
+            if haskey(catenation.series, inactive_dimension)
+                Visualization.FractionSeries(
+                    active,
+                    catenation.series[inactive_dimension],
+                )
+            else
+                Visualization.FractionSeries(
+                    ys = Float64.(active.ys);
+                    active.ts,
+                )
+            end
+    end
+
 function load_events(filtered; location)
     # Since Makie does not handle large numbers of plot objects well, we
     # optimize the common case where the simulation state was sampled only at
@@ -142,22 +172,12 @@ function load_events(filtered; location)
 
     # Next we load all linked event streams and sort the events into their
     # respective timeseries.
-    dimensions = Dict{Symbol, Dimension}()
     for channel in unique(subset(filtered, :count => ByRow(>(0))).into)
         events = "$(dirname(location))/$channel" |> Arrow.Table |> DataFrame
         for event in eachrow(events)
             haskey(catenations_index, event.i) || continue
-
             catenation = catenations[catenations_index[event.i]]
-            dimension = get!(dimensions, event.name) do
-                Dimension(event.name)
-            end
-            series = get!(catenation.series, dimension) do
-                Visualization.seriestype(dimension)()
-            end
-
-            push!(series.ts, event.t)
-            push!(series.ys, event.value)
+            place!(catenation, event)
         end
     end
 
@@ -166,6 +186,8 @@ function load_events(filtered; location)
     # look them up from backlinks to connect them.
     result = Dict{Symbol, Dict{Int, Catenation}}()
     for catenation in catenations
+        augment!(catenation)
+
         by_kind = Dict{Symbol, Catenation}()
         for (dimension, series) in catenation.series
             catenation′ = get!(by_kind, dimension.kind) do
@@ -561,7 +583,7 @@ end
                     Symbol("1.proteins"),
                     Symbol("1.mrnas"),
                     Symbol("1.proteins"),
-                    Symbol("2.promoter"),
+                    Symbol("2.active"),
                 ],
                 value = [1, 0, 2, 1, 1],
             )
@@ -588,7 +610,7 @@ end
                 items_prefix = nothing,
                 label_pattern = "SKG",
                 displays = "selector,trajectory,model,legend,info",
-                kinds = "promoter",
+                kinds = "activity",
                 size = "1280x720",
                 wait_for_close = false;
                 location,

@@ -43,7 +43,7 @@
                     "$": "differentiation",
                     "differentiator": {
                         "$": ["differentiation", "differentiator"],
-                        "name": "state0"
+                        "name": "differentiator0"
                     },
                     "duration": 20000.0,
                     "next": {"$": ["differentiation", "differentiator"]},
@@ -53,7 +53,7 @@
                     "$": "differentiation",
                     "differentiator": {
                         "$": ["differentiation", "differentiator"],
-                        "name": "state1"
+                        "name": "differentiator1"
                     },
                     "duration": 40000.0,
                     "next": {"$": ["differentiation", "differentiator"]},
