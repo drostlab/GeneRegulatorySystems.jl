@@ -50,6 +50,7 @@ end
 end
 
 Models.t(x::JumpState) = x.integrator.t
+Models.randomness(x::JumpState) = x.problem.rng
 
 cast(::Type{FlatState}, x::JumpState) = FlatState(
     counts = Dict(

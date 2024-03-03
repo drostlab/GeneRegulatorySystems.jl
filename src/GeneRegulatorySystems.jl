@@ -6,8 +6,12 @@ using PrecompileTools
 import Random
 import SHA
 
+randomness(seed::AbstractVector{UInt64}) = Random.Xoshiro(seed...)
 randomness(seed::AbstractString) =
-    Random.Xoshiro(reinterpret(UInt64, SHA.sha256(seed))...)
+    randomness(reinterpret(UInt64, SHA.sha256(seed)))
+
+seed(::Random.AbstractRNG) = nothing
+seed(r::Random.Xoshiro) = [r.s0, r.s1, r.s2, r.s3]
 
 σ(x) = inv(one(x) + exp(-x))
 logit(p) = log(p / (one(p) - p))

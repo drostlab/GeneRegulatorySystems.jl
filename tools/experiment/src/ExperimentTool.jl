@@ -229,6 +229,7 @@ function flush!(sink::Sink)
             label = Arrow.DictEncode(index.label),
             index.count,
             into = Arrow.DictEncode(index.into),
+            index.seed,
         )
     )
 end
@@ -251,7 +252,7 @@ function flush!(sink::Sink, into)
     @logmsg(Scheduling.Progress, :saved, at = filename, done = count)
 end
 
-function (sink::Sink)(into, state; path, primitive!, from, _...)
+function (sink::Sink)(into, state; path, primitive!, from, seed, _...)
     sink.i += 1
 
     to = Models.t(state)
@@ -261,7 +262,7 @@ function (sink::Sink)(into, state; path, primitive!, from, _...)
     if into === nothing
         push!(
             sink.index,
-            (; sink.i, path, from, to, model, label, count = 0, into = "")
+            (; sink.i, path, from, to, model, label, count = 0, into = "", seed)
         )
         return
     end
@@ -284,7 +285,7 @@ function (sink::Sink)(into, state; path, primitive!, from, _...)
     filename = basename(artifact(:events, into, prefix = sink.location))
     push!(
         sink.index,
-        (; sink.i, path, from, to, model, label, count, into = filename),
+        (; sink.i, path, from, to, model, label, count, into = filename, seed),
     )
 end
 

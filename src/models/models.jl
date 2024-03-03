@@ -8,7 +8,7 @@ using Random
 @kwdef mutable struct FlatState
     t::Float64 = 0.0
     counts::Dict{Symbol, Int} = Dict{Symbol, Int}()
-    randomness::AbstractRNG = Random.GLOBAL_RNG
+    randomness::AbstractRNG = Random.Xoshiro()
 end
 FlatState(x::FlatState) = FlatState(
     counts = deepcopy(x.counts);
@@ -26,6 +26,9 @@ cast(::Type{FlatState}, x::Branched) = cast(FlatState, x.stem)
 
 t(x::FlatState) = x.t
 t(x::Branched) = t(x.stem)
+
+randomness(x::FlatState) = x.randomness
+randomness(x::Branched) = randomness(x.stem)
 
 abstract type Model{State} end
 abstract type Instant{State} <: Model{State} end

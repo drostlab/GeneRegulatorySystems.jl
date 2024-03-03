@@ -1,5 +1,6 @@
 module Scheduling
 
+using ...GeneRegulatorySystems: GeneRegulatorySystems
 using ...Conversion: cast
 using ..Models: Models, Model, FlatState, Branched
 using ..Models.Plumbing: Pass
@@ -73,19 +74,27 @@ function (primitive!::Primitive)(
     )
     x = Models.adapt(x, f!)
     from = Models.t(x)
+    seed = GeneRegulatorySystems.seed(Models.randomness(x))
 
     @logmsg Progress :advancing at = path
     if trace === nothing
         x = f!(x, Δt; path, context...)
     elseif primitive!.skip > 0.0
         x = f!(x, Δt; path, context...)
-        trace(nothing, x; path, primitive!, from)
+        trace(nothing, x; path, primitive!, from, seed)
         if primitive!.into !== nothing
-            trace(primitive!.into, x; path, primitive!, from = Models.t(x))
+            trace(
+                primitive!.into,
+                x,
+                from = Models.t(x),
+                seed = GeneRegulatorySystems.seed(Models.randomness(x));
+                path,
+                primitive!,
+            )
         end
     else
         x = f!(x, Δt; path, context..., primitive!.into)
-        trace(primitive!.into, x; path, primitive!, from)
+        trace(primitive!.into, x; path, primitive!, from, seed)
     end
 
     @logmsg Progress :done at = path
@@ -227,7 +236,7 @@ end
     )(x, Δt; path, context...)
 
 function (f!::Schedule{Scope})(
-    x = FlatState(randomness = Random.GLOBAL_RNG),
+    x = FlatState(),
     Δt::Float64 = Inf;
     context...
 )
