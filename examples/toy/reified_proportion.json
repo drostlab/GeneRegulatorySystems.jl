@@ -439,7 +439,7 @@
                 "state1_timer.mrnas": 5
             }},
 
-            {"each": {"length": 10}, "branch": true, "step": {
+            {"each": {"length": 100}, "branch": true, "step": {
                 "to": 500000.0, "step": [500.0]
             }}
         ]
