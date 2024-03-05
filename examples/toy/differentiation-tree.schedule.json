@@ -30,7 +30,7 @@
         },
         "timer_deposit": {"mrnas": 5, "proteins": 30},
         "buffer": [0.002, 0.008],
-        "buffer_deposit": 300
+        "buffer_deposit": 500
     },
     "step": {
         "do": {"{regulation/differentiation}": {

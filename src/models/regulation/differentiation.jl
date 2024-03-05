@@ -4,6 +4,16 @@ import ...Conversion: cast
 using ..Models: Models, SciML, V1, Plumbing
 import ..Specifications: Specifications, representation
 
+# To reproduce the parameters in the following two functions, see:
+#
+#     contrib/differentiation_calibration/README.txt
+
+proportion_rate(target::Float64) =
+    0.0001003483 * (1.040447 / (1.011666 - target) - 1.0)^-0.024953787457163392
+
+timing_factor(duration::Float64) =
+    0.00003167 * max(600.0, duration)^-1.031
+
 @kwdef struct Transient
     differentiator::Union{V1.Gene, Symbol}
     duration::Float64
@@ -96,9 +106,6 @@ cast(::Type{Definition}, x::AbstractDict{Symbol}; context = x) = Definition(
     peripheral = cast(V1.Definition, x; context),
 )
 
-timing_factor(duration::Float64) =
-    0.00001982551383307971 * max(600.0, duration)^-0.973
-
 function make_timer!(
     gene::V1.Gene;
     default_name,
@@ -164,9 +171,6 @@ end
 obtain_differentiator!(transient::Transient; default_name, genes) =
     obtain_differentiator!(transient.differentiator; default_name, genes)
 
-proportion_adjustment(target::Float64) =
-    clamp(2.0078e-6 * log(1.0 / target - 1.0), -0.00001, 0.00001)
-
 descend!(::Any; _...) = nothing
 function descend!(
     transient::Transient;
@@ -199,31 +203,28 @@ function descend!(
     # Add regulation triggering timer decay:
     push!(
         timer.repression.slots,
-        V1.HillRegulator(from = trigger, at = transient.timer_trigger_at)
+        V1.HillRegulator(from = trigger, at = transient.timer_trigger_at),
     )
 
     # The alternative upstream differentiator prevents timer decay:
     brake === nothing || push!(
         timer.activation.slots,
-        V1.HillRegulator(from = brake, at = transient.timer_brake_at)
+        V1.HillRegulator(from = brake, at = transient.timer_brake_at),
     )
 
-    # Control the switch proportion by tuning mutually repressive proteolysis
+    # Control the switch proportion by setting mutually repressive proteolysis
     # between the differentiators:
     let
-        k = transient.differentiator_mutual_proteolysis_around
-        δ = proportion_adjustment(transient.ratio)
-        δ < k || error(
-            "differentiator_mutual_proteolysis_around is too low for this" *
-            " proportion adjustment"
-        )
+        0.0 ≤ transient.ratio ≤ 1.0 ||
+            error("differentiation ratio is not in the range [0, 1]")
+        k1, k2 = proportion_rate.((transient.ratio, 1.0 - transient.ratio))
         push!(
             next.proteolysis.slots,
-            V1.DirectRegulator(from = alternative.name, k = k + δ)
+            V1.DirectRegulator(from = alternative.name, k = k1),
         )
         push!(
             alternative.proteolysis.slots,
-            V1.DirectRegulator(from = next.name, k = k - δ)
+            V1.DirectRegulator(from = next.name, k = k2),
         )
     end
 
@@ -231,24 +232,18 @@ function descend!(
     let at = transient.differentiator_self_activation
         push!(
             next.activation.slots,
-            V1.HillRegulator(from = next.name; at)
+            V1.HillRegulator(from = next.name; at),
         )
         push!(
             alternative.activation.slots,
-            V1.HillRegulator(from = alternative.name; at)
+            V1.HillRegulator(from = alternative.name; at),
         )
     end
 
     # Proteolytic repression from an undecayed timer prevents differentiation:
-    let k = transient.differentiator_proteolysis
-        push!(
-            next.proteolysis.slots,
-            V1.DirectRegulator(from = timer.name; k),
-        )
-        push!(
-            alternative.proteolysis.slots,
-            V1.DirectRegulator(from = timer.name; k),
-        )
+    let k = transient.differentiator_proteolysis, from = timer.name
+        push!(next.proteolysis.slots, V1.DirectRegulator(; from, k))
+        push!(alternative.proteolysis.slots, V1.DirectRegulator(; from, k))
     end
 
     # Repression from any downstream differentiator keeps the timer depleted
