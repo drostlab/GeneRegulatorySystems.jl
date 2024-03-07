@@ -204,7 +204,12 @@ function build(definition::Definition; method::Symbol, randomness::AbstractRNG)
 
     Models.Derived(
         model = Differentiation.build(
-            Differentiation.Definition(; differentiation, peripheral, deposit);
+            Differentiation.Definition(
+                meta = Dict{Symbol, Any}(:ratios => ratios);
+                differentiation,
+                peripheral,
+                deposit,
+            );
             method,
         );
         definition,

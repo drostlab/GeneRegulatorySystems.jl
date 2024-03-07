@@ -184,6 +184,7 @@ representation(x::Gene) = representation(
     x,
     simple = true,
     omit_defaults = [
+        :name => "",
         :activation => [],
         :repression => [],
         :proteolysis => [],

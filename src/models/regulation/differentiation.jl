@@ -44,6 +44,7 @@ end
     differentiation::Transient
     peripheral::V1.Definition
     deposit::Dict{Symbol, Int} = Dict{Symbol, Int}()
+    meta::Dict{Symbol, Any} = Dict{Symbol, Any}()
 end
 
 representation(x::Transient) = representation(
@@ -342,6 +343,7 @@ function build(definition::Definition; method::Symbol)
         definition.differentiation,
         definition.peripheral,
         deposit,
+        definition.meta,
     )
 
     Models.Derived(; definition, model)
