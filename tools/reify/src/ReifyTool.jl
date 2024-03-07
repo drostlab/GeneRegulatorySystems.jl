@@ -46,9 +46,9 @@ printnode(io::IO, node; kw...) = print(io, p(node))
 
 p(x) = repr(x)
 p(r::Representation) = "$(r.type_), specified by: $(p(r.x))"
-p(::Tuple) = "(⋯)"
-p(::Dict) = "Dict(⋯)"
-p(::Vector) = "[⋯]"
+p(xs::Tuple) = isempty(xs) ? "()" : "(⋯)"
+p(xs::Vector) = isempty(xs) ? "[]" : "[⋯]"
+p(x::Dict) = isempty(x) ? "Dict()" : "Dict(⋯)"
 p(pair::Pair) = p(first(pair))
 p(f!::Models.Model) = f! |> typeof |> nameof |> string
 p(f!::Models.Plumbing.Adjust) = "Adjust ($(f!.adjust))"

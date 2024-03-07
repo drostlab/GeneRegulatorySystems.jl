@@ -1,6 +1,6 @@
 {
     "into": "${channel}",
-    "each": {"start": 13, "stop": 15},
+    "each": {"start": 10, "stop": 12},
     "as": "k",
     "step": [
         {"{add}": {
@@ -9,16 +9,16 @@
             "proteasomes": 1e6
         }},
         {
-            "into": "${into}-k${k}",
-            "label": "benchmark-SKG-k${k}",
             "branch": true,
             "each": {"length": 3},
-            "as": "replicate",
+            "as": "realization",
             "step": {
+                "label": "SKG-k${k}-realization-${realization}",
+                "into": "${into}-k${k}-${realization}",
                 "to": 50000.0,
                 "step": 100.0,
                 "do": {"{regulation/kronecker}": {
-                    "seed": "${seed}-${label}-${replicate}",
+                    "seed": "kronecker-${seed}-${k}-${realization}",
                     "base_rates": {
                         "activation": 2.5,
                         "deactivation": 10.0,
