@@ -240,7 +240,7 @@ function flush!(sink::Sink, into)
     events = (;
         i = channel.is,
         t = channel.ts,
-        name = Arrow.DictEncode(channel.names),
+        name = channel.names,
         value = channel.values,
     )
     if isfile(filename)
