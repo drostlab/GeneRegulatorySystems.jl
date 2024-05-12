@@ -63,9 +63,7 @@
         }},
         "step": [
             {"{add}": {
-                "polymerases": 5e5,
-                "ribosomes": 2e6,
-                "proteasomes": 1e6,
+                "$": ["defaults", "bootstrap"],
                 "trigger": 500
             }},
             {"{bootstrap/differentiation}": {"$": "do"}},

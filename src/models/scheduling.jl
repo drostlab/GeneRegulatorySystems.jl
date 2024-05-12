@@ -107,10 +107,13 @@ end
         :seed => "",
         :into => "",
         :channel => "",
+        :defaults => Dict{Symbol, Any}(),
     )
     branch::Bool = false
     path::String = ""
 end
+
+(f!::Schedule)(x = FlatState(); context...) = f!(x, Inf; context...)
 
 Models.adapt(x, ::Schedule, _copy::Val{false}) = x
 
@@ -130,13 +133,13 @@ descended(bindings::Dict{Symbol, Any}, segment) = merge(
 evaluate_bindings(f!::Schedule{Scope}) = merge(
     # from outer scope:
     if f!.specification.barrier
-        # Implicitly retain seed and output control, even if this scope has
-        # a barrier (because its step is a Load); these are always available
-        # in the loaded specification.
+        # Implicitly retain seed, output control and defaults, even if this
+        # scope has a barrier (because its step is a Load); these are always
+        # available in the loaded specification.
         Dict{Symbol, Any}(
-            :seed => f!.bindings[:seed],
-            :into => f!.bindings[:into],
-            :channel => f!.bindings[:channel],
+            keep => f!.bindings[keep]
+            for keep in (:seed, :into, :channel, :defaults)
+            if haskey(f!.bindings, keep)
         )
     else
         f!.bindings
@@ -235,11 +238,7 @@ end
         path,
     )(x, Δt; path, context...)
 
-function (f!::Schedule{Scope})(
-    x = FlatState(),
-    Δt::Float64 = Inf;
-    context...
-)
+function (f!::Schedule{Scope})(x, Δt::Float64; context...)
     f!.branch && error("cannot branch here: not a Sequence")
 
     @logmsg Progress :preparing at = f!.path
@@ -309,10 +308,13 @@ end
 (f!::Schedule{Load})(x, Δt::Float64; load, context...) =
     load_schedule(f!; load)(x, Δt; load, context..., f!.path)
 
-reify(x, path::AbstractString; load = nothing) =
+
+reify(x; context...) = reify(x, ""; context...)
+
+reify(x, path::AbstractString; _...) =
     isempty(path) ? x : Specifications.pluck(x, split(path, '.'))
 
-reify(f!::Schedule{Slice}, path::AbstractString; load) = reify(
+reify(f!::Schedule{Slice}, path::AbstractString; context...) = reify(
     model(
         get(f!.bindings, :do, Pass());
         f!.bindings,
@@ -320,10 +322,10 @@ reify(f!::Schedule{Slice}, path::AbstractString; load) = reify(
         path,
     ),
     path;
-    load,
+    context...,
 )
 
-reify(f!::Schedule{Template}, path::AbstractString; load) = reify(
+reify(f!::Schedule{Template}, path::AbstractString; context...) = reify(
     model(
         evaluate(f!.specification; f!.bindings, f!.path);
         f!.bindings,
@@ -331,10 +333,10 @@ reify(f!::Schedule{Template}, path::AbstractString; load) = reify(
         f!.path,
     ),
     path;
-    load
+    context...,
 )
 
-function reify(f!::Schedule{Scope}, path::AbstractString; load)
+function reify(f!::Schedule{Scope}, path::AbstractString; context...)
     isempty(path) && return f!
     token = path[1]
     tail = path[2:end]
@@ -348,20 +350,20 @@ function reify(f!::Schedule{Scope}, path::AbstractString; load)
             f!.specification.branch,
             path = "$(f!.path)$token",
         )
-        reify(step!, tail; load)
+        reify(step!, tail; context...)
     else
         error("cannot descend to '$path' in Scope at '$(f!.path)'")
     end
 end
 
-function reify(f!::Schedule{<:Sequence}, path::AbstractString; load)
+function reify(f!::Schedule{<:Sequence}, path::AbstractString; context...)
     isempty(path) && return f!
     m = match(r"^(-?)(\d+)(.*)", path)
     if m !== nothing
         prefix, head, tail = m
-        reify(f!, prefix, parse(Int, head), tail; load)
+        reify(f!, prefix, parse(Int, head), tail; context...)
     else
-        reify(f!.bindings, path; load)
+        reify(f!.bindings, path; context...)
     end
 end
 
@@ -370,7 +372,7 @@ function reify(
     prefix::AbstractString,
     i::Int,
     tail::AbstractString;
-    load,
+    context...,
 )
     step! = item(
         f!.specification.items[i];
@@ -378,7 +380,7 @@ function reify(
         bindings = descended(f!.bindings, i),
         path = "$(f!.path)$prefix",
     )
-    reify(step!, tail; load)
+    reify(step!, tail; context...)
 end
 
 function reify(
@@ -386,7 +388,7 @@ function reify(
     prefix::AbstractString,
     i::Int,
     tail::AbstractString;
-    load,
+    context...,
 )
     each = f!.specification
     step! = item(
@@ -397,13 +399,13 @@ function reify(
         f!.bindings,
         path = "$(f!.path)$prefix",
     )
-    reify(step!, tail; load)
+    reify(step!, tail; context...)
 end
 
-reify(f!::Schedule{Load}, path::AbstractString; load) =
-    reify(load_schedule(f!; load), path; load)
+reify(f!::Schedule{Load}, path::AbstractString; load, context...) =
+    reify(load_schedule(f!; load), path; load, context...)
 
-function reify(primitive!::Primitive, path::AbstractString; load = nothing)
+function reify(primitive!::Primitive, path::AbstractString; _...)
     isempty(path) && return primitive!
     token = path[1]
     tail = path[2:end]

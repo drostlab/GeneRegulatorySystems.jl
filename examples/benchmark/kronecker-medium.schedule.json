@@ -3,11 +3,7 @@
     "each": {"start": 8, "stop": 9},
     "as": "k",
     "step": [
-        {"{add}": {
-            "polymerases": 5e5,
-            "ribosomes": 2e6,
-            "proteasomes": 1e6
-        }},
+        {"{add}": {"$": ["defaults", "bootstrap"]}},
         {
             "branch": true,
             "each": {"length": 3},
@@ -19,18 +15,7 @@
                 "step": 100.0,
                 "do": {"{regulation/kronecker}": {
                     "seed": "kronecker-${seed}-${k}-${realization}",
-                    "base_rates": {
-                        "activation": 2.5,
-                        "deactivation": 10.0,
-                        "trigger": 6.6e-7,
-                        "transcription": 0.001,
-                        "splicing": 0.02,
-                        "translation": 2.5e-9,
-                        "abortion": 0.01,
-                        "premrna_decay": 0.001,
-                        "mrna_decay": 0.001,
-                        "protein_decay": 3e-10
-                    },
+                    "base_rates": {"$": ["defaults", "gene", "base_rates"]},
                     "activation": {
                         "adjacency": {
                             "initiator": [

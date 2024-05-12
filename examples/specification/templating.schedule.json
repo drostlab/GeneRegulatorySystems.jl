@@ -1,20 +1,6 @@
 {
     "into": "{channels}",
     "anchor": "${into}",
-    "typical_gene" : {
-        "base_rates": {
-            "activation": 2.5,
-            "deactivation": 10.0,
-            "trigger": 6.6e-7,
-            "transcription": 0.001,
-            "splicing": 0.02,
-            "translation": 2.5e-9,
-            "abortion": 0.01,
-            "premrna_decay": 0.001,
-            "mrna_decay": 0.001,
-            "protein_decay": 3e-10
-        }
-    },
     "each": ["default", "Direct"],
     "as": "method",
     "step": {
@@ -22,9 +8,9 @@
             "{regulation/v1}": {
                 "method": {"$": "method"},
                 "genes": [
-                    {"$": "typical_gene", "name": "Gene 1"},
+                    {"$": ["defaults", "gene"], "name": "Gene 1"},
                     {
-                        "$": "typical_gene",
+                        "$": ["defaults", "gene"],
                         "name": "Gene 2",
                         "repression": [{"from": "Gene 1", "at": 5.0}]
                     }
@@ -43,9 +29,7 @@
                 "each": {"length": 3},
                 "step": [
                     {"{add}": {
-                        "polymerases": 5e5,
-                        "ribosomes": 2e6,
-                        "proteasomes": 1e6,
+                        "$": ["defaults", "bootstrap"],
                         "Gene 1": {"proteins": {"$": "proteins"}},
                         "Gene 2": {"proteins": {"$": "proteins"}}
                     }},

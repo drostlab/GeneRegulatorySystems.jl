@@ -54,7 +54,14 @@ end
 
 reify(path; location) = reify(artifact(:specification, prefix = location), path)
 reify(file, path) = Scheduling.reify(
-    Schedule(specification = Specifications.Load(basename(file))),
+    Schedule(
+        specification = Specifications.Load(basename(file)),
+        bindings = Dict{Symbol, Any}(
+            :into => "",
+            :channel => "",
+            :defaults => GeneRegulatorySystems.load_defaults(),
+        ),
+    ),
     path;
     load = filename -> JSON.parsefile(
         "$(dirname(file))/$filename",

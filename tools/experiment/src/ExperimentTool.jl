@@ -324,7 +324,14 @@ function simulate!(; location, progress, dry)
 
     specification = load(basename(artifact(:specification; prefix = location)))
     assert_compatible_versions(specification)
-    schedule! = Schedule(specification = Specification(specification))
+    schedule! = Schedule(
+        specification = Specification(specification),
+        bindings = Dict{Symbol, Any}(
+            :into => "",
+            :channel => "",
+            :defaults => GeneRegulatorySystems.load_defaults(),
+        )
+    )
 
     if dry
         progress = :none

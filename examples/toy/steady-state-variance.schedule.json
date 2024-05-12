@@ -2,9 +2,7 @@
     "label": "steady-state-variance",
     "step": [
         {"{add}": {
-            "polymerases": 5e5,
-            "ribosomes": 2e6,
-            "proteasomes": 1e6,
+            "$": ["defaults", "bootstrap"],
             "1": {"proteins": 400, "mrnas": 20},
             "2": {"proteins": 400, "mrnas": 20}
         }},

@@ -30,9 +30,7 @@
         }},
         "step": [
             {"{add}": {
-                "polymerases": 5e5,
-                "ribosomes": 2e6,
-                "proteasomes": 1e6,
+                "$": ["defaults", "bootstrap"],
                 "1.proteins": 100,
                 "2.proteins": 100
             }},
