@@ -205,6 +205,8 @@ representation(x::Definition) = Dict{Symbol, Any}(
     )
 )
 
+Models.describe(::ReactionSystem) = Models.Label("Catalyst ReactionSystem")
+
 Models.describe(definition::Definition) = Models.Descriptions([
     Models.Label(
         "'regulation/v1' network with $(length(definition.genes)) genes"
@@ -442,17 +444,20 @@ function build(definition::Definition; method::Symbol)
 
     Models.Derived(;
         definition,
-        model = SciML.JumpModel(
-            system = convert(JumpSystem, reaction_system),
-            method = pick_method(reaction_system; method)(),
-            parameters = Tuple(
-                getproperty(genes[g.name], kind) =>
-                    getfield(g.base_rates, kind)
-                for g in definition.genes
-                for kind in fieldnames(typeof(g.base_rates))
-                if kind ∉ (:activation, :deactivation)
+        model = Models.Derived(
+            definition = reaction_system,
+            model = SciML.JumpModel(
+                system = convert(JumpSystem, reaction_system),
+                method = pick_method(reaction_system; method)(),
+                parameters = Tuple(
+                    getproperty(genes[g.name], kind) =>
+                        getfield(g.base_rates, kind)
+                    for g in definition.genes
+                    for kind in fieldnames(typeof(g.base_rates))
+                    if kind ∉ (:activation, :deactivation)
+                ),
             ),
-        )
+        ),
     )
 end
 
