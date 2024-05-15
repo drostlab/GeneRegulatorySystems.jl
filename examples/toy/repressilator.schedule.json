@@ -1,37 +1,36 @@
 {
-    "label": "repressilator",
-    "step": [
-        {"{add}": {
-            "$": ["defaults", "bootstrap"],
-            "1.proteins": 100,
-            "2.proteins": 100,
-            "3.proteins": 100
-        }},
-        {
-            "do": {"{regulation/v1}": {
-                "genes": [
-                    {
-                        "$": ["defaults", "gene"],
-                        "activation": [{"from": 1, "at": 2.0}],
-                        "repression": [{"from": 3, "at": 4.0}]
-                    },
-                    {
-                        "$": ["defaults", "gene"],
-                        "activation": [{"from": 2, "at": 2.0}],
-                        "repression": [{"from": 1, "at": 4.0}]
-                    },
-                    {
-                        "$": ["defaults", "gene"],
-                        "activation": [{"from": 3, "at": 2.0}],
-                        "repression": [{"from": 2, "at": 4.0}]
-                    }
-                ]
-            }},
-            "branch": true,
-            "step": [
-                {"to": 100000.0},
-                {"to": 1000000.0, "step": 1000.0}
+    "label": "repressilator-entrained",
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "$": ["defaults", "gene"],
+                    "activation": [{"from": 1, "at": 2.0}],
+                    "repression": [{"from": 3, "at": 4.0}]
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "activation": [{"from": 2, "at": 2.0}],
+                    "repression": [{"from": 1, "at": 4.0}]
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "activation": [{"from": 3, "at": 2.0}],
+                    "repression": [{"from": 2, "at": 4.0}]
+                }
             ]
-        }
-    ]
+        }},
+        "step": [
+            {"{add}": {
+                "$": ["defaults", "bootstrap"],
+                "1.proteins": 100
+            }},
+            {"to": 450000.0},
+            {
+                "branch": true,
+                "each": {"length": 5},
+                "step": {"to": 450000.0}
+            }
+        ]
+    }
 }

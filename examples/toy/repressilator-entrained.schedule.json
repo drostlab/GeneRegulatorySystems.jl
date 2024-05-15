@@ -23,21 +23,19 @@
         "step": [
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
-                "1.proteins": 100,
-                "2.proteins": 100,
-                "3.proteins": 100
+                "1.proteins": 100
             }},
-            {
-                "to": 80000.0,
-                "step": [
-                    {"to": 25000.0},
-                    {"{multiply}": {"1.proteins": 0.1}}
-                ]
-            }, 
+            {"to": 450000.0, "step": [
+                {"to": 30000.0},
+                {"{multiply}": {"1.proteins": 0.6}}
+            ]},
             {
                 "branch": true,
                 "each": {"length": 5},
-                "step": {"to": 20000.0}
+                "step": {"to": 450000.0, "step": [
+                    {"to": 30000.0},
+                    {"{multiply}": {"1.proteins": 0.6}}
+                ]}
             }
         ]
     }
