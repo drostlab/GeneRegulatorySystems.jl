@@ -1,0 +1,90 @@
+{
+    "gene": {
+        "base_rates": {
+            "activation": 2.5,
+            "deactivation": 10.0,
+            "trigger": 6.6e-7,
+            "transcription": 0.015,
+            "splicing": 0.02,
+            "translation": 2.5e-9,
+            "abortion": 0.01,
+            "premrna_decay": 0.001,
+            "mrna_decay": 0.0075,
+            "protein_decay": 2e-10
+        }
+    },
+    "genelet": {
+        "base_rates": {
+            "activation": 2.5,
+            "deactivation": 10.0,
+            "trigger": 6.6e-7,
+            "transcription": 0.015,
+            "splicing": 0.0,
+            "translation": 0.0,
+            "abortion": 0.01,
+            "premrna_decay": 0.001,
+            "mrna_decay": 0.0,
+            "protein_decay": 0.0
+        }
+    },
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "$": "gene",
+                    "name": "PIWI"
+                },
+                {
+                    "$": "gene",
+                    "name": "TE",
+                    "unique": false,
+                    "repression": [{"from": "PIWI*", "at": 2.0}]
+                },
+                {
+                    "$": "genelet",
+                    "name": "piTE",
+                    "unique": false
+                }
+            ],
+            "reactions": [
+                {
+                    "from": ["TE"],
+                    "rate": 0.0000001,
+                    "to": ["TE", "TE.inactive"]
+                },
+                {
+                    "from": ["TE"],
+                    "rate": 0.0000001,
+                    "to": ["TE", "piTE.inactive"]
+                },
+                {
+                    "from": ["PIWI", "piTE.premrnas"],
+                    "rate": 0.000001,
+                    "to": ["PIWI*"]
+                },
+                {
+                    "from": ["PIWI", "TE.sirnas"],
+                    "rates": [0.000002, 0.000001],
+                    "to": ["PIWI*"]
+                },
+                {
+                    "from": ["PIWI*", "TE.premrnas"],
+                    "rate": 0.0000001,
+                    "to": {"PIWI*": 1, "TE.sirnas": 6}
+                },
+
+                {"from": ["TE.sirnas"], "rate": 0.001, "to": []}
+            ]
+        }},
+        "step": [
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
+                "TE.inactive": 1
+
+            }},
+            {"to": 200000.0}
+        ]
+    }
+}
