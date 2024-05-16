@@ -30,7 +30,7 @@ TOOL="$BIN/$COMMAND"
 JULIA_VERSION_CHECK
 
 JULIA_VERSION="$("$JULIA" --version)"
-REPOSITORY_VERSION="$("$JULIA" -e '
+REPOSITORY_VERSION="$(cd "$BIN/.."; "$JULIA" -e '
     import LibGit2;
     @__DIR__() |>
     LibGit2.GitRepo |>
