@@ -1,5 +1,5 @@
 {
-    "label": "repressilator-entrained",
+    "label": "repressilator-plain",
     "step": {
         "do": {"{regulation/v1}": {
             "genes": [
