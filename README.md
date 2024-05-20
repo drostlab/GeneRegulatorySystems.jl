@@ -62,7 +62,7 @@ The following assumes that you have made the `tools/grs` wrapper script availabl
 ```sh
 grs experiment examples/toy/repressilator.schedule.json
 ```
-to run that schedule. Outputs are by default placed in a `results` subdirectory of the current working directory, which can be changed using the `--location` argument when invoking `grs experiment`. Run `grs experiment --help` for more options, and see [Experiment utility][docs-experiment] for details.
+to run that schedule. Outputs are by default placed in a `results` subdirectory of the current working directory, which can be changed using the `--location` argument when invoking `grs experiment`. Run `grs experiment --help` for more options, and see [Experiment tool][docs-experiment] for details.
 
 The results consist of
 
@@ -79,14 +79,14 @@ DataFrame(Arrow.Table("path/to/results/index.arrow"))
 ```
 both for the streaming and non-streaming variant. See [Results format][docs-experiment-results] for details.
 
-There is an experimental Makie-based `grs inspect` utility that can display the results and supports some interactivity. Run it like
+There is an experimental Makie-based `grs inspect` tool that can display the results and supports some interactivity. Run it like
 
 ```sh
 grs inspect path/to/results/
 ```
-and see [Inspect utility][docs-inspect] for details.
+and see [Inspect tool][docs-inspect] for details.
 
-You can export results from their native (long) format to a wide format using the `grs export` utility. Its default behavior is to include the values of all trajectory dimensions at the end of each simulation segment, although both the included dimensions and considered segments can be pre-filtered; run `grs export --help` for options, and see [Export utility][docs-export] for details.
+You can export results from their native (long) format to a wide format using the `grs export` tool. Its default behavior is to include the values of all trajectory dimensions at the end of each simulation segment, although both the included dimensions and considered segments can be pre-filtered; run `grs export --help` for options, and see [Export tool][docs-export] for details.
 
 ## Updating
 

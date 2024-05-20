@@ -10,13 +10,13 @@ using DataFrames
 import JSON
 using PrecompileTools
 
-function load_wide(index; location, kinds, names)
+function load_wide(index; source, kinds, names)
     is = unique(index.i)
     channels = unique(index.into)
     @chain begin
         mapreduce(vcat, channels) do channel
             @chain begin
-                "$(dirname(location))/$channel"
+                "$(dirname(source))/$channel"
                 Arrow.Table
                 DataFrame
                 subset(
@@ -35,7 +35,7 @@ function load_wide(index; location, kinds, names)
 end
 
 function main(;
-    location,
+    source,
     sink,
     format,
     path,
@@ -45,7 +45,7 @@ function main(;
     kinds,
     dry
 )
-    warn_incompatible_versions(location)
+    warn_incompatible_versions(source)
 
     path = [Regex("^\\Q$prefix\\E(?=[/+-]|\$)") for prefix in path]
     model = [Regex("^\\Q$prefix\\E(?=[/+-]|\$)") for prefix in model]
@@ -61,7 +61,7 @@ function main(;
     )
 
     index = @chain begin
-        artifact(:index; prefix = location)
+        artifact(:index; prefix = source)
         Arrow.Table
         DataFrame
         subset(:count => ByRow(>(0)))
@@ -96,7 +96,7 @@ function main(;
             for segment in eachrow(index)
         )
     end
-    result = load_wide(index; location, kinds, names)
+    result = load_wide(index; source, kinds, names)
 
     if format === nothing
         if sink === nothing
@@ -169,8 +169,8 @@ end
         write(artifact(:specification, prefix = location), "[]")
 
         @compile_workload begin
-            main(;
-                location,
+            main(
+                source = location,
                 sink = "$location/export.csv",
                 format = nothing,
                 path = String[],
@@ -180,8 +180,8 @@ end
                 kinds = r"",
                 dry = false,
             )
-            main(;
-                location,
+            main(
+                source = location,
                 sink = "$location/export.arrow",
                 format = nothing,
                 path = String[],
