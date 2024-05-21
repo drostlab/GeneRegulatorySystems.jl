@@ -9,7 +9,7 @@ using Distributions
 @kwdef struct ResampleEachBinomial <: Model{FlatState}
     p::Float64
 
-    ResampleEachBinomial(p::Float64) =
+    ResampleEachBinomial(p) =
         0.0 ≤ p ≤ 1.0 ? new(p) : error("invalid probability")
 end
 
@@ -49,7 +49,7 @@ end
 @kwdef struct ResampleHypergeometric <: Model{FlatState}
     n::Int
 
-    ResampleHypergeometric(n::Int) =
+    ResampleHypergeometric(n) =
         n ≥ 0 ? new(n) : error("invalid sample size")
 end
 
@@ -74,7 +74,7 @@ end
 @kwdef struct ResampleMultinomial <: Model{FlatState}
     n::Int
 
-    ResampleMultinomial(n::Int) = n ≥ 0 ? new(n) : error("invalid sample size")
+    ResampleMultinomial(n) = n ≥ 0 ? new(n) : error("invalid sample size")
 end
 
 Specifications.constructor(::Val{Symbol("resample-multinomial")}) =
@@ -92,7 +92,7 @@ end
 @kwdef struct ResampleDirichletMultinomial <: Model{FlatState}
     n::Int
 
-    ResampleDirichletMultinomial(n::Int) =
+    ResampleDirichletMultinomial(n) =
         n ≥ 0 ? new(n) : error("invalid sample size")
 end
 
@@ -109,5 +109,29 @@ function (f!::ResampleDirichletMultinomial)(x::FlatState, _Δt::Float64; _...)
     end
     x
 end
+
+@kwdef struct WithPoissonCount{F! <: Model{FlatState}} <: Model{FlatState}
+    λ::Float64
+
+    WithPoissonCount{F!}(λ) where {F!} =
+        λ ≥ 0.0 ? new{F!}(λ) : error("invalid sample mean")
+end
+
+function (f!::WithPoissonCount{F!})(x::FlatState, Δt::Float64; _...) where {F!}
+    n = isfinite(f!.λ) ? rand(x.randomness, Poisson(f!.λ)) : typemax(Int)
+    F!(n)(x, Δt)
+end
+
+Specifications.constructor(
+    ::Val{Symbol("resample-Poisson-count-hypergeometric")}
+) = WithPoissonCount{ResampleHypergeometric}
+
+Specifications.constructor(
+    ::Val{Symbol("resample-Poisson-count-multinomial")}
+) = WithPoissonCount{ResampleMultinomial}
+
+Specifications.constructor(
+    ::Val{Symbol("resample-Poisson-count-Dirichlet-multinomial")}
+) = WithPoissonCount{ResampleDirichletMultinomial}
 
 end

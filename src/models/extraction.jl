@@ -6,6 +6,7 @@ using ..Plumbing: Filter, Pass
 using ..Resampling: ResampleEachBinomial
 using ..Resampling: ResampleEachAccumulate
 using ..Resampling: ResampleHypergeometric
+using ..Resampling: WithPoissonCount
 
 import Distributions
 
@@ -32,7 +33,9 @@ simple_proteome(specification::AbstractDict{Symbol}) =
         Template(Filter(r"\.proteins$")),
         Template(ResampleEachBinomial(get(specification, :collect, 1.0))),
         Template(
-            ResampleHypergeometric(get(specification, :target, typemax(Int)))
+            WithPoissonCount{ResampleHypergeometric}(
+                get(specification, :target, Inf)
+            )
         ),
     )
 
@@ -44,7 +47,9 @@ simple_transcriptome(specification::AbstractDict{Symbol}) =
         Template(Filter(r"\.(pre)?mrnas$")),
         Template(ResampleEachBinomial(get(specification, :collect, 1.0))),
         Template(
-            ResampleHypergeometric(get(specification, :target, typemax(Int)))
+            WithPoissonCount{ResampleHypergeometric}(
+                get(specification, :target, Inf)
+            )
         ),
     )
 
@@ -63,7 +68,7 @@ function amplified_transcriptome(specification::AbstractDict{Symbol})
     ps = [dropout, 1.0 - dropout - efficiency, efficiency]
     Distributions.isprobvec(ps) || error("invalid amplification settings")
 
-    target = get(specification, :target, typemax(Int))
+    target = get(specification, :target, Inf)
 
     with_intermediate_output_suppressed(
         Template(Filter(r"\.(pre)?mrnas$")),
@@ -72,7 +77,7 @@ function amplified_transcriptome(specification::AbstractDict{Symbol})
             items = Template(range(length = cycles)),
             step = Template(ResampleEachAccumulate(ps)),
         ),
-        Template(ResampleHypergeometric(n = target)),
+        Template(WithPoissonCount{ResampleHypergeometric}(λ = target)),
     )
 end
 
