@@ -1,7 +1,8 @@
 {
     "label": "bursts",
     "base_rates": {
-        "deactivation": 0.0023,
+        "activation": 0.27,
+        "deactivation": 0.023,
         "trigger": 6.6e-7,
         "transcription": 0.01,
         "processing": 0.02,
@@ -16,16 +17,16 @@
             "genes": [
                 {
                     "base_rates" : {
-                        "$": "base_rates",
-                        "activation": 0.0027
-                    }
+                        "$": "base_rates"
+                    },
+                    "repression": [{"from": "C", "at":4.0}]
+
                 },
                 {
                     "base_rates" : {
-                        "$": "base_rates",
-                        "activation": 27.0,
-                        "transcription": 0.0035
-                    }
+                        "$": "base_rates"
+                    },
+                    "repression": [{"from": "D", "at":4.0}]
                 }
             ]
         }},
@@ -35,7 +36,9 @@
                 "1.proteins": 100,
                 "2.proteins": 100,
                 "1.mrnas": 10,
-                "2.mrnas": 10
+                "2.mrnas": 10,
+                "C": 0,
+                "D": 200
             }},
             {"to": 16000.0, "step": [
                 10.0,
