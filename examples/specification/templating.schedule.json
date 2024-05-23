@@ -36,7 +36,7 @@
                     {"$": "t"},
                     {"{extract-transcriptome-amplified}": {
                         "cycles": 3,
-                        "target": 200
+                        "target": 200.0
                     }}
                 ]
             }

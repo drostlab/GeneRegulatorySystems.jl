@@ -42,7 +42,7 @@
                         "cycles": 5,
                         "efficiency": 0.8,
                         "dropout": 0.05,
-                        "target": 50
+                        "target": 50.0
                     }}
                 ]}
             ]}

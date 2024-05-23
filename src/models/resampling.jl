@@ -110,28 +110,18 @@ function (f!::ResampleDirichletMultinomial)(x::FlatState, _Δt::Float64; _...)
     x
 end
 
-@kwdef struct WithPoissonCount{F! <: Model{FlatState}} <: Model{FlatState}
-    λ::Float64
+@kwdef struct ResampleTargetMeanEachBinomial <: Model{FlatState}
+    μ::Float64
 
-    WithPoissonCount{F!}(λ) where {F!} =
-        λ ≥ 0.0 ? new{F!}(λ) : error("invalid sample mean")
-end
-
-function (f!::WithPoissonCount{F!})(x::FlatState, Δt::Float64; _...) where {F!}
-    n = isfinite(f!.λ) ? rand(x.randomness, Poisson(f!.λ)) : typemax(Int)
-    F!(n)(x, Δt)
+    ResampleTargetMeanEachBinomial(μ) =
+        μ ≥ 0.0 ? new(μ) : error("invalid sample mean")
 end
 
 Specifications.constructor(
-    ::Val{Symbol("resample-Poisson-count-hypergeometric")}
-) = WithPoissonCount{ResampleHypergeometric}
+    ::Val{Symbol("resample-target-mean-each-binomial")}
+) = ResampleTargetMeanEachBinomial
 
-Specifications.constructor(
-    ::Val{Symbol("resample-Poisson-count-multinomial")}
-) = WithPoissonCount{ResampleMultinomial}
-
-Specifications.constructor(
-    ::Val{Symbol("resample-Poisson-count-Dirichlet-multinomial")}
-) = WithPoissonCount{ResampleDirichletMultinomial}
+(f!::ResampleTargetMeanEachBinomial)(x::FlatState, _Δt::Float64; _...) =
+    ResampleEachBinomial(p = min(1.0, f!.μ / sum(values(x.counts))))(x, 0.0)
 
 end

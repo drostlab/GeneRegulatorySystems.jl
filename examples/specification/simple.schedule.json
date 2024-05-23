@@ -45,5 +45,5 @@
             }
         }
     },
-    {"{extract-proteome-simple}": {"collect": 0.8}}
+    {"{extract-proteome-simple}": {"target": 100.0}}
 ]

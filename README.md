@@ -2,7 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)][docs]
 
-A package to construct models of single-cell gene regulatory dyamics and orchestrate their simulation.
+A package to construct models of single-cell gene regulatory dynamics and orchestrate their simulation.
 
 ## Overview
 

@@ -23,13 +23,13 @@
         "into": "${into}-transcriptomic",
         "branch": true,
         "step": [
-            {"{extract-transcriptome-simple}": {"collect": 0.8}},
+            {"{extract-transcriptome-simple}": {"target": 50.0}},
             {"{extract-transcriptome-amplified}": {
                 "collect": 0.9,
                 "cycles": 5,
                 "efficiency": 0.8,
                 "dropout": 0.05,
-                "target": 50
+                "target": 50.0
             }},
             {
                 "#": "The above {extract-transcriptome-amplified} is equivalent to this schedule.",
@@ -42,7 +42,7 @@
                     {"each": {"length": 5}, "step": {
                         "{resample-each-accumulate}": [0.05, 0.15, 0.8]
                     }},
-                    {"{resample-Poisson-count-hypergeometric}": 50},
+                    {"{resample-target-mean-each-binomial}": 50.0},
                     {"channel": {"$": "channel'"}, "into": {"$": "into'"}, "step": {}}
                 ]
             }
@@ -58,9 +58,9 @@
                     "cycles": 5,
                     "efficiency": 0.8,
                     "dropout": 0.05,
-                    "target": 50
+                    "target": 50.0
                 }},
-                {"{extract-proteome-simple}": {"collect": 0.7, "target": 100}}
+                {"{extract-proteome-simple}": {"target": 100.0}}
             ]},
             {"{merge}": "+"}
         ]

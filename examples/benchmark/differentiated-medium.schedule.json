@@ -21,7 +21,7 @@
         "cycles": 5,
         "efficiency": 0.8,
         "dropout": 0.05,
-        "target": 500
+        "target": 500.0
     }},
     "each": {"length": {"$": "realizations"}},
     "as": "realization",

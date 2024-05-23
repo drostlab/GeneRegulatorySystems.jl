@@ -5,8 +5,7 @@ using ..Scheduling: Schedule
 using ..Plumbing: Filter, Pass
 using ..Resampling: ResampleEachBinomial
 using ..Resampling: ResampleEachAccumulate
-using ..Resampling: ResampleHypergeometric
-using ..Resampling: WithPoissonCount
+using ..Resampling: ResampleTargetMeanEachBinomial
 
 import Distributions
 
@@ -31,11 +30,8 @@ with_intermediate_output_suppressed(specifications...) = Scope(
 simple_proteome(specification::AbstractDict{Symbol}) =
     with_intermediate_output_suppressed(
         Template(Filter(r"\.proteins$")),
-        Template(ResampleEachBinomial(get(specification, :collect, 1.0))),
         Template(
-            WithPoissonCount{ResampleHypergeometric}(
-                get(specification, :target, Inf)
-            )
+            ResampleTargetMeanEachBinomial(μ = get(specification, :target, Inf))
         ),
     )
 
@@ -45,11 +41,8 @@ Specifications.constructor(::Val{Symbol("extract-proteome-simple")}) =
 simple_transcriptome(specification::AbstractDict{Symbol}) =
     with_intermediate_output_suppressed(
         Template(Filter(r"\.(pre)?mrnas$")),
-        Template(ResampleEachBinomial(get(specification, :collect, 1.0))),
         Template(
-            WithPoissonCount{ResampleHypergeometric}(
-                get(specification, :target, Inf)
-            )
+            ResampleTargetMeanEachBinomial(μ = get(specification, :target, Inf))
         ),
     )
 
@@ -77,7 +70,7 @@ function amplified_transcriptome(specification::AbstractDict{Symbol})
             items = Template(range(length = cycles)),
             step = Template(ResampleEachAccumulate(ps)),
         ),
-        Template(WithPoissonCount{ResampleHypergeometric}(λ = target)),
+        Template(ResampleTargetMeanEachBinomial(μ = target)),
     )
 end
 
