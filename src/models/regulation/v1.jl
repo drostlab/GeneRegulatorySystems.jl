@@ -27,7 +27,7 @@ end
     deactivation::Float64
     trigger::Float64
     transcription::Float64
-    splicing::Float64
+    processing::Float64
     translation::Float64
     abortion::Float64
     premrna_decay::Float64
@@ -103,7 +103,7 @@ cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
 
 function cast(::Type{Gene}, x::AbstractDict{Symbol}; context)
     Rates =
-        if haskey(x[:base_rates], :splicing)
+        if haskey(x[:base_rates], :processing)
             EukaryoteBaseRates
         else
             ProkaryoteBaseRates
@@ -251,7 +251,7 @@ cascade(::Gene{EukaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
     @reaction_network begin
         trigger, active + $polymerases --> active + elongations
         transcription, elongations --> premrnas + $polymerases
-        splicing, premrnas --> mrnas
+        processing, premrnas --> mrnas
         translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
         abortion, elongations --> $polymerases
         premrna_decay, premrnas --> 0

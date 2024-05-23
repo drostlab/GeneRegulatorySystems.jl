@@ -29,7 +29,7 @@
                             "translation": 2.5e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state10",
                         "proteolysis": [
@@ -67,7 +67,7 @@
                             "translation": 2.5e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state0",
                         "proteolysis": [
@@ -105,7 +105,7 @@
                             "translation": 2.5e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state1",
                         "proteolysis": [
@@ -156,7 +156,7 @@
                             "translation": 1.0e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state0_timer",
                         "proteolysis": [
@@ -202,7 +202,7 @@
                             "translation": 1.0e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "trigger_timer",
                         "proteolysis": [
@@ -240,7 +240,7 @@
                             "translation": 2.5e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state11",
                         "proteolysis": [
@@ -278,7 +278,7 @@
                             "translation": 2.5e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state00",
                         "proteolysis": [
@@ -329,7 +329,7 @@
                             "translation": 1.0e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state1_timer",
                         "proteolysis": [
@@ -367,7 +367,7 @@
                             "translation": 2.5e-9,
                             "abortion": 0.01,
                             "premrna_decay": 0.001,
-                            "splicing": 0.02
+                            "processing": 0.02
                         },
                         "name": "state01",
                         "proteolysis": [

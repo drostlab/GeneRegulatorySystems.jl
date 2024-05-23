@@ -43,7 +43,7 @@ Base.rand(randomness::AbstractRNG, d::Nonnegative{<:UnivariateDistribution}) =
     deactivation::Nonnegative{UnivariateDistribution}
     trigger::Nonnegative{UnivariateDistribution}
     transcription::Nonnegative{UnivariateDistribution}
-    splicing::Nonnegative{UnivariateDistribution}
+    processing::Nonnegative{UnivariateDistribution}
     translation::Nonnegative{UnivariateDistribution}
     abortion::Nonnegative{UnivariateDistribution}
     premrna_decay::Nonnegative{UnivariateDistribution}

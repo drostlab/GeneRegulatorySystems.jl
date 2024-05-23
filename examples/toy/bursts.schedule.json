@@ -4,7 +4,7 @@
         "deactivation": 0.0023,
         "trigger": 6.6e-7,
         "transcription": 0.01,
-        "splicing": 0.02,
+        "processing": 0.02,
         "translation": 5e-7,
         "abortion": 0.01,
         "premrna_decay": 0.001,
