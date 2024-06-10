@@ -84,7 +84,7 @@ Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
         # model. Presumably this is slower than calling remake, yet safer, and
         # anyway could only be avoided when we are branching the simulation
         # without changing models.
-        adapt(cast(FlatState, x), f!)
+        Models.adapt(cast(FlatState, x), f!)
     end
 
 Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
