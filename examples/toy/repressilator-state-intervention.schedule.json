@@ -1,6 +1,5 @@
 {
     "label": "repressilator-state-intervention",
-    "seed": "${seed}-state",
     "step": {
         "do": {"{regulation/v1}": {
             "genes": [
@@ -22,6 +21,7 @@
             ]
         }},
         "step": [
+            {"{seed}": "${seed}-plain"},
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
                 "1.proteins": 100
