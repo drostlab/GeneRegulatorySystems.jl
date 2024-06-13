@@ -72,9 +72,9 @@ function (primitive!::Primitive)(
         todo = "$(nameof(typeof(x))) to $(nameof(typeof(f!))) \
             ($(primitive!.path))",
     )
-    x = Models.adapt(x, f!)
     from = Models.t(x)
     seed = GeneRegulatorySystems.seed(Models.randomness(x))
+    x = Models.adapt(x, f!)
 
     @logmsg Progress :advancing at = path
     if trace === nothing

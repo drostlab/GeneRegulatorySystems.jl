@@ -521,7 +521,7 @@ function attach_model!(
             color = edge_properties(:color),
         ),
         arrow_attr = (
-            size = 16,
+            markersize = 16,
             color = edge_properties(:color),
         ),
     )
