@@ -1,0 +1,77 @@
+
+{
+"label": "ACDC-Sweep",
+"gene" : {
+            "base_rates": {
+                "activation": 2.5,
+                "deactivation": 10.0,
+                "trigger": 6.6e-7,
+                "transcription": 0.001,
+                "processing": 0.02,
+                "translation": 2.5e-9,
+                "abortion": 0.01,
+                "premrna_decay": 0.001,
+                "mrna_decay": 0.001,
+                "protein_decay": 2.5e-10
+            }
+        },
+"each": {"start": 0, "step": 50, "stop": 400},
+"as": "m",
+"branch": true,
+    "step": {
+        "step": {
+            "do": {"{regulation/v1}": {
+                "activation": {"aggregate": "generalized_mean", "p": 1.0},
+                "genes": [
+                    {
+                        "$": "gene",
+                        "name": "X",
+                        "activation": [{"from": "X", "at":  2.0},{"from": "S", "at":  6.0}],
+                        "repression": [{"from": "Z", "at": 4.0}]
+                    },
+                    {
+                        "$": "gene",
+                        "name": "Y",
+                        "activation": [{"from": "Y", "at":  2.0}],
+                        "repression": [{"from": "X", "at": 4.0}]
+                    },
+                    {
+                        "$": "gene",
+                        "name": "Z",
+                        "activation": [{"from": "Z", "at":  2.0}],
+                        "repression": [
+                            {"from": "C", "at": 4.0},
+                            {"from": "Y", "at": 4.0}
+                        ]
+                    },
+                    {
+                        "$": "gene",
+                        "name": "S",
+                        "base_rates": {
+                            "$": ["gene", "base_rates"],
+                            "activation": 0.0,
+                            "protein_decay": 0.0
+                        }
+                    }
+
+                ],
+                "reactions": [
+                    {"from": ["S", "X"], "rates": [0.004, 0.002], "to": ["X","C"]}
+                ]
+            }},
+            "step": [
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
+                "X.proteins": 0,
+                "Y.proteins": 0,
+                "Z.proteins": 0,
+                "S.proteins": {"$":"m"}
+                }
+            },
+            {"to": 200000.0, "step":500.0}
+            ]
+    }
+}
+}

@@ -1,0 +1,44 @@
+{
+    "label": "repressilator-state-intervention",
+    "seed": "${seed}-state",
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "$": ["defaults", "gene"],
+                    "activation": [{"from": 1, "at": 2.0}],
+                    "repression": [{"from": 3, "at": 4.0}]
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "activation": [{"from": 2, "at": 2.0}],
+                    "repression": [{"from": 1, "at": 4.0}]
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "activation": [{"from": 3, "at": 2.0}],
+                    "repression": [{"from": 2, "at": 4.0}]
+                }
+            ]
+        }},
+        "step": [
+            {"{add}": {
+                "$": ["defaults", "bootstrap"],
+                "1.proteins": 100
+            }},
+            {"to": 455000.0},
+            {
+                "branch": true,
+                "each": {"length": 5},
+                "step": [
+                    {"{set}":{
+                        "1.proteins": 200,
+                        "2.proteins": 0,
+                        "3.proteins": 0
+                    }},
+                    {"to": 455000.0}
+                ]
+            }
+        ]
+    }
+}
