@@ -21,7 +21,7 @@
             ]
         }},
         "step": [
-            {"{seed}": "${seed}-plain"},
+            {"{seed}": "${seed}-repressilator"},
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
                 "1.proteins": 100
@@ -32,12 +32,12 @@
                 "each": {"length": 5},
                 "as": "i",
                 "step": {
-                    "seed": "${seed}-plain-${i}",
+                    "seed": "${seed}-repressilator-${i}",
                     "to": 455000.0,
                     "step":[
                     {"to": 227500.0},
                     {"{add}": {
-                        "1.proteins": 1000
+                        "3.proteins": 1000
                     }}]
                 }
             }
