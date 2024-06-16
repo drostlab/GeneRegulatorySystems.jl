@@ -1,13 +1,77 @@
+"""
+Contains miscellaneous `Model`s, including simple `Instant` interventions.
+
+These are likely not useful on their own, but they are mostly intended for
+connecting [regulation models](@ref "Regulation") within a `Schedule`.
+"""
 module Plumbing
 
 import ....GeneRegulatorySystems
 using ..Models: Models, Model, Instant, FlatState, Branched
 import ..Specifications
 
-struct Pass <: Model{Any} end
+"""
+    Pass <: Instant{Any}
+
+Do nothing for an instant.
+
+# Specification
+
+Specified in JSON as `{"{pass}": true}`.
+
+# Invocation
+
+    (::Pass)(x, _Δt::Float64; _...) = x
+"""
+struct Pass <: Instant{Any} end
+
+Pass(_) = Pass()
+
+Specifications.constructor(::Val{:pass}) = Pass
 
 (::Pass)(x, _Δt::Float64; _...) = x
 
+"""
+    Wait <: Model{FlatState}
+
+Do nothing for a while.
+
+# Specification
+
+Specified in JSON as `{"{wait}": true}`.
+
+# Invocation
+
+    (::Wait)(x, Δt::Float64; _...)
+
+Advance simulation time by `Δt` but do not otherwise change state.
+"""
+struct Wait <: Model{FlatState} end
+
+Wait(_) = Wait()
+
+Specifications.constructor(::Val{:wait}) = Wait
+
+function (::Wait)(x::FlatState, Δt::Float64; _...)
+    x.t += Δt
+    x
+end
+
+"""
+    Seed <: Instant{FlatState}
+
+Instantly reseed the current `randomness`.
+
+# Specification
+
+Specified in JSON as `{"{seed}": <seed>}` where `<seed>` is any JSON string.
+
+# Invocation
+
+    (f!::Seed)(x::FlatState, _Δt::Float64 = Inf; _...)
+
+Reseed `x.randomness` but otherwise leave `x` unchanged.
+"""
 struct Seed <: Instant{FlatState}
     seed::String
 end
@@ -19,6 +83,25 @@ function (f!::Seed)(x::FlatState, _Δt::Float64 = Inf; _...)
     x
 end
 
+@doc raw"""
+    Filter <: Instant{FlatState}
+
+Instantly remove all species counts that have names not matching a pattern.
+
+# Specification
+
+Specified in JSON as `{"{filter}": "<regex>"}` where `<regex>` is any JSON
+string that represents a valid Julia regular expression
+([in PCRE2 syntax](https://www.pcre.org/current/doc/html/pcre2syntax.html)).
+`\` characters must be escaped by `\\`. For example, `\\.(pre)?mrnas$` will only
+retain species with names that end in either `.premrnas` or `.mrnas`.
+
+# Invocation
+
+    (f!::Filter)(x::FlatState, _Δt::Float64; _...)
+
+Remove all mappings from `x.counts` whose key does not match `f!.kinds`.
+"""
 struct Filter <: Instant{FlatState}
     kinds::Regex
 end
@@ -47,9 +130,47 @@ flatten(xs::AbstractDict{Symbol}; T = Any) =
         end
     end
 
+"""
+    Adjust <: Instant{FlatState}
+
+Instantly adjust counts.
+
+# Specification
+
+Specified in JSON as one of
+- `{"{set}": <adjustment>}`, setting counts to constant values
+- `{"{add}": <adjustment>}`, adding constant values to counts
+- `{"{multiply}": <adjustment>}`, multiplying constant values with counts
+where `<adjustment>` is a JSON object mapping species names to nonnegative
+adjustment values. Nested JSON objects will be flattened, joining keys on `"."`
+such that for example
+
+    {"{multiply}": {
+        "a": {
+            "proteins": 0.5,
+            "mnras": 0.5
+        }
+    }}
+
+is equivalent to:
+
+    {"{multiply}": {
+        "a.proteins": 0.5,
+        "a.mnras": 0.5
+    }}
+
+# Invocation
+
+    (f!::Adjust)(x::FlatState, _Δt::Float64; _...)
+
+Instantly apply flattened `f!.adjustment` to `x.counts` using `f!.adjust`.
+
+Adjusted values will be rounded down to `Int`s (which is relevant if `f!.adjust`
+is `*`).
+"""
 struct Adjust <: Instant{FlatState}
     adjust::Function
-    adjustment::Dict{Symbol, Real}
+    adjustment::Dict{Symbol, <:Real}
 
     function Adjust(adjust, adjustment)
         all(values(adjustment) .≥ zero(valtype(adjustment))) ||
@@ -72,6 +193,25 @@ function (f!::Adjust)(x::FlatState, _Δt::Float64; _...)
     x
 end
 
+"""
+    Merge <: Instant{Branched}
+
+Instantly collapse a `Branched` state to a `FlatState` by replacing the `stem`
+with aggregated counts from the `branches`.
+
+# Specification
+
+Currently, only `+` is supported as aggregation. Specified in JSON as
+`{"{merge}": "+"}`.
+
+# Invocation
+
+    (f!::Merge)(x::Branched, _Δt::Float64; _...)
+
+Use the function `f!.merge` to aggregate all of the `x.branches` and return a
+new `FlatState` with the aggregated counts, but retaining `x.stem.t` and
+`x.stem.randomness`.
+"""
 struct Merge <: Instant{Branched}
     merge::Function
 end

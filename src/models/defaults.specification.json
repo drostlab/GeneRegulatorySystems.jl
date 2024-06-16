@@ -17,5 +17,38 @@
             "mrna_decay": 0.001,
             "protein_decay": 3e-10
         }
+    },
+    "differentiation": {
+        "differentiator": {
+            "base_rates": {
+                "activation": 2.5,
+                "deactivation": 10.0,
+                "trigger": 6.6e-7,
+                "transcription": 0.015,
+                "processing": 0.02,
+                "translation": 2.5e-9,
+                "abortion": 0.01,
+                "premrna_decay": 0.001,
+                "mrna_decay": 0.0075,
+                "protein_decay": 2e-10
+            }
+        },
+        "timer": {
+            "base_rates": {
+                "activation": 0.1,
+                "deactivation": 0.1,
+                "trigger": 6.6e-7,
+                "transcription": 2.5e7,
+                "processing": 0.02,
+                "translation": 1e-9,
+                "abortion": 0.01,
+                "premrna_decay": 0.001,
+                "mrna_decay": 0.01,
+                "protein_decay": 1.0
+            }
+        },
+        "timer_deposit": {"mrnas": 5, "proteins": 30},
+        "buffer": [0.002, 0.008],
+        "buffer_deposit": 500
     }
 }

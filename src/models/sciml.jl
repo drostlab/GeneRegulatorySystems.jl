@@ -33,6 +33,23 @@ end
     done = integrator.t - progress.t0,
 )
 
+"""
+    JumpState
+
+Contains the prepared `JumpProcesses.JumpProblem` `problem` and an associated
+`JumpProcesses.SSAIntegrator` `integrator` to be advanced by a `JumpModel`.
+
+Since in JumpProcesses.jl the problem and integrator objects are tightly coupled
+(because they alias various components), `JumpState` holds both of them. The
+current time and state as well as the (potentially) recorded trajectory are
+contained in the integrator, while the random number generator is part of the
+problem object.
+
+To be compatible with a `JumpModel` `f!`, the `JumpState`'s `problem` (and
+`integrator`) must have been constructed from the same `f!.system`. To check
+whether this is actually the case, `JumpState` also contains a reference to the
+corresponding `f!`.
+"""
 @kwdef struct JumpState
     f!::Model{JumpState}
     problem::JumpProcesses.JumpProblem
@@ -62,6 +79,40 @@ FlatState(x::JumpState) = FlatState(
     x.integrator.t,
 )
 
+"""
+    JumpModel <: Model{JumpState}
+
+Represents the stochastic dynamics of applying a
+`JumpProcesses.AbstractAggregatorAlgorithm` `method` to a
+`ModelingToolkit.JumpSystem` `system` with a set of `parameters`.
+
+Gene regulation models in this package ultimately get compiled to `JumpModel`s.
+
+# Specification
+
+In JSON, `JumpModel`s can only be defined indirectly, such as via
+[`Models.V1`](@ref).
+
+# Invocation
+
+    (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
+
+Advance the simulation by applying the stochastic dynamics `f!` to `x` for `Δt`
+time units, realizing a segment of the state trajectory.
+
+`x` must be compatible with `f!`, that is, the `JumpProcesses.JumpProblem` (and
+corresponding integrator) in `x` must be compatible with `f!.system`. This is
+currently conservatively checked as `f! === x.f!`. If necessary, users can call
+`adapt(x, f!)` to convert `x` appropriately.
+
+If `into` is not `nothing`, `x.integrator` will record all jumps, otherwise
+the trajectory will not be retained (and only the final state will be
+available). Either way, the recorded trajectory will be initially cleared, so it
+needs to be extracted before the next invocation of `f!`. Unfortunately,
+JumpProcesses.jl always uses a dense trajectory encoding, so that the recorded
+trajectory information is highly redundant and needs to be filtered by
+`each_event` for output in sparse long format. 
+"""
 @kwdef struct JumpModel <: Model{JumpState}
     system::ModelingToolkit.JumpSystem
     method::JumpProcesses.AbstractAggregatorAlgorithm
@@ -134,6 +185,7 @@ function Models.each_event(callback::Function, x::JumpState)
 end
 
 function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
+    f! === x.f! || error("incompatible JumpState, must call adapt")
     isfinite(Δt) || error("cannot do this forever")
 
     empty!(x.integrator.sol.u)

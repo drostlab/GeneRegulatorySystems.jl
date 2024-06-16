@@ -1,75 +1,32 @@
 {
-    "differentiation": {
-        "differentiator": {
-            "base_rates": {
-                "activation": 2.5,
-                "deactivation": 10.0,
-                "trigger": 6.6e-7,
-                "transcription": 0.015,
-                "processing": 0.02,
-                "translation": 2.5e-9,
-                "abortion": 0.01,
-                "premrna_decay": 0.001,
-                "mrna_decay": 0.0075,
-                "protein_decay": 2e-10
+    "do": {"{regulation/differentiation}": {
+        "differentiation": {
+            "$": ["defaults", "differentiation"],
+            "differentiator": "differentiator",
+            "duration": 50000.0,
+            "ratio": 0.8,
+            "next": {
+                "$": ["defaults", "differentiation"],
+                "duration": 20000.0,
+                "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
+            },
+            "alternative": {
+                "$": ["defaults", "differentiation"],
+                "duration": 40000.0,
+                "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
             }
-        },
-        "timer": {
-            "base_rates": {
-                "activation": 0.1,
-                "deactivation": 0.1,
-                "trigger": 6.6e-7,
-                "transcription": 2.5e7,
-                "processing": 0.02,
-                "translation": 1e-9,
-                "abortion": 0.01,
-                "premrna_decay": 0.001,
-                "mrna_decay": 0.01,
-                "protein_decay": 1.0
-            }
-        },
-        "timer_deposit": {"mrnas": 5, "proteins": 30},
-        "buffer": [0.002, 0.008],
-        "buffer_deposit": 500
-    },
-    "step": {
-        "do": {"{regulation/differentiation}": {
-            "differentiation": {
-                "$": "differentiation",
-                "differentiator": "trigger",
-                "duration": 50000.0,
-                "ratio": 0.8,
-                "next": {
-                    "$": "differentiation",
-                    "differentiator": {
-                        "$": ["differentiation", "differentiator"],
-                        "name": "differentiator0"
-                    },
-                    "duration": 20000.0,
-                    "next": {"$": ["differentiation", "differentiator"]},
-                    "alternative": {"$": ["differentiation", "differentiator"]}
-                },
-                "alternative": {
-                    "$": "differentiation",
-                    "differentiator": {
-                        "$": ["differentiation", "differentiator"],
-                        "name": "differentiator1"
-                    },
-                    "duration": 40000.0,
-                    "next": {"$": ["differentiation", "differentiator"]},
-                    "alternative": {"$": ["differentiation", "differentiator"]}
-                }
-            }
+        }
+    }},
+    "step": [
+        {"{add}": {
+            "$": ["defaults", "bootstrap"],
+            "differentiator": 500
         }},
-        "step": [
-            {"{add}": {
-                "$": ["defaults", "bootstrap"],
-                "trigger": 500
-            }},
-            {"{bootstrap/differentiation}": {"$": "do"}},
-            {"each": {"length": 10}, "branch": true, "step": {
-                "to": 100000.0
-            }}
-        ]
-    }
+        {"{bootstrap/differentiation}": {"$": "do"}},
+        {"each": {"length": 10}, "branch": true, "step": {
+            "to": 100000.0
+        }}
+    ]
 }

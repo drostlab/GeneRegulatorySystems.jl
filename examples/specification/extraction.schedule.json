@@ -37,13 +37,17 @@
                 "into'": {"$": "into"},
                 "into": null,
                 "step": [
-                    {"{filter}": ".(pre)?mrnas$"},
+                    {"{filter}": "\\.(pre)?mrnas$"},
                     {"{resample-each-binomial}": 0.9},
                     {"each": {"length": 5}, "step": {
                         "{resample-each-accumulate}": [0.05, 0.15, 0.8]
                     }},
                     {"{resample-target-mean-each-binomial}": 50.0},
-                    {"channel": {"$": "channel'"}, "into": {"$": "into'"}, "step": {}}
+                    {
+                        "channel": {"$": "channel'"},
+                        "into": {"$": "into'"},
+                        "step": {"{pass}": true}
+                    }
                 ]
             }
         ]

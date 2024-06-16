@@ -354,7 +354,7 @@ function attach_model!(
         figure,
         components[Models.Network],
         get(Models.Label, components, Models.Label),
-        get(Models.MassActionNetwork, components, Models.MassActionNetwork);
+        get(Models.ReactionNetwork, components, Models.ReactionNetwork);
         group_colors,
     )
 end
@@ -363,7 +363,7 @@ function attach_model!(
     figure,
     network::Models.Network,
     label::Models.Label,
-    reactions::Models.MassActionNetwork;
+    reactions::Models.ReactionNetwork;
     group_colors,
     _...,
 )

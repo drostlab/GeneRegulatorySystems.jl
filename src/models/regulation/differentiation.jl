@@ -1,3 +1,23 @@
+"""
+Contains components to build `Models.V1`-based `SciML.JumpModel`s for gene
+regulation that exhibit trajectories following a predefined differentiation
+tree.
+
+These models can be constructed by [`build`](@ref) from a [`Definition`](@ref)
+or from the corresponding JSON specification.
+
+They include a *core network* controlling differentiation according to a binary
+tree with specified developmental timing and split ratios. For each node in the
+tree, the resulting model will contain a signalling gene which indicates (by
+high expression) that its branch was taken. In addition, an arbitrary `V1`
+*peripheral network* may be specified and regulated from the core network.
+
+The differentiation machinery requires setting up initial state (in addition to
+the polymerases, ribosomes and proteasomes required anyway). The required
+initial deposits can be triggered by first invoking an `Instant` bootstrap
+model -- constructed by [`bootstrap`](@ref) -- before invoking the actual
+regulation model.
+"""
 module Differentiation
 
 using ..Models: Models, SciML, V1, Plumbing
@@ -13,6 +33,119 @@ proportion_rate(target::Float64) =
 timing_factor(duration::Float64) =
     0.00003167 * max(600.0, duration)^-1.031
 
+"""
+    Transient
+
+Defines a module of inter-regulated genes that engineer a time-controlled
+bifurcation in the simulated trajectory.
+
+Such a module consists of a `differentiator` gene that has higher expression
+whenever the corresponding transient state has been reached or surpassed, and
+a `timer` gene that controls when the trajectory should bifurcate into one of
+the defined downstream states. The `Transient` may also contain a dimerization
+`buffer` that can make timing more robust.
+
+The (two) downstream states `next` and `alternative` can either be terminal
+(differentiator) genes or `Transient`s of their own, and the target probability
+of moving into the `next` state is given by `ratio`.
+
+In the current implementation, initial deposits of molecules must be made for
+the `timer` (and potentially the `buffer`) before the differentiation model is
+invoked for the assembled machinery to work properly. The timings and split
+proportions are calibrated for the default deposit amounts as defined in
+`defaults.specification.json`, so for now these values should always be used.
+
+# Specification
+
+In JSON, the [`Definition`](@ref) containing a `Transient` (perhaps indirectly)
+is usually specified as part of a [`Schedule`](@ref Models.Scheduling.Schedule)
+and therefore has `"defaults"` available. While many `Transient` properties can
+be set by the specification, most should typically be left at their defaults.
+In that simple case, the `Transient` is specified as a JSON object
+```
+{
+    "\$": ["defaults", "differentiation"],
+    "duration": <duration>,
+    "ratio": <ratio>,
+    "next": <next>,
+    "alternative": <alternative>
+}
+```
+to mostly use the differentiation defaults and only override node-specific
+attributes. Here, `<duration>` must be a JSON number specifying the delay (in
+simulation time units) after entering this `Transient` when the trajectory
+should start bifurcating to the downstream states `<next>` and `<alternative>`,
+which specify either nested `Transient`s for transient states or
+[`V1.Gene`](@ref)s for terminal states. Optionally specifying `<ratio>` as a
+JSON number (in the unit range) changes the target probability to take the
+`next` branch from its default value of `0.5`.
+
+A special requirement applies to the initial (top-level) `Transient` in a
+`Differentiation`: if its `differentiator` represents a changing quantity in
+the system such a gene (with protein production and decay), the timing for that
+transient state will be inaccurate. The easiest way to prevent this is to set
+e.g. `"differentiator": "differentiator"` on that intial `Transient` to have it
+refer to a molecule species `"differentiator"`, and to initially add a
+sufficient amount of it when the simulation state is set up anyway, for example
+like
+```
+{"{add}": {
+    "\$": ["defaults", "bootstrap"],
+    "differentiator": 500
+}}
+```
+in the first step of a `Schedule`.
+
+In cases where the defaults are not available, or where more control is needed,
+the set of user-facing parameters that make up a `Transient` definition can be
+specified in more detail as a JSON object
+```
+{
+    "differentiator": <differentiator>,
+    "duration": <duration>,
+    "timer": <timer>,
+    "buffer": [<forward>, <reverse>],
+    "ratio": <ratio>,
+    "next": <next>,
+    "alternative": <alternative>,
+    "timer_deposit": <timer_deposit>,
+    "buffer_deposit": <buffer_deposit>,
+}
+```
+where:
+- `<differentiator>` specifies the [`V1.Gene`](@ref) whose increased expression
+  should indicate that this `Transient` state has been reached. This may either
+  specify the gene directly or alternatively a JSON string that names an already
+  existing gene (e.g. in the peripheral network), which will in this case
+  participate in the new reactions controlling the differentiation. As a special
+  case, only for the initial (top-level) `Transient` in a `Differentiation`,
+  `<differentiator>` as a JSON string may refer to an arbitrary (non-gene)
+  molecular species to use as the upstream switch. The whole `Differentiation`
+  is then enabled by the presence of this factor.
+- `<duration>` must be a JSON number specifying the target time to remain in
+  the transient state as described above.
+- `<timer>` specifies a [`V1.Gene`](@ref) to represent the remaining time in
+  this transient state.
+- `<forward>` and `<reverse>` must be JSON numbers specifying the reaction rates
+  of the timer dimerization buffer. If the containing JSON array is not set or
+  empty, `timer` will have no such buffer.
+- `<ratio>` must be a JSON number (defaulting to `0.5`) defining the trajectory
+  split proportion as described above.
+- `<next>` and `<alternative>` specify the follow-on stages that the dynamics
+  should bifurcate into. They may either be specified as another `Transient`,
+  as a [`V1.Gene`](@ref) to signify a terminal differentiator gene as described
+  above, or as a JSON string referring to such a gene (e.g. in the peripheral
+  network). The downstream differentiators will participate in the synthesized
+  reactions controlling the differentiation. Unnamed differentiators will be
+  automatically named depending on their parent differentiator, appending `"0"`
+  for `<next>` and `"1"` for `<alternative>`.
+- `<timer_deposit>` must be a JSON object mapping any of `"elongations"`,
+  `"premrnas"`, `"mrnas"` and `"proteins"` to JSON (integer) numbers that the
+  [`bootstrap`](@ref) model should initialize this `Transient`'s timer gene
+  species to.
+- `<buffer_deposit>` must be a JSON (integer) number that the
+  [`bootstrap`](@ref) model should initialize the `buffer` to.
+"""
 @kwdef struct Transient
     differentiator::Union{V1.Gene, Symbol}
     duration::Float64
@@ -39,6 +172,32 @@ timing_factor(duration::Float64) =
     differentiator_proteolysis::Float64 = 0.0001
 end
 
+"""
+    Definition
+
+Defines how to construct a [`SciML.JumpModel`](@ref) (via [`V1`](@ref)) from a
+specific differentiation tree and peripheral network.
+
+A `Definition` contains instructions for [`build`](@ref) to assemble a
+(lower-level) `V1.Definition` that exhibits differentiating behavior; it
+consists of definitions for the `differentiation` tree, the `peripheral` network
+to be regulated downstream, and the `deposit` of chemical species required
+initially to boostrap the system.
+
+The `differentiation` is a nested structure of [`Transient`](@ref)s that each
+represent an inner node of the tree and correspond to transient cell states
+during differentiation.
+
+# Specification
+
+In JSON, a `Differentiation.Definition` is specificed as a JSON object
+specifying a [`V1.Definition`](@ref) (as described there) that is taken as the
+downstream peripheral network and further contains an additional mapping
+`"differentiation": <differentiation>` that defines the differentiation tree.
+Here, `<differentiation>` must specify a [`Transient`](@ref). (The `deposit`
+definitions are collected automatically from that differentiation.)
+```
+"""
 @kwdef struct Definition
     differentiation::Transient
     peripheral::V1.Definition
@@ -143,7 +302,7 @@ function make_timer!(
         end
         from = Models.Reagents(Dict(timer.name => 2))
         to = Models.Reagents(Dict(Symbol("$(timer.name)_buffer") => 1))
-        push!(reactions, Models.MassActionReaction(; from, to, k₊, k₋))
+        push!(reactions, Models.Reaction(; from, to, k₊, k₋))
     end
 
     genes[timer.name] = timer
@@ -295,6 +454,40 @@ function descend!(
     )
 end
 
+"""
+    build(specification::AbstractDict{Symbol})
+    build(definition::Definition; method::Symbol = :default)
+
+Construct a differentiating `SciML.JumpModel` from a [`Definition`](@ref).
+
+When interpreting a JSON specification, this function (in its first form) is
+called to construct a concrete regulation model on encountering a
+`{"{regulation/differentiation}": {...}}` literal. It will first destructure the
+parsed JSON into a `Definition` and then proceed from there.
+
+The result is constructed by first interpreting the peripheral network
+specification as a `V1` model and extending that by the differentiation
+specification, and then wrapping that up in a [`Models.Derived`](@ref) with the
+model definition. This will result in the following stack of abstractions:
+- [`SciML.JumpModel`](@ref Models.SciML.JumpModel), specified by a
+- `Catalyst.ReactionSystem`, specified by a
+- [`V1.Definition`](@ref), specified by
+- `definition::`[`Differentiation.Definition`](@ref), potentially specified by
+- `specification`
+
+Note that typically, using `Differentiation` models requires preparation of the
+system state; see [`bootstrap`](@ref).
+
+# Specification
+
+Differentiated models are specified in JSON as
+`{"{regulation/differentiation}": <definition>}` where `<definition>` specifies
+a [`Definition`](@ref) as described there.
+
+For an example, see `examples/specification/differentiation.schedule.json`.
+"""
+function build end
+
 build(specification::AbstractDict{Symbol}) = build(
     cast(Definition, specification),
     method = Symbol(get(specification, :method, "default"))
@@ -350,9 +543,26 @@ end
 
 constructor(::Val{Symbol("regulation/differentiation")}) = build
 
+"""
+    bootstrap(model)
+
+Construct an `Instant` model that deposits species required by the
+differentiation `model` before regulation can start.
+
+# Specification
+
+A bootstrap model is specified in JSON by referring to the differentiation
+model that should be prepared for regulation. This typically means that they are
+both specified as part of a `Schedule` where the differentiation is defined in
+an outer scope (e.g. bound to `"do"`) and the bootstrap model is then specified
+as `{"{bootstrap/differentiation}": {"\$": "do"}}`.
+
+For an example, see `examples/specification/differentiation.schedule.json`.
+"""
+function bootstrap end
 bootstrap(model::Models.Derived) = bootstrap(model.definition, model.model)
-bootstrap(d::Definition, _model::Models.Model) = Plumbing.setter(d.deposit)
-bootstrap(_definition::Any, model::Models.Model) = bootstrap(model)
+bootstrap(d::Definition, ::Models.Model) = Plumbing.setter(d.deposit)
+bootstrap(::Any, model::Models.Model) = bootstrap(model)
 
 constructor(::Val{Symbol("bootstrap/differentiation")}) = bootstrap
 

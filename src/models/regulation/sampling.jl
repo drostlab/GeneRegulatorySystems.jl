@@ -7,6 +7,23 @@ using Distributions
 
 using Random
 
+"""
+    struct Nonnegative{T <: UnivariateDistribution}
+
+Wraps a Distributions.jl `UnivariateDistribution`, but requires it to have
+nonnegative support.
+
+# Specification
+
+In JSON, a `Nonnegative{T <: UnivariateDistribution}` is specified as one of the
+following:
+- In the simple case, it is specified as a JSON number, which will result in
+  a `Dirac` distribution parameterized by that number.
+- Otherwise, it is specified as a JSON Array `[<distribution>, <parameters>...]`
+  where `<distribution>` is a JSON string naming a nonnegative
+  `UnivariateDistribution`, and `<parameters>...` will be passed to its
+  constructor. For example: `["LogNormal", 2.0, 1.0]`.
+"""
 struct Nonnegative{T <: UnivariateDistribution}
     inner::T
 end
@@ -38,6 +55,33 @@ cast(::Type{MultivariateDistribution}, xs::AbstractVector; _...) =
 Base.rand(randomness::AbstractRNG, d::Nonnegative{<:UnivariateDistribution}) =
     rand(randomness, d.inner)
 
+"""
+    BaseRatesTemplate
+
+Defines how to sample a [`V1.EukaryoteBaseRates`](@ref).
+
+Base rates are sampled independently for each kind of rate.
+
+# Specification
+
+In JSON, a `BaseRatesTemplate` is specified as a JSON object
+```
+{
+    "activation": <...>,
+    "deactivation": <...>,
+    "trigger": <...>,
+    "transcription": <...>,
+    "processing": <...>,
+    "translation": <...>,
+    "abortion": <...>,
+    "premrna_decay": <...>,
+    "mrna_decay": <...>,
+    "protein_decay": <...>
+}
+```
+where each `<...>` specifies a [`Nonnegative{<:UnivariateDistribution}`](@ref)
+from which that rate should be sampled from.
+"""
 @kwdef struct BaseRatesTemplate
     activation::Nonnegative{UnivariateDistribution}
     deactivation::Nonnegative{UnivariateDistribution}

@@ -1,3 +1,22 @@
+"""
+Contains components to build `SciML.JumpModel`s for gene regulation.
+
+These models can be constructed by [`build`](@ref), either directly (from a
+[`Definition`](@ref) or from the corresponding JSON specification), or
+indirectly from a model template such as `KroneckerNetworks.Definition` or
+`Differentiation.Definition` via their respective `build` functions.
+
+The regulation models require setting up the initial state to include required
+molecular species (polymerases, ribosomes and proteasomes) before they can be
+invoked. If a model is specified as part of a
+[`Schedule`](@ref Models.Scheduling.Schedule) and therefore the defaults are
+available, this can be achieved by prefixing the model specification with an
+`Instant` adjustment step such as:
+```
+{"{add}": {"\$": ["defaults", "bootstrap"]}}
+```
+See `examples/specification/simple.schedule.json` for an example.
+"""
 module V1
 
 using ..Models: Models, SciML
@@ -10,6 +29,29 @@ using JumpProcesses
 using ModelingToolkit
 using StatsBase
 
+"""
+    ProkaryoteBaseRates
+
+Defines a prokaryotic [`Gene`](@ref) reaction cascade's base rates.
+
+# Specification
+
+They are specified in JSON as a JSON object
+```
+{
+    "activation": <...>,
+    "deactivation": <...>,
+    "trigger": <...>,
+    "transcription": <...>,
+    "translation": <...>,
+    "abortion": <...>,
+    "mrna_decay": <...>,
+    "protein_decay": <...>
+}
+```
+where `<...>` are JSON numbers setting the corresponding reaction rate
+constants.
+"""
 @kwdef struct ProkaryoteBaseRates
     activation::Float64
     deactivation::Float64
@@ -21,6 +63,31 @@ using StatsBase
     protein_decay::Float64
 end
 
+"""
+    EukaryoteBaseRates
+
+Defines a eukaryotic [`Gene`](@ref) reaction cascade's base rates.
+
+# Specification
+
+They are specified in JSON as a JSON object
+```
+{
+    "activation": <...>,
+    "deactivation": <...>,
+    "trigger": <...>,
+    "transcription": <...>,
+    "processing": <...>,
+    "translation": <...>,
+    "abortion": <...>,
+    "premrna_decay": <...>,
+    "mrna_decay": <...>,
+    "protein_decay": <...>
+}
+```
+where `<...>` are JSON numbers setting the corresponding reaction rate
+constants.
+"""
 @kwdef struct EukaryoteBaseRates
     activation::Float64
     deactivation::Float64
@@ -47,6 +114,43 @@ end
 
 abstract type Regulation end
 
+"""
+    Activation <: Regulation
+
+Defines how a `Gene` should be transcriptionally regulated by tempering its
+`deactivation` rate.
+
+For details, see [`Gene`](@ref).
+
+# Specification
+
+In JSON, a V1 `Activation` is specified by either one of:
+- A JSON array of *slots* `[<slot>...]`, each `<slot>` a JSON object
+  `{"from": <from>, "at": <at>}` specifying a single inbound transcriptional
+  regulation link. `<from>` is a JSON string referring to the regulating
+  chemical species (potenially containing `.` separators), or if it names a
+  gene, that gene's proteins. `<at>` is a JSON number specifying the number of
+  `<from>` molecules where the link is at half-saturation (assuming quasi-steady
+  state). If more than one slot is specified, default aggregation will apply
+  (see below).
+- A JSON object `{"slots": [<slot>...], "aggregation": <aggregation>}` where
+  `<aggregation>` is a JSON string specifying how to aggregate inbound
+  regulatory links if more than one of them is present by type -- one of the
+  following:
+  - `"neutral"`
+  - `"minimum"` (default)
+  - `"maximum"`
+  - `"mean"`
+  - `"geometric_mean"`
+  - `"harmonic_mean"`
+  - `"generalized_mean"`
+  If `"aggregation"` is set to `"generalized_mean"`, `"p"` may additionally set
+  to a numeric value to control the generalized mean parameter. It is set to
+  `0.0` by default, corresponding to a geometric mean. The defaults for
+  `"aggregation"` and `"p"` may be overridden by specifying them in
+  `"activation"` or `"repression"` JSON objects at the `Definition` level; see
+  also `examples/specification/aggregations.schedule.json`.
+"""
 @kwdef struct Activation <: Regulation
     slots::Vector{HillRegulator} = []
     aggregate::Function = minimum
@@ -54,6 +158,18 @@ end
 (activation::Activation)(xs; T) =
     isempty(activation.slots) ? one(T) : activation.aggregate(xs)
 
+"""
+    Repression <: Regulation
+
+Defines how a `Gene` should be transcriptionally regulated by tempering its
+`activation` rate.
+
+For details, see [`Gene`](@ref).
+
+# Specification
+
+Equivalently to [`Activation`](@ref).
+"""
 @kwdef struct Repression <: Regulation
     slots::Vector{HillRegulator} = []
     aggregate::Function = minimum
@@ -61,10 +177,116 @@ end
 (repression::Repression)(xs; T) =
     isempty(repression.slots) ? one(T) : repression.aggregate(xs)
 
+"""
+    Proteolysis <: Regulation
+
+Defines how a `Gene` should be proteolytically regulated.
+
+For each inbound link, `build` synthesizes a reaction of the form
+`@reaction k, proteases + proteins --> proteases`.
+
+(This is in addition to the degradation
+`@reaction protein_decay, proteasomes + proteins --> proteasomes` that is
+implicitly defined for each gene.)
+
+# Specification
+
+In JSON, a V1 `Proteolysis` is specified by a JSON array of *slots*
+`[<slot>...]`, each `<slot>` a JSON object `{"from": <from>, "k": <k>}`
+specifying a single inbound proteolytical repression link. `<from>` is a JSON
+string referring to the protease chemical species (potenially containing `.`
+separators), or if it names a gene, that gene's proteins. `<k>` is a JSON
+number specifying the decay reaction propensity.
+"""
 @kwdef struct Proteolysis <: Regulation
     slots::Vector{DirectRegulator} = []
 end
 
+"""
+    Gene{BaseRates}
+
+Defines a single gene within a V1 `Definition`, including the reaction rate
+constants of its reaction cascade, and optionally inbound regulation and other
+information.
+
+# Specification
+
+In JSON, a V1 `Gene` is specified as a JSON object
+```
+{
+    "name": <name>,
+    "base_rates": <base_rates>,
+    "unique": <unique>,
+    "activation": <activation>,
+    "repression": <repression>,
+    "proteolysis": <proteolysis>
+}
+```
+where only `<base_rates>` is required and the other mappings are optional.
+
+If present, `<name>` must be a JSON string, otherwise it will be set
+automatically to the gene's index. (All-digits names are therefore reserved and
+should not be specified.) The gene can then be referred to by name in other
+`Gene` specifications as a transcription factor (see below) or in additional
+mass-action reactions.
+
+`<base_rates>` specifies either [`ProkaryoteBaseRates`](@ref) or
+[`EukaryoteBaseRates`](@ref), depending on which [`build`](@ref) will
+instantiate a corresponding reaction cascade for this `Gene`. The cascade will
+include the following reactions:
+```
+@reaction_network begin
+    trigger, active + \$polymerases --> active + elongations
+    transcription, elongations --> premrnas + \$polymerases
+    processing, premrnas --> mrnas
+    translation, mrnas + \$ribosomes --> mrnas + proteins + \$ribosomes
+    abortion, elongations --> \$polymerases
+    premrna_decay, premrnas --> 0
+    mrna_decay, mrnas --> 0
+    protein_decay, proteins + \$proteasomes --> \$proteasomes
+end
+```
+Here, `polymerases`, `ribosomes` and `proteasomes` are chemical species that
+will be shared by all genes. `build` will then add reactions for the inter-gene
+regulation network, in which the `activation` and `deactivation` base rates will
+be respectively tempered by repression and activation links as defined below.
+For prokaryotic genes, the `processing` and `premrna_decay` reactions will be
+omitted, and `transcription` will directly produce `mrnas` instead.
+
+If present, `<unique>` must be a JSON boolean, otherwise it defaults to `true`.
+Setting it to `false` makes the promoter's copy number a dynamic quantity
+(starting at 0) instead of the constant 1 -- see also
+`examples/specification/copies.schedule.json`.
+
+In the constructed model, genes' promoters dynamically change their
+configuration (between `active` and `inactive`) depending on the base
+`activation` and `deactivation` rates as well as potentially on the presence of
+transcription factors (although only `active` is actually tracked if `<unique>`
+is `true`).
+
+If present, `<activation>` must specify inbound transcriptional regulation by
+[`Activation`](@ref).
+
+If present, `<repression>` must specify inbound transcriptional regulation by
+[`Repression`](@ref).
+
+Transcriptionally regulating links correspond to abstract promoter binding sites
+for the regulated gene. They are defined by the choice of transcription factor
+(`from`, typically another gene's protein) and a binding affinity parameter
+`at`. The binding and unbinding is assumed to occur on a fast time scale and
+therefore to always be in quasi-steady state, and `at` specifies the amount of
+`from` at which the promoter is bound half of the time. [`build`](@ref)
+synthesizes `Catalyst.Reaction`s for promoter activation and deactivation, and
+their respective reaction rates are tempered from the specified `activation` and
+`deactivation` base rates by the fractional binding of the transcription factor.
+
+If multiple transcriptionally regulating links of the same type are specified
+for this `Gene`, in V1, they are simply aggregated as chosen in `<activation>`
+and `<repression>`.
+
+If present, `<proteolysis>` must specify inbound regulation by
+[`Proteolysis`](@ref).
+"""
 @kwdef struct Gene{BaseRates}
     name::Symbol
     base_rates::BaseRates
@@ -83,12 +305,51 @@ Gene(gene::Gene{BaseRates}; name) where {BaseRates} =
         gene.proteolysis,
     )
 
+"""
+    Definition
+
+Defines how to construct a `JumpModel` with transcriptionally and
+proteolytically inter-regulated genes, and optionally additional reactions with
+independent rates constants.
+
+A `Definition` can be constructed directly or parsed from a JSON specification,
+for example as part of a `Schedule` execution. It contains instructions for
+[`build`](@ref) to assemble a concrete `Catalyst.ReactionSystem` and embed it
+into a resulting `JumpModel`, which will interpret the contained reactions as
+constituting a mass-action jump process.
+
+# Specification
+
+In JSON, a V1 `Definition` is specified as a JSON object
+
+```
+{
+    "genes": [<gene>...],
+    "reactions": [<Models.Reaction>...],
+    "polymerases": <polymerases>,
+    "ribosomes": <ribosomes>,
+    "proteasomes": <proteasomes>
+}}
+```
+where `[<gene>...]` is a JSON array of [`Gene`](@ref) specifications,
+`[<reaction>...]` is a JSON array of [`Models.Reaction`](@ref)s, and
+`<polymerases>`, `<ribosomes>` and `<proteasomes>` are JSON strings specifying
+the names the species taking that function in the resulting model. All of
+these mappings are optional, with the following defaults:
+- `[<gene>...]`: `[]`
+- `[<reaction>...]`: `[]`
+- `<polymerases>`: `"polymerases"`
+- `<ribosomes>`: `"ribosomes"`
+- `<proteasomes>`: `"proteasomes"`
+However, at least one gene or at least one reaction must be specified so that
+the system is not empty.
+"""
 @kwdef struct Definition
     polymerases::Symbol = :polymerases
     ribosomes::Symbol = :ribosomes
     proteasomes::Symbol = :proteasomes
     genes::Vector{Gene} = Gene[]
-    reactions::Vector{Models.MassActionReaction} = Models.MassActionReaction[]
+    reactions::Vector{Models.Reaction} = Models.Reaction[]
 end
 
 cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
@@ -233,7 +494,7 @@ Models.describe(definition::Definition) = Models.Descriptions([
             for gene in definition.genes
         ),
     )
-    Models.MassActionNetwork(definition.reactions)
+    Models.ReactionNetwork(definition.reactions)
 ])
 
 function cascade(
@@ -339,7 +600,7 @@ function regulation(
     # Regulation for the whole network:
     [
         # For each gene...
-        mapreduce(vcat, definition.genes) do target::Gene
+        mapreduce(vcat, definition.genes, init = Reaction[]) do target::Gene
             [
                 # ...activation (by tempering promoter deactivation)
                 Reaction(
@@ -418,12 +679,52 @@ pick_method(system; method) = get(JUMP_PROCESSES_METHODS, method) do
     end
 end
 
+"""
+    build(specification::AbstractDict{Symbol})
+    build(definition::Definition; method::Symbol = :default)
+
+Construct a [`SciML.JumpModel`](@ref) from a [`Definition`](@ref).
+
+When interpreting a JSON specification, this function (in its first form) is
+called to construct a concrete regulation model on encountering a
+`{"{regulation/v1}": {...}}` literal. It will first destructure the parsed JSON
+into a `Definition` and then proceed from there.
+
+This function is also called (directly in its second form) when lowering a
+higher-level model template (such as [`Models.Differentiation`](@ref)).
+
+The result is constructed by first assembling a `Catalyst.ReactionSystem` as
+specified by `definition`, interpreting it as a `JumpProcesses.JumpSystem`,
+packaging that up as a `JumpModel`, wrapping that up with the `ReactionSystem`
+in a [`Models.Derived`](@ref), and finally further wrapping that in another
+`Derived` with `definition`. This will result in the following stack of
+abstractions:
+- [`SciML.JumpModel`](@ref Models.SciML.JumpModel), specified by a
+- `Catalyst.ReactionSystem`, specified by
+- `definition::`[`V1.Definition`](@ref), potentially specified by
+- `specification`
+
+The `method` to use for the `JumpModel` can be set in `specification[:method]`
+or passed as a keyword argument. By default, a method will automatically be
+chosen based on the size of the `ReactionSystem`: `SortingDirect` for small
+systems (having less than 100 species and less than 1000 reactions), and
+`RSSACR` otherwise.
+
+# Specification
+
+V1 models are specified in JSON as `{"{regulation/v1}": <definition>}` where
+`<definition>` specifies a [`Definition`](@ref) as described there.
+
+For an example, see `examples/specification/simple.schedule.json`.
+"""
+function build end
+
 build(specification::AbstractDict{Symbol}) = build(
     cast(Definition, specification),
     method = Symbol(get(specification, :method, "default"))
 )
 
-function build(definition::Definition; method::Symbol)
+function build(definition::Definition; method::Symbol = :default)
     allequal(typeof.(definition.genes)) ||
         error("mixing eukaryotic and prokaryotic genes is forbidden")
 
@@ -432,7 +733,7 @@ function build(definition::Definition; method::Symbol)
     ribosomes = species_variable(definition.ribosomes; t)
     proteasomes = species_variable(definition.proteasomes; t)
 
-    genes = Dict(
+    genes = Dict{Symbol, ReactionSystem}(
         g.name => gene(
             g,
             polymerases = ParentScope(polymerases),
