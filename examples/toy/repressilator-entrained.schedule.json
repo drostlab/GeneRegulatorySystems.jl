@@ -20,26 +20,27 @@
         ]
     },
     "step": {
-        "do": {"{regulation/v1}": {"$": "repressilator"}},
-        "do_with_intervention": {"{regulation/v1}": {
+        "dark_model": {"{regulation/v1}": {"$": "repressilator"}},
+        "light_model": {"{regulation/v1}": {
             "$": "repressilator",
-            "reactions": [{"from": [2], "rate": 0.0001, "to": []}]
+            "reactions": [{"from": [2], "rate": 0.001, "to": []}]
         }},
         "step": [
+            {"{seed}": "${seed}-rep"},
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
                 "1.proteins": 100
             }},
-            {"to": 450000.0, "step": [
-                {"to": 25000.0},
-                {"to": 5000.0, "step": {"$":"do_with_intervention"}}
+            {"to": 455000.0, "step": [
+                {"to": 60000.0, "do": {"$": "dark_model"}},
+                {"to": 5000.0, "do": {"$": "light_model"}}
             ]},
             {
                 "branch": true,
                 "each": {"length": 5},
-                "step": {"to": 450000.0, "step": [
-                    {"to": 25000.0},
-                    {"to": 5000.0, "step": {"$":"do_with_intervention"}}
+                "step": {"to": 455000.0, "step": [
+                    {"to": 60000.0, "do": {"$": "dark_model"}},
+                    {"to": 5000.0, "do": {"$": "light_model"}}
                 ]}
             }
         ]

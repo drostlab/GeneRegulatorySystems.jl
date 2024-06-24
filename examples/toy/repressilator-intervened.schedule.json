@@ -1,5 +1,5 @@
 {
-    "label": "repressilator-plain",
+    "label": "repressilator-intervened",
     "step": {
         "do": {"{regulation/v1}": {
             "genes": [
@@ -33,7 +33,9 @@
                 "as": "i",
                 "step": [
                     {"{seed}": "${seed}-repress-${i}"},
-                    {"to": 455000.0}
+                    {"to": 227500.0},
+                    {"{add}": {"3.proteins": 1000}},
+                    {"to": 227500.0}
                 ]
             }
         ]
