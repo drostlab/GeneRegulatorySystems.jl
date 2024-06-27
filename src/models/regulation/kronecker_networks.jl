@@ -1,6 +1,5 @@
 module KroneckerNetworks
 
-import ...Conversion: cast
 using ...GeneRegulatorySystems: randomness, σ, logit
 using ..Models: Models, V1
 using ..Sampling: Nonnegative, BaseRatesTemplate
@@ -121,14 +120,18 @@ end
 
 factor(xs::AbstractVector) = vcat(adjoint.(xs)...)
 
-function cast(::Type{AbstractMatrix}, xs::AbstractVector; _...)
+function Specifications.cast(::Type{AbstractMatrix}, xs::AbstractVector; _...)
     factors = factor.(xs)
     result = adjacency(factors)
     issquare(result) || error("adjacency must be square")
     result
 end
 
-function cast(T::Type{AbstractMatrix}, x::AbstractDict{Symbol}; _...)
+function Specifications.cast(
+    T::Type{AbstractMatrix},
+    x::AbstractDict{Symbol};
+    _...,
+)
     initiator = factor(x[:initiator])
     issquare(initiator) || error("initiator must be square")
     k = x[:power]
@@ -183,7 +186,7 @@ function build(specification::AbstractDict{Symbol})
     # Pick a specific model instance by fixing the randomness:
     definition = Definition(
         seed = specification[:seed],
-        template = cast(Template, specification),
+        template = Specifications.cast(Template, specification),
     )
 
     # Deterministically fill in the template and create a concrete V1

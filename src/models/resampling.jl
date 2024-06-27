@@ -1,6 +1,5 @@
 module Resampling
 
-using ...Conversion: cast
 using ..Models: Model, FlatState
 import ..Specifications
 
@@ -27,7 +26,7 @@ end
     ps::Vector{Float64}
 
     function ResampleEachAccumulate(ps::AbstractVector)
-        ps = cast(Vector{Float64}, ps)
+        ps = Specifications.cast(Vector{Float64}, ps)
         isprobvec(ps) ? new(ps) : error("invalid probability vector")
     end
 end

@@ -1,6 +1,5 @@
 module RandomDifferentiation
 
-import ...Conversion: cast
 using ...GeneRegulatorySystems: randomness
 using ..Models: Models, V1, Differentiation, KroneckerNetworks
 using ..Sampling: Nonnegative, BaseRatesTemplate
@@ -124,7 +123,7 @@ end
 build(specification::AbstractDict{Symbol}) = build(
     Definition(
         seed = specification[:seed],
-        template = cast(Template, specification),
+        template = Specifications.cast(Template, specification),
     ),
     method = Symbol(get(specification, :method, "default")),
     randomness = randomness(specification[:seed]),

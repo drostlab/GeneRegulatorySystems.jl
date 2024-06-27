@@ -1,6 +1,6 @@
 module Sampling
 
-import ...Conversion: cast
+import ...Specifications: cast
 using ..Models: V1
 
 using Distributions

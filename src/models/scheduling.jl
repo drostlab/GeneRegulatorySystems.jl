@@ -1,7 +1,6 @@
 module Scheduling
 
 using ...GeneRegulatorySystems: GeneRegulatorySystems
-using ...Conversion: cast
 using ..Models: Models, Model, FlatState, Branched
 using ..Models.Plumbing: Pass
 using ...Specifications:
@@ -54,15 +53,15 @@ function (primitive!::Primitive)(
     end
 
     if dryrun !== nothing
-        x = cast(FlatState, x)
+        x′ = x isa FlatState ? x : FlatState(t = Models.t(x))
         if f! isa Models.Instant
             Δt = 0.0
         end
-        dryrun(primitive!, x, Δt; path, primitive!.into, context...)
+        dryrun(primitive!, x′, Δt; path, primitive!.into, context...)
         if isfinite(Δt)
-            x.t += Δt
+            x′.t += Δt
         end
-        return x
+        return x′
     end
 
     @logmsg(

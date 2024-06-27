@@ -1,8 +1,7 @@
 module Plumbing
 
 import ....GeneRegulatorySystems
-using ...Conversion: cast
-using ..Models: Model, Instant, FlatState, Branched
+using ..Models: Models, Model, Instant, FlatState, Branched
 import ..Specifications
 
 struct Pass <: Model{Any} end
@@ -83,10 +82,13 @@ merger(::Val{:+}) = Merge(+)
 Specifications.constructor(::Val{:merge}) = merger
 
 function (f!::Merge)(x::Branched, _Δt::Float64; _...)
-    accumulator = cast(FlatState, x)
-    empty!(accumulator.counts)
+    accumulator = FlatState(
+        t = Models.t(x.stem),
+        randomness = Models.randomness(x.stem),
+    )
     for b in x.branches
-        mergewith!(f!.merge, accumulator.counts, cast(FlatState, b).counts)
+        b′ = b isa FlatState ? b : FlatState(b)
+        mergewith!(f!.merge, accumulator.counts, b′.counts)
     end
     accumulator
 end

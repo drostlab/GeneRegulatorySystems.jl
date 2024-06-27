@@ -1,6 +1,5 @@
 module SciML
 
-import ...Conversion: cast
 using ..Models: Models, Model, FlatState
 
 import JumpProcesses
@@ -52,7 +51,7 @@ end
 Models.t(x::JumpState) = x.integrator.t
 Models.randomness(x::JumpState) = x.problem.rng
 
-cast(::Type{FlatState}, x::JumpState) = FlatState(
+FlatState(x::JumpState) = FlatState(
     counts = Dict(
         normalize_name(s) => x.integrator[s]
         for s in ModelingToolkit.SymbolicIndexingInterface.variable_symbols(
@@ -84,7 +83,7 @@ Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
         # model. Presumably this is slower than calling remake, yet safer, and
         # anyway could only be avoided when we are branching the simulation
         # without changing models.
-        Models.adapt(cast(FlatState, x), f!)
+        Models.adapt(FlatState(x), f!)
     end
 
 Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(

@@ -21,7 +21,6 @@ logit(p) = log(p / (one(p) - p))
 
 load_defaults() = JSON.parsefile(DEFAULTS, dicttype = Dict{Symbol, Any})
 
-include("conversion.jl")
 include("specifications.jl")
 include("models/models.jl")
 

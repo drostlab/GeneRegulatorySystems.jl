@@ -1,8 +1,7 @@
 module V1
 
-import ...Conversion: cast
 using ..Models: Models, SciML
-import ...Specifications: Specifications, representation
+import ...Specifications: constructor, cast, representation
 
 using Base: @invoke
 
@@ -461,6 +460,6 @@ function build(definition::Definition; method::Symbol)
     )
 end
 
-Specifications.constructor(::Val{Symbol("regulation/v1")}) = build
+constructor(::Val{Symbol("regulation/v1")}) = build
 
 end

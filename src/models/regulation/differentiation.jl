@@ -1,8 +1,7 @@
 module Differentiation
 
-import ...Conversion: cast
 using ..Models: Models, SciML, V1, Plumbing
-import ..Specifications: Specifications, representation
+import ..Specifications: constructor, cast, representation
 
 # To reproduce the parameters in the following two functions, see:
 #
@@ -349,14 +348,12 @@ function build(definition::Definition; method::Symbol)
     Models.Derived(; definition, model)
 end
 
-Specifications.constructor(::Val{Symbol("regulation/differentiation")}) =
-    build
+constructor(::Val{Symbol("regulation/differentiation")}) = build
 
 bootstrap(model::Models.Derived) = bootstrap(model.definition, model.model)
 bootstrap(d::Definition, _model::Models.Model) = Plumbing.setter(d.deposit)
 bootstrap(_definition::Any, model::Models.Model) = bootstrap(model)
 
-Specifications.constructor(::Val{Symbol("bootstrap/differentiation")}) =
-    bootstrap
+constructor(::Val{Symbol("bootstrap/differentiation")}) = bootstrap
 
 end
