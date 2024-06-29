@@ -15,8 +15,9 @@ function load_wide(index; source, kinds, names)
     channels = unique(index.into)
     @chain begin
         mapreduce(vcat, channels) do channel
-            @chain begin
-                "$(dirname(source))/$channel"
+            @chain source begin
+                dirname
+                joinpath(channel)
                 Arrow.Table
                 DataFrame
                 subset(
@@ -132,7 +133,8 @@ end
     get(ENV, "JULIA_PKG_PRECOMPILE_AUTO", "1") == "0" &&
         error("Precompilation triggered implicitly; this should not happen.")
 
-    mktempdir() do location
+    mktempdir() do temporary
+        location = "$temporary/"
         Arrow.write(
             artifact(:index, prefix = location),
             DataFrame(

@@ -77,6 +77,7 @@ p(l::Scheduling.Locator) = "@$(l.path)"
 function main(;
     location,
     path,
+    seed,
     representation,
     format,
     maxdepth,
@@ -84,10 +85,10 @@ function main(;
     path = something(path, "")
     object =
         if isfile(location)
-            reify(location, path)
+            reify(location, path; seed)
         else
             warn_incompatible_versions(location)
-            reify(path; location)
+            reify(path; location, seed)
         end
 
     if representation

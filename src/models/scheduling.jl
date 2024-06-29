@@ -221,12 +221,15 @@ function (f!::Schedule{Slice})(x, Δt::Float64; context...)
         else
             f!.path
         end
+
+    # When this Slice is nested in a Scope (which is the normal case), context
+    # contains path, which overrides the following empty path:
     model(
         get(f!.bindings, :do, Pass());
         f!.bindings,
         f!.branch,
-        path
-    )(x, Δt; context...)
+        path,
+    )(x, Δt, path = ""; context...)
 end
 
 (f!::Schedule{Template})(x, Δt::Float64; path, context...) =

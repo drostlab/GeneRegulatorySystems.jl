@@ -52,19 +52,13 @@ function warn_incompatible_versions(location)
     nothing
 end
 
-reify(path; location) = reify(artifact(:specification, prefix = location), path)
-reify(file, path) = Scheduling.reify(
-    Schedule(
-        specification = Specifications.Load(basename(file)),
-        bindings = Dict{Symbol, Any}(
-            :into => "",
-            :channel => "",
-            :defaults => GeneRegulatorySystems.load_defaults(),
-        ),
-    ),
+reify(path; location, seed) =
+    reify(artifact(:specification, prefix = location), path; seed)
+reify(file, path; seed) = Scheduling.reify(
+    Models.load(file; seed),
     path;
     load = filename -> JSON.parsefile(
-        "$(dirname(file))/$filename",
+        joinpath(dirname(file), filename),
         dicttype = Dict{Symbol, Any},
     )
 )

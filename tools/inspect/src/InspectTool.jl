@@ -173,7 +173,12 @@ function load_events(filtered; location)
     # Next we load all linked event streams and sort the events into their
     # respective timeseries.
     for channel in unique(subset(filtered, :count => ByRow(>(0))).into)
-        events = "$(dirname(location))/$channel" |> Arrow.Table |> DataFrame
+        events = @chain location begin
+            dirname
+            joinpath(channel)
+            Arrow.Table
+            DataFrame
+        end
         for event in eachrow(events)
             haskey(catenations_index, event.i) || continue
             catenation = catenations[catenations_index[event.i]]
@@ -297,7 +302,11 @@ function prepare(index; selection, location)
     end
     model =
         if length(model_locators) == 1
-            Models.describe(Common.reify(only(model_locators); location))
+            Models.describe(
+                # The seed will never be accessed because it will be overridden
+                # in the loaded experiment specification.
+                Common.reify(only(model_locators), seed = nothing; location)
+            )
         else
             nothing
         end
@@ -555,7 +564,8 @@ end
     get(ENV, "JULIA_PKG_PRECOMPILE_AUTO", "1") == "0" &&
         error("Precompilation triggered implicitly; this should not happen.")
 
-    mktempdir() do location
+    mktempdir() do temporary
+        location = "$temporary/"
         Arrow.write(
             artifact(:index, prefix = location),
             DataFrame(

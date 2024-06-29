@@ -59,6 +59,10 @@ settings() = @add_arg_table! ArgParseSettings(
             See more info below.\
         """
 
+    "--seed", "-s"
+        default = "seed"
+        help = "Set the random seed to predefine before reification."
+
     "--representation", "-r"
         action = :store_true
         help = """
