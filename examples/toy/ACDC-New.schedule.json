@@ -1,0 +1,62 @@
+[
+    {
+        "each": {"start": 0.0, "length": 34, "stop": 16.0},
+        "as": "k",
+        "step": {
+
+                "do": {"{regulation/v1}": {
+                    "activation": {"aggregate": "generalized_mean", "p": 0.0},
+                    "genes": [
+                        {
+                            "$": ["defaults", "gene"],
+                            "name": "X",
+                            "activation": [
+                                {"from": "X", "at": 4.0},
+                                {"from": "S", "at":  {"$": "k"}}
+                            ],
+                            "repression": [{"from": "Z", "at": 4.0}]
+                        },
+                        {
+                            "$": ["defaults", "gene"],
+                            "name": "Y",
+                            "activation": [
+                                {"from": "Y", "at": 4.0},
+                                {"from": "S", "at": {"$": "k"}}
+                            ],
+                            "repression": [{"from": "X", "at": 4.0}]
+                        },
+                        {
+                            "$": ["defaults", "gene"],
+                            "name": "Z",
+                            "activation": [{"from": "Z", "at": 4.0}],
+                            "repression": [
+                                {"from": "Y", "at": 4.0},
+                                {"from": "X", "at": 4.0}
+                            ]
+                        },
+                        {
+                            "name": "S",
+                            "base_rates": {
+                                "$": ["defaults", "gene", "base_rates"],
+                                "activation": 0.0,
+                                "protein_decay": 0.0
+                            }
+                        }
+                    ]
+                }},
+                "branch": true,
+                "each": {"start": 0, "step": 1, "stop": 20},
+                "as": "n",
+                "step": [
+                    {"{add}": {
+                        "$": ["defaults", "bootstrap"],
+                        "S.proteins": {"$": "n"},
+                        "X.proteins": 0,
+                        "Y.proteins": 0,
+                        "Z.proteins": 0
+                    }},
+                    {"to": 300000.0, "step": 1000.0}
+                ]
+        }
+    }
+]

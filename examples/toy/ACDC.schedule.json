@@ -6,11 +6,11 @@
         "3.proteins": 20
     }},
     {
-        "each": {"start": 0.0, "length": 5, "stop": 16.0},
+        "each": {"start": 4.0, "length": 1, "stop": 4.0},
         "as": "2->3",
         "step": {
             "branch": true,
-            "each": {"start": 0.0, "length": 17, "stop": 16.0},
+            "each": {"start": 0.0, "length": 34, "stop": 16.0},
             "as": "1->3",
             "step": {
                 "label": "ACDC-${1->3}-${2->3}",
