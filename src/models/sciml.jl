@@ -93,7 +93,7 @@ Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
             f!.system,
             [
                 s => get(x.counts, normalize_name(s), 0)
-                for s in ModelingToolkit.states(f!.system)
+                for s in ModelingToolkit.unknowns(f!.system)
             ],
             (x.t, Inf),
             f!.parameters,

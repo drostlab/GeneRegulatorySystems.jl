@@ -236,8 +236,14 @@ Models.describe(definition::Definition) = Models.Descriptions([
     Models.MassActionNetwork(definition.reactions)
 ])
 
-cascade(::Gene{ProkaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
-    @reaction_network begin
+function cascade(
+    definition::Gene{ProkaryoteBaseRates};
+    polymerases,
+    ribosomes,
+    proteasomes,
+)
+    name = definition.name
+    @network_component $name begin
         trigger, active + $polymerases --> active + elongations
         transcription, elongations --> mrnas + $polymerases
         translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
@@ -245,9 +251,16 @@ cascade(::Gene{ProkaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
         mrna_decay, mrnas --> 0
         protein_decay, proteins + $proteasomes --> $proteasomes
     end
+end
 
-cascade(::Gene{EukaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
-    @reaction_network begin
+function cascade(
+    definition::Gene{EukaryoteBaseRates};
+    polymerases,
+    ribosomes,
+    proteasomes
+)
+    name = definition.name
+    @network_component $name begin
         trigger, active + $polymerases --> active + elongations
         transcription, elongations --> premrnas + $polymerases
         processing, premrnas --> mrnas
@@ -257,19 +270,13 @@ cascade(::Gene{EukaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
         mrna_decay, mrnas --> 0
         protein_decay, proteins + $proteasomes --> $proteasomes
     end
+end
 
 function gene(definition::Gene; polymerases, ribosomes, proteasomes, t)
-    name = definition.name
-    result = @reaction_network $name
-
-    more = cascade(definition; polymerases, ribosomes, proteasomes)
-    merge!(result, more)
-    merge!(result.var_to_name, more.var_to_name)
-    # ^ This is necessary due to a bug in Catalyst, but is a no-op once that is
-    # fixed upstream.
-
-    definition.unique || addspecies!(result, only(@species inactive(t)))
-
+    result = cascade(definition; polymerases, ribosomes, proteasomes)
+    if !definition.unique
+        result = extend(result, @network_component (@species inactive(t);))
+    end
     result
 end
 
@@ -420,7 +427,7 @@ function build(definition::Definition; method::Symbol)
     allequal(typeof.(definition.genes)) ||
         error("mixing eukaryotic and prokaryotic genes is forbidden")
 
-    @variables t
+    t = default_t()
     polymerases = species_variable(definition.polymerases; t)
     ribosomes = species_variable(definition.ribosomes; t)
     proteasomes = species_variable(definition.proteasomes; t)
@@ -440,13 +447,14 @@ function build(definition::Definition; method::Symbol)
         t,
         systems = collect(values(genes)),
     )
+    reaction_system = complete(reaction_system)
 
     Models.Derived(;
         definition,
         model = Models.Derived(
             definition = reaction_system,
             model = SciML.JumpModel(
-                system = convert(JumpSystem, reaction_system),
+                system = complete(convert(JumpSystem, reaction_system)),
                 method = pick_method(reaction_system; method)(),
                 parameters = Tuple(
                     getproperty(genes[g.name], kind) =>
