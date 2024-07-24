@@ -95,7 +95,7 @@ In JSON, `JumpModel`s can only be defined indirectly, such as via
 
 # Invocation
 
-    (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
+    (f!::JumpModel)(x::JumpState, Δt::Float64; record = false, _...)
 
 Advance the simulation by applying the stochastic dynamics `f!` to `x` for `Δt`
 time units, realizing a segment of the state trajectory.
@@ -103,15 +103,16 @@ time units, realizing a segment of the state trajectory.
 `x` must be compatible with `f!`, that is, the `JumpProcesses.JumpProblem` (and
 corresponding integrator) in `x` must be compatible with `f!.system`. This is
 currently conservatively checked as `f! === x.f!`. If necessary, users can call
-`adapt(x, f!)` to convert `x` appropriately.
+`adapt!(x, f!)` to convert `x` appropriately.
 
-If `into` is not `nothing`, `x.integrator` will record all jumps, otherwise
-the trajectory will not be retained (and only the final state will be
-available). Either way, the recorded trajectory will be initially cleared, so it
-needs to be extracted before the next invocation of `f!`. Unfortunately,
-JumpProcesses.jl always uses a dense trajectory encoding, so that the recorded
-trajectory information is highly redundant and needs to be filtered by
-`each_event` for output in sparse long format. 
+If `record === true`, `x.integrator` will record all jumps, otherwise the
+trajectory will not be retained (and only the final state will be available).
+Either way, the recorded trajectory will be initially cleared, so it needs to be
+extracted before the next invocation of `f!`.
+
+Unfortunately, JumpProcesses.jl always uses a dense trajectory encoding, so that
+the recorded trajectory information is highly redundant and needs to be filtered
+by `each_event` for output in sparse long format. 
 """
 @kwdef struct JumpModel <: Model{JumpState}
     system::ModelingToolkit.JumpSystem
@@ -121,7 +122,7 @@ end
 
 Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")
 
-Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
+Models.adapt!(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
     if x.f! === f! && !Copy
         x
     else
@@ -134,10 +135,10 @@ Models.adapt(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
         # model. Presumably this is slower than calling remake, yet safer, and
         # anyway could only be avoided when we are branching the simulation
         # without changing models.
-        Models.adapt(FlatState(x), f!)
+        Models.adapt!(FlatState(x), f!)
     end
 
-Models.adapt(x::FlatState, f!::JumpModel, _copy) = JumpState(
+Models.adapt!(x::FlatState, f!::JumpModel, _copy) = JumpState(
     problem = JumpProcesses.JumpProblem(
         f!.system,
         JumpProcesses.DiscreteProblem(
@@ -184,8 +185,8 @@ function Models.each_event(callback::Function, x::JumpState)
     end
 end
 
-function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
-    f! === x.f! || error("incompatible JumpState, must call adapt")
+function (f!::JumpModel)(x::JumpState, Δt::Float64; record = false, _...)
+    f! === x.f! || error("incompatible JumpState, must call adapt!(x, f!)")
     isfinite(Δt) || error("cannot do this forever")
 
     empty!(x.integrator.sol.u)
@@ -193,7 +194,7 @@ function (f!::JumpModel)(x::JumpState, Δt::Float64; into = nothing, _...)
     x.integrator.opts.callback.discrete_callbacks[1].affect!.t0 = Models.t(x)
 
     @logmsg Progress :stepping at = "JumpModel" todo = Δt
-    if into !== nothing
+    if record
         x.integrator.save_everystep = true
         ModelingToolkit.savevalues!(x.integrator, true)
         ModelingToolkit.step!(x.integrator, Δt, true)

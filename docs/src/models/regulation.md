@@ -2,11 +2,11 @@
 
 All currently implemented gene regulation models assume (discrete-space) pure jump process dynamics and (only) allow stochastically realizing concrete trajectories.
 For this purpose, they are first instantiated as [`Models.SciML.JumpModel`](@ref)s containing `Catalyst.ReactionSystem`s that are assembled according to various kinds of model definitions.
-This compilation process proceeds in multiple stages that recursively translate higher- to lower-level definitions, and each stage wraps its result in a [`Derived`](@ref Models.Derived) model along with its (intermediate) definition.
+This compilation process proceeds in multiple stages that recursively translate higher- to lower-level definitions, and each stage wraps its result in a [`Wrapped`](@ref Models.Wrapped) model along with its (intermediate) definition.
 
 While most of this package assumes a dynamics interpretation in terms of jump processes and discrete counts, when the package is used as a library, the intermediate definitions are accessible (including the underlying `Catalyst.ReactionSystem` and `JumpProcesses.JumpSystem`).
 It is therefore possible, for example, to use these objects for static analysis with other SciML tooling or to simulate trajectories from an ODE relaxation.
-Given any `Derived` model object, its `definition` property holds just that, and accessing the `model` property peels off one layer.
+Given any `Wrapped` model object, its `definition` property holds just that, and accessing the `model` property peels off one layer.
 For example, given a JSON model specification
 ```jldoctest onion; setup = :(using GeneRegulatorySystems), output = false
 d = """
@@ -43,7 +43,7 @@ we have:
 ```jldoctest onion
 julia> model = Models.parse(d);
 
-julia> model isa Models.Derived
+julia> model isa Models.Wrapped
 true
 
 julia> typeof(model.definition)

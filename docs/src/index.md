@@ -21,5 +21,5 @@ The package can be used either as a standalone application or as a library.
 
 * The advanced use case is to import and use this package in a Julia session to access the produced (mostly SciML-based) models, either because more control over the simulation is required or to enable static analysis. This is described in [Usage as a library](@ref).
 
-Both variants require a working installation of Julia ≥ v1.9.
+Both variants require a working installation of Julia ≥ v1.10.
 This package is currently not registered.

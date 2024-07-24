@@ -367,7 +367,7 @@ parsed JSON into a `Definition` and then proceed from there.
 
 The result is constructed by first making a concrete [`V1.Definition`](@ref)
 from [`definition.template`](@ref Template) to obtain the corresponding `Model`
-and then wrapping that up in a [`Models.Derived`](@ref) with `definition`. This
+and then wrapping that up in a [`Models.Wrapped`](@ref) with `definition`. This
 will result in the following stack of abstractions:
 - [`SciML.JumpModel`](@ref Models.SciML.JumpModel), specified by a
 - `Catalyst.ReactionSystem`, specified by a
@@ -394,7 +394,7 @@ build(specification::AbstractDict{Symbol}) = build(
     method = Symbol(get(specification, :method, "default"))
 )
 
-build(definition::Definition; method::Symbol = :default) = Models.Derived(
+build(definition::Definition; method::Symbol = :default) = Models.Wrapped(
     model = V1.build(
         # Deterministically fill in the template to create a concrete
         # V1.Definition from it:

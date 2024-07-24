@@ -71,16 +71,17 @@ methods:
 - [`t(x::State)`](@ref t) to access the current simulation time.
 - [`randomness(x::State)`](@ref randomness) to access the contained random
   number generator.
-- [`adapt(x::FlatState, f!::M, copy::Val)`](@ref adapt) to convert a `FlatState`
-  to a `State` and return it. The result must alias `x.randomness`. If `copy` is
-  `Val(true)`, the result must otherwise be an independent deep copy of `x`.
-- [`FlatState(x::State)`](@ref FlatState) to allow `adapt` for subsequent models
-  to fall back on converting to `FlatState` and retrying if there is no more
-  specific `adapt` method defined.
-However, implementing `adapt` methods for more specific state-model-pairs may
+- [`adapt!(x::FlatState, f!::M, copy::Val)`](@ref adapt!) to convert a
+  `FlatState` to a `State` and return it. The result must alias `x.randomness`.
+  If `copy` is `Val(true)`, the result must otherwise be an independent deep
+  copy of `x`.
+- [`FlatState(x::State)`](@ref FlatState) to allow `adapt!` for subsequent
+  models to fall back on converting to `FlatState` and retrying if there is no
+  more specific `adapt!` method defined.
+However, implementing `adapt!` methods for more specific state-model-pairs may
 allow for more efficient state conversion between model invocations, for example
 because a copy isn't required or parts of another state type can be reused.
-`adapt` is used by
+`adapt!` is used by
 [`Schedule`](@ref GeneRegulatorySystems.Models.Scheduling.Schedule) to convert
 between the various state representations required by its contained primitive
 `Model`s, but it may also be called directly.
@@ -138,11 +139,11 @@ Abstract supertype of instant models that ignore their time budget parameter
 abstract type Instant{State} <: Model{State} end
 
 """
-    Derived{State} <: Model{State}
+    Wrapped{State} <: Model{State}
 
 Wraps a `Model` together with an arbitrary `definition` object.
 
-Invoking a `Derived` model will just forward the call to the contained `model`.
+Invoking a `Wrapped` model will just forward the call to the contained `model`.
 
 This is used to annotate any `Model` with the `definition` that produced it,
 which can either be a specification or model-specific definition object (such as
@@ -150,41 +151,41 @@ which can either be a specification or model-specific definition object (such as
 [`Scheduling.Locator`](@ref GeneRegulatorySystems.Models.Scheduling.Locator)
 indicating where the model was defined within a
 [`Schedule`](@ref GeneRegulatorySystems.Models.Scheduling.Schedule). Because
-`model` can be `Derived` itself, this mechanism can be used to annotate `Model`s with a
+`model` can be `Wrapped` itself, this mechanism can be used to annotate `Model`s with a
 chain of provenance, and the intermediate definitions produced during model
 construction can be recreated using [`Scheduling.reify`](@ref).
 """
-@kwdef struct Derived{State} <: Model{State}
+@kwdef struct Wrapped{State} <: Model{State}
     definition
     model::Model{State}
 end
 
-(f!::Derived)(x, Δt::Float64; arguments...) = f!.model(x, Δt; arguments...)
+(f!::Wrapped)(x, Δt::Float64; arguments...) = f!.model(x, Δt; arguments...)
 
 unwrap(model) = model
-unwrap(derived::Derived) = unwrap(derived.model)
+unwrap(wrapped::Wrapped) = unwrap(wrapped.model)
 
 """
-    adapt(x, f!; copy = false)
+    adapt!(x, f!; copy = false)
 
 Convert the simulation state `x` to a type accepted by the model `f!`.
 
 If `copy` is set, `x` is not modified and the return value independent of it,
-except for retaining the the same `randomness` instance. Otherwise, `adapt` is
+except for retaining the the same `randomness` instance. Otherwise, `adapt!` is
 allowed to modify or alias parts of `x`, which should therefore no longer be
 used.
 """
-function adapt end
-adapt(x, f!::Model; copy = false) = _adapt(x, f!, Val(copy))
-adapt(x, f!::Model, _copy) = _adapt(FlatState(x), f!, Val(false))
-adapt(x, f!::Derived, copy) = _adapt(x, f!.model, copy)
+function adapt! end
+adapt!(x, f!::Model; copy = false) = _adapt!(x, f!, Val(copy))
+adapt!(x, f!::Model, _copy) = _adapt!(FlatState(x), f!, Val(false))
+adapt!(x, f!::Wrapped, copy) = _adapt!(x, f!.model, copy)
 
-_adapt(x, f!::Model, copy::Val) = adapt(x, f!, copy)
-_adapt(x::Branched, ::Model{Branched}, ::Val{false}) = x
-_adapt(x::Branched, f!::Model, copy::Val) = _adapt(x.stem, f!, copy)
-_adapt(x::FlatState, ::Model{FlatState}, ::Val{false}) = x
-_adapt(x::FlatState, ::Model{Any}, ::Val{false}) = x
-_adapt(x::FlatState, f!::Model, ::Val{true}) = _adapt(
+_adapt!(x, f!::Model, copy::Val) = adapt!(x, f!, copy)
+_adapt!(x::Branched, ::Model{Branched}, ::Val{false}) = x
+_adapt!(x::Branched, f!::Model, copy::Val) = _adapt!(x.stem, f!, copy)
+_adapt!(x::FlatState, ::Model{FlatState}, ::Val{false}) = x
+_adapt!(x::FlatState, ::Model{Any}, ::Val{false}) = x
+_adapt!(x::FlatState, f!::Model, ::Val{true}) = _adapt!(
     FlatState(counts = deepcopy(x.counts); x.t, x.randomness),
     f!,
     Val(false)
@@ -349,9 +350,9 @@ end
 end
 
 describe(::Any) = EmptyDescription()
-describe(derived::Derived) = Provenance(
-    source = describe(derived.definition),
-    description = describe(derived.model),
+describe(wrapped::Wrapped) = Provenance(
+    source = describe(wrapped.definition),
+    description = describe(wrapped.model),
 )
 
 load_defaults() = JSON.parsefile(DEFAULTS, dicttype = Dict{Symbol, Any})

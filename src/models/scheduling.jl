@@ -28,7 +28,7 @@ As a `Schedule` is executed, `Locator`s will be bound (with names starting on
 "^") alongside the explicitly defined bindings to record the path within the
 `Schedule` where the definition was evaluated. These "source" bindings can
 therefore be referenced in [`Template`](@ref)s, and are further used to wrap
-evaluated [`Model`](@ref)s in [`Models.Derived`](@ref) to remember where they
+evaluated [`Model`](@ref)s in [`Models.Wrapped`](@ref) to remember where they
 were originally defined.
 """
 struct Locator
@@ -109,7 +109,8 @@ function (primitive!::Primitive)(
     )
     from = Models.t(x)
     seed = GeneRegulatorySystems.seed(Models.randomness(x))
-    x = Models.adapt(x, f!)
+    x = Models.adapt!(x, f!)
+    record = primitive!.into !== nothing
 
     @logmsg Progress :advancing at = path
     if trace === nothing
@@ -117,7 +118,7 @@ function (primitive!::Primitive)(
     elseif primitive!.skip > 0.0
         x = f!(x, Δt; path, context...)
         trace(nothing, x; path, primitive!, from, seed)
-        if primitive!.into !== nothing
+        if record
             trace(
                 primitive!.into,
                 x,
@@ -128,7 +129,7 @@ function (primitive!::Primitive)(
             )
         end
     else
-        x = f!(x, Δt; path, context..., primitive!.into)
+        x = f!(x, Δt; path, context..., record)
         trace(primitive!.into, x; path, primitive!, from, seed)
     end
 
@@ -167,7 +168,7 @@ segments, either recording everything (if the template evaluates to a `Model`)
 or only at the last timepoint (if it evaluates to a number).
 
 Specifically, depending on the expanded value,
-- if it is already a `Model`, it first gets wrapped in a `Derived` (to tag it
+- if it is already a `Model`, it first gets wrapped in a `Wrapped` (to tag it
   with `f!.path` for later reference), and then further in a `Primitive` (which
   adds output and progress reporting when invoked). The latter's `into` field
   is determined from `f!.bindings[:into]`; if it is `"{channels}"`, `into` is
@@ -275,7 +276,7 @@ end
 
 (f!::Schedule)(x = FlatState(); context...) = f!(x, Inf; context...)
 
-Models.adapt(x, ::Schedule, _copy::Val{false}) = x
+Models.adapt!(x, ::Schedule, _copy::Val{false}) = x
 
 function sink(bindings::Dict{Symbol, Any})
     into = get(bindings, :into, nothing)
@@ -318,7 +319,7 @@ evaluate_bindings(f!::Schedule{Scope}) = merge(
     )
 )
 
-track_model(model::Model; locator) = Models.Derived(definition = locator; model)
+track_model(model::Model; locator) = Models.Wrapped(definition = locator; model)
 track_model(x; _...) = x
 
 evaluate(template::Template; bindings, path) = track_model(
@@ -405,7 +406,7 @@ function (f!::Schedule{Scope})(x, Δt::Float64; context...)
     f!.branch && error("cannot branch here: not a Sequence")
 
     @logmsg Progress :preparing at = f!.path
-    x = Models.adapt(x, f!)  # potentially unwrap Branched
+    x = Models.adapt!(x, f!)  # potentially unwrap Branched
     bindings = evaluate_bindings(f!)
     path = "$(f!.path)$(f!.specification.branch ? '/' : '+')"
     step! = model(
@@ -442,14 +443,14 @@ function (f!::Schedule{<:Sequence})(x, Δt::Float64; context...)
     path = f!.branch ? f!.path : "$(f!.path)-"
     @logmsg Progress :preparing at = path
 
-    x = Models.adapt(x, f!)  # potentially unwrap Branched
+    x = Models.adapt!(x, f!)  # potentially unwrap Branched
     steps = models(f!.specification; f!.bindings, path)
 
     @logmsg Progress :iterating at = path todo = length(steps)
     if f!.branch
         x = Branched(x)
         for (i, step!) in enumerate(steps)
-            x′ = Models.adapt(x.stem, step!, copy = true)
+            x′ = Models.adapt!(x.stem, step!, copy = true)
             x′ = step!(x′, Inf; context..., path = "$path$i")
             push!(x.branches, x′)
             @logmsg Progress :iterating at = path done = i

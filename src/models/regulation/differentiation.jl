@@ -467,7 +467,7 @@ parsed JSON into a `Definition` and then proceed from there.
 
 The result is constructed by first interpreting the peripheral network
 specification as a `V1` model and extending that by the differentiation
-specification, and then wrapping that up in a [`Models.Derived`](@ref) with the
+specification, and then wrapping that up in a [`Models.Wrapped`](@ref) with the
 model definition. This will result in the following stack of abstractions:
 - [`SciML.JumpModel`](@ref Models.SciML.JumpModel), specified by a
 - `Catalyst.ReactionSystem`, specified by a
@@ -538,7 +538,7 @@ function build(definition::Definition; method::Symbol)
         definition.meta,
     )
 
-    Models.Derived(; definition, model)
+    Models.Wrapped(; definition, model)
 end
 
 constructor(::Val{Symbol("regulation/differentiation")}) = build
@@ -560,7 +560,7 @@ as `{"{bootstrap/differentiation}": {"\$": "do"}}`.
 For an example, see `examples/specification/differentiation.schedule.json`.
 """
 function bootstrap end
-bootstrap(model::Models.Derived) = bootstrap(model.definition, model.model)
+bootstrap(model::Models.Wrapped) = bootstrap(model.definition, model.model)
 bootstrap(d::Definition, ::Models.Model) = Plumbing.setter(d.deposit)
 bootstrap(::Any, model::Models.Model) = bootstrap(model)
 

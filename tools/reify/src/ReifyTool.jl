@@ -23,7 +23,7 @@ children(r::Representation) = children(r.x)
 children(f!::Models.Model) = NamedTuple(
     key => getproperty(f!, key) for key in propertynames(f!)
 )
-children(f!::Models.Derived) = (;
+children(f!::Models.Wrapped) = (;
     definition = maybe_represent(f!.definition),
     f!.model,
 )

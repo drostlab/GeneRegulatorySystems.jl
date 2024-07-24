@@ -12,7 +12,7 @@ tools/grs
 ```
 to see the included utilities.
 
-!!! note
+!!! compat
     This assumes that a recent Julia is available as `julia`; you may alternatively override the used Julia binary by setting the `JULIA` environment variable, for example by prepending it like
     ```sh
     JULIA=/path/to/julia tools/grs
@@ -28,7 +28,7 @@ The wrapper will automatically run the utilities in individual Julia environment
     ```
     or by adding `$HOME/src/grs/tools` to your `PATH` environment variable.
 
-!!! note
+!!! compat
     On Windows, since the wrapper is not available you need to run the tools manually by setting the correct Julia environment. For example, you can run
     ```sh
     julia --project=tools/experiment tools/experiment/run.jl

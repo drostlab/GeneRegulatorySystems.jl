@@ -17,7 +17,7 @@ Features include:
 
 ## Setup
 
-The package can be used either as a library or as a standalone application via the command line. It requires a working installation of Julia ≥ v1.9.
+The package can be used either as a library or as a standalone application via the command line. It requires a working installation of Julia ≥ v1.10.
 
 As a library, it can be installed using Julia's package manager. For example, type
 ```

@@ -696,8 +696,8 @@ higher-level model template (such as [`Models.Differentiation`](@ref)).
 The result is constructed by first assembling a `Catalyst.ReactionSystem` as
 specified by `definition`, interpreting it as a `JumpProcesses.JumpSystem`,
 packaging that up as a `JumpModel`, wrapping that up with the `ReactionSystem`
-in a [`Models.Derived`](@ref), and finally further wrapping that in another
-`Derived` with `definition`. This will result in the following stack of
+in a [`Models.Wrapped`](@ref), and finally further wrapping that in another
+`Wrapped` with `definition`. This will result in the following stack of
 abstractions:
 - [`SciML.JumpModel`](@ref Models.SciML.JumpModel), specified by a
 - `Catalyst.ReactionSystem`, specified by
@@ -750,9 +750,9 @@ function build(definition::Definition; method::Symbol = :default)
     )
     reaction_system = complete(reaction_system)
 
-    Models.Derived(;
+    Models.Wrapped(;
         definition,
-        model = Models.Derived(
+        model = Models.Wrapped(
             definition = reaction_system,
             model = SciML.JumpModel(
                 system = complete(convert(JumpSystem, reaction_system)),

@@ -82,29 +82,29 @@ The species names will be converted to `Symbol`s, replacing potential `₊`s (su
 ## Connecting model invocations
 
 Consecutive invocations of models that operate on different state representations require a state conversion in between.
-For this purpose, the `adapt` function can be used: it transforms a state to the type required for a given `Model`, and it is predefined for all state-model combinations included in this package.
+For this purpose, the `adapt!` function can be used: it transforms a state to the type required for a given `Model`, and it is predefined for all state-model combinations included in this package.
 
 ```@docs
-Models.adapt
+Models.adapt!
 ```
 
 This design (having a type-unstable state representation) generally assumes that the total number of simulation segments is not too large and that the majority of computation time is spent within the primitive model invocations.
-A further caveat is that the construction of JumpProcesses.jl `JumpProblem`s and initializing its integrators is quite costly and therefore repeatedly `adapt`ing state to `JumpModel`s, for example after executing periodic interventions, can be slow in our current implementation.
+A further caveat is that the construction of JumpProcesses.jl `JumpProblem`s and initializing its integrators is quite costly and therefore repeatedly `adapt!`ing state to `JumpModel`s, for example after executing periodic interventions, can be slow in our current implementation.
 
-Defining a new `Model` or state type `State` typically also requires defining new `adapt` methods.
-However, if no specific method is found for a given state-model pair, `adapt` defaults to retrying with a `FlatState` copy of the state.
-This means that often, defining `FlatState(x::State)` and `adapt(x::FlatState, f!::Model, _copy)` is sufficient ([see below](@ref "The `Model` interface")).
+Defining a new `Model` or state type `State` typically also requires defining new `adapt!` methods.
+However, if no specific method is found for a given state-model pair, `adapt!` defaults to retrying with a `FlatState` copy of the state.
+This means that often, defining `FlatState(x::State)` and `adapt!(x::FlatState, f!::Model, _copy)` is sufficient ([see below](@ref "The `Model` interface")).
 
 Model invocations both of instant and dynamics models can be organized in [`Schedule`](@ref "Scheduling")s, which are themselves `Model`s that execute multiple simulation segments when invoked.
-The scheduling machinery internally uses `adapt` to piece the model segments together.
+The scheduling machinery internally uses `adapt!` to piece the model segments together.
 
-Typically, `adapt` may modify or alias its state parameter when preparing the result.
-But since `Schedule` also supports trajectory branching, `adapt` can be instructed (with its `copy` parameter) to make sure that the resulting state is independent of the input (besides always aliasing the used random number generator).
+Typically, `adapt!` may modify or alias its state parameter when preparing the result.
+But since `Schedule` also supports trajectory branching, `adapt!` can be instructed (with its `copy` parameter) to make sure that the resulting state is independent of the input (besides always aliasing the used random number generator).
 
 ## The `Model` interface
 
 ```@docs
 Models.Model
 Models.Instant
-Models.Derived
+Models.Wrapped
 ```
