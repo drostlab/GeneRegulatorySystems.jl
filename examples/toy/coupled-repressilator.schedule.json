@@ -27,7 +27,7 @@
                 "S2.proteins": 100,
                 "S3.proteins": 100
             }},
-            {"to": 1000000.0, "step": 10000.0}
+            {"to": 1000000.0, "step": 1000.0}
         ],
         "do": {"{regulation/v1}": {
             "genes": [
@@ -62,28 +62,28 @@
                     "$": ["defaults", "gene"],
                     "name": "S1",
                     "activation": [
-                        {"from": "S1", "at": 2.0}
+                        {"from": "S1", "at": 4.0}
                     ],
                     "repression": [
-                        {"from": "S3", "at": 4.0},
+                        {"from": "S3", "at": 8.0},
                         {"from": "P3", "at": 4.0}
                     ]
                 },
                 {
                     "$": ["defaults", "gene"],
                     "name": "S2",
-                    "activation": [{"from": "S2", "at": 2.0}],
+                    "activation": [{"from": "S2", "at": 4.0}],
                     "repression": [
-                        {"from": "S1", "at": 4.0},
+                        {"from": "S1", "at": 8.0},
                         {"from": "P1", "at": 4.0}
                     ]
                 },
                 {
                     "$": ["defaults", "gene"],
                     "name": "S3",
-                    "activation": [{"from": "S3", "at":2.0}],
+                    "activation": [{"from": "S3", "at":4.0}],
                     "repression": [
-                        {"from": "S2", "at": 4.0},
+                        {"from": "S2", "at": 8.0},
                         {"from": "P2", "at": 4.0}
                     ]
                 }
