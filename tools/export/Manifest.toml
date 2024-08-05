@@ -2,7 +2,7 @@
 
 julia_version = "1.10.3"
 manifest_format = "2.0"
-project_hash = "a56677a04972e1dd382acb69391398d9e21e9702"
+project_hash = "d7f14a61b86a082e18930df5cb0b0482ba81fa14"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "6778bcc27496dae5723ff37ee30af451db8b35fe"
@@ -1694,9 +1694,9 @@ version = "0.5.2"
 
 [[deps.TimeZones]]
 deps = ["Dates", "Downloads", "InlineStrings", "Mocking", "Printf", "Scratch", "TZJData", "Unicode", "p7zip_jll"]
-git-tree-sha1 = "a6ae8d7a27940c33624f8c7bde5528de21ba730d"
+git-tree-sha1 = "6505890535a2b2e5145522ac77bddeda85c250c4"
 uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
-version = "1.17.0"
+version = "1.16.1"
 weakdeps = ["RecipesBase"]
 
     [deps.TimeZones.extensions]
