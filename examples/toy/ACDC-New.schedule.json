@@ -1,17 +1,17 @@
 [
     {
-        "each": {"start": 0.0, "length": 34, "stop": 16.0},
+        "each": {"start": 0.0, "length": 8, "stop": 4.0},
         "as": "k",
         "step": {
 
                 "do": {"{regulation/v1}": {
-                    "activation": {"aggregate": "generalized_mean", "p": 0.0},
+                    "activation": {"aggregate": "generalized_mean", "p": 1.0},
                     "genes": [
                         {
                             "$": ["defaults", "gene"],
                             "name": "X",
                             "activation": [
-                                {"from": "X", "at": 4.0},
+                                {"from": "X", "at": 2.0},
                                 {"from": "S", "at":  {"$": "k"}}
                             ],
                             "repression": [{"from": "Z", "at": 4.0}]
@@ -20,7 +20,7 @@
                             "$": ["defaults", "gene"],
                             "name": "Y",
                             "activation": [
-                                {"from": "Y", "at": 4.0},
+                                {"from": "Y", "at": 2.0},
                                 {"from": "S", "at": {"$": "k"}}
                             ],
                             "repression": [{"from": "X", "at": 4.0}]
@@ -28,10 +28,10 @@
                         {
                             "$": ["defaults", "gene"],
                             "name": "Z",
-                            "activation": [{"from": "Z", "at": 4.0}],
+                            "activation": [{"from": "Z", "at": 2.0}],
                             "repression": [
                                 {"from": "Y", "at": 4.0},
-                                {"from": "X", "at": 4.0}
+                                {"from": "X", "at": 12.0}
                             ]
                         },
                         {
@@ -45,7 +45,7 @@
                     ]
                 }},
                 "branch": true,
-                "each": {"start": 0, "step": 1, "stop": 20},
+                "each": {"start": 0, "step": 5, "stop": 200},
                 "as": "n",
                 "step": [
                     {"{add}": {
