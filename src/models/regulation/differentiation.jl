@@ -168,7 +168,6 @@ where:
     timer_repression::Float64 = 2.0
     timer_proteolysis::Float64 = 0.000002
     differentiator_self_activation::Float64 = 2.0
-    differentiator_mutual_proteolysis_around::Float64 = 0.0001
     differentiator_proteolysis::Float64 = 0.0001
 end
 
@@ -216,7 +215,6 @@ representation(x::Transient) = representation(
         :timer_brake_at => 0.5
         :timer_repression => 2.0
         :differentiator_self_activation => 2.0
-        :differentiator_mutual_proteolysis_around => 0.0001
         :differentiator_proteolysis => 0.0001
     ]
 )

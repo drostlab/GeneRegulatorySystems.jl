@@ -104,7 +104,7 @@ role of `Nothing`.
 struct Slice <: Specification end
 
 function references(s::AbstractString, bound::Set{Symbol})
-    found = eachmatch(r"\$\{(\^?\w+)\}", s) .|> first .|> Symbol |> Set
+    found = Set(map(Symbol ∘ first, eachmatch(r"\$\{(\^?\w+)\}", s)))
     found ⊆ bound || error("undefined references: ", setdiff(found, bound))
     found
 end

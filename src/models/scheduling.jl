@@ -55,9 +55,9 @@ This produces a single simulation segment; it
 - converts the simulation state to the representation required by the wrapped
   `Model`,
 - reports progress via `@logmsg`, and
-- if `trace` trace is given, calls it back segment and appends various ancillary
-  information in that call, including `into` to signal if and where results
-  should be saved.
+- if `trace` is given, calls it back with the new simulation state and appends
+  various ancillary information in that call, including `into` to signal if and
+  where results should be saved.
 
 The wrapped models are expected to retain intermediate results for their last
 invocation in the simulation state `x` if `into` is not `nothing` so they can be
