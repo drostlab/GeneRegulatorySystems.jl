@@ -4,11 +4,16 @@
             "$": ["defaults", "differentiation"],
             "differentiator": "differentiator",
             "duration": 50000.0,
-            "ratio": 0.8,
+            "ratio": 0.6,
             "next": {
                 "$": ["defaults", "differentiation"],
                 "duration": 20000.0,
-                "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                "next": {"$": ["defaults", "differentiation"],
+                            "duration": 50000.0,
+                            "ratio": 0.8,
+                            "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                            "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
+                    },
                 "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
             },
             "alternative": {
@@ -25,8 +30,8 @@
             "differentiator": 500
         }},
         {"{bootstrap/differentiation}": {"$": "do"}},
-        {"each": {"length": 10}, "branch": true, "step": {
-            "to": 100000.0
+        {"each": {"length": 1000}, "branch": true, "step": {
+            "to": 300000.0, "step": 1000.0
         }}
     ]
 }

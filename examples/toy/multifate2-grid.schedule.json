@@ -1,0 +1,51 @@
+{
+    "label": "multifate2-proteolytic-grid",
+
+    
+    "each": {"start": 3e-9, "length": 3, "stop": 3e-11},
+    "as": "lambda_p",
+    "branch": true,
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "base_rates": {
+                        "$": ["defaults", "gene", "base_rates"],
+                        "protein_decay":  {"$": "lambda_p"}
+                    },
+                    "activation": [{"from": 1, "at": 2.0}],
+                    "proteolysis": [{"from": 2, "k": 0.001}]
+                },
+                {
+                    "base_rates": {
+                        "$": ["defaults", "gene", "base_rates"],
+                        "protein_decay":  {"$": "lambda_p"}
+                    },
+                    "activation": [{"from": 2, "at": 2.0}],
+                    "proteolysis": [{"from": 1, "k": 0.001}]
+                }
+            ]
+        }},
+        "each": {"start": 50, "step": 25, "stop": 300},
+        "as": "x",
+        "step": {
+            "each": {"start": 50, "step": 25, "stop": 300},
+            "as": "y",
+            "step": {
+                "each": {"length": 20},
+                "branch": true,
+                "step": [
+                    {"{add}": {
+                        "$": ["defaults", "bootstrap"],
+                        "1.proteins": {"$": "x"},
+                        "2.proteins": {"$": "y"},
+                        "1.mrnas": 30,
+                        "2.mrnas": 30
+                    }},
+                    {"to": 100000.0, "step": 1000.0}
+                ]
+            }
+        }
+    }
+    
+}

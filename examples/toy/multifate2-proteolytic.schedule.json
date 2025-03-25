@@ -4,40 +4,46 @@
         "do": {"{regulation/v1}": {
             "genes": [
                 {
+                    "name": "controller",
                     "base_rates": {
                         "$": ["defaults", "gene", "base_rates"],
                         "activation": 0.0
                     }
                 },
                 {
+                    "name": "A",
                     "$": ["defaults", "gene"],
-                    "activation": [{"from": 2, "at": 2.0}],
+                    "activation": [{"from": "A", "at": 2.0}],
                     "proteolysis": [
-                        {"from": 1, "k": 0.001},
-                        {"from": 3, "k": 0.001}
+                        {"from": "controller", "k": 0.001},
+                        {"from": "B", "k": 0.001}
                     ]
                 },
                 {
+                    "name": "B",
                     "$": ["defaults", "gene"],
-                    "activation": [{"from": 3, "at": 2.0}],
+                    "activation": [{"from": "B", "at": 2.0}],
                     "proteolysis": [
-                        {"from": 1, "k": 0.001},
-                        {"from": 2, "k": 0.001}
+                        {"from": "controller", "k": 0.001},
+                        {"from": "A", "k": 0.001}
                     ]
-                }
-            ]
+                }   
+            ],
+            "reactions": [
+                    {"from": ["controller", "controller"], "rates": [0.002, 0.008], "to": ["controller_buffer"]}
+                ]
         }},
         "branch": true,
         "each": {"length": 5},
         "step": [
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
-                "1.proteins": 100,
-                "2.proteins": 100,
-                "3.proteins": 100,
-                "1.mrnas": 100
+                "controller.proteins": 100,
+                "A.proteins": 100,
+                "B.proteins": 100,
+                "controller.mrnas": 10
             }},
-            {"to": 60000.0}
+            {"to": 100000.0, "step": 100.0}
         ]
     }
 }

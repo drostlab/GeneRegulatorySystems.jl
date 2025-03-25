@@ -1,5 +1,4 @@
 /Manifest.toml
 /docs/build/
 results
-/new_notebook.jl
-/notebook.jl
+/*notebook.jl
