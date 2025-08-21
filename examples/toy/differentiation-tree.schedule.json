@@ -30,7 +30,7 @@
             "differentiator": 500
         }},
         {"{bootstrap/differentiation}": {"$": "do"}},
-        {"each": {"length": 1000}, "branch": true, "step": {
+        {"each": {"length": 10}, "branch": true, "step": {
             "to": 300000.0, "step": 1000.0
         }}
     ]

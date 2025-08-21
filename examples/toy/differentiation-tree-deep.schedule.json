@@ -1,0 +1,58 @@
+{
+    "do": {"{regulation/differentiation}": {
+        "differentiation": {
+            "$": ["defaults", "differentiation"],
+            "differentiator": "differentiator",
+            "duration": 30000.0,
+            "ratio": 0.55,
+            "next": {
+                "$": ["defaults", "differentiation"],
+                "duration": 60000.0,
+                "ratio": 0.45,
+                "next": {
+                    "$": ["defaults", "differentiation"],
+                    "duration": 100000.0,
+                    "ratio": 0.6,
+                    "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                    "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
+                },
+                "alternative": {
+                    "$": ["defaults", "differentiation"],
+                    "duration": 50000.0,
+                    "ratio": 0.3,
+                    "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                    "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
+                }
+            },
+            "alternative": {
+                "$": ["defaults", "differentiation"],
+                "duration": 60000.0,
+                "ratio": 0.8,
+                "next": {
+                    "$": ["defaults", "differentiation"],
+                    "duration": 30000.0,
+                    "ratio": 0.4,
+                    "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                    "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
+                },
+                "alternative": {
+                    "$": ["defaults", "differentiation"],
+                    "duration": 150000.0,
+                    "ratio": 0.6,
+                    "next": {"$": ["defaults", "differentiation", "differentiator"]},
+                    "alternative": {"$": ["defaults", "differentiation", "differentiator"]}
+                }
+            }
+        }
+    }},
+    "step": [
+        {"{add}": {
+            "$": ["defaults", "bootstrap"],
+            "differentiator": 500
+        }},
+        {"{bootstrap/differentiation}": {"$": "do"}},
+        {"each": {"length": 250}, "branch": true, "step": {
+            "to": 300000.0, "step": 3000.0
+        }}
+    ]
+}

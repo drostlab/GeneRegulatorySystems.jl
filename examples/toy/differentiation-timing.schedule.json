@@ -32,7 +32,7 @@
         "buffer": [0.002, 0.008],
         "buffer_deposit": 300
     },
-    "each": [15000.0],
+    "each": [60000.0],
     "as": "time",
     "branch": true,
     "step": {
@@ -73,7 +73,7 @@
             }},
             {"{bootstrap/differentiation}": {"$": "do"}},
             {"each": {"length": 1}, "branch": true, "step":{
-                "to": 500000.0, "step": [
+                "to": 200000.0, "step": [
                     500.0]}}
         ]
     }

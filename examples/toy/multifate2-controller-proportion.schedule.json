@@ -1,0 +1,63 @@
+{
+    "label": "multifate2-proteolytic-controller-proportion",
+    
+    "each": [[0.00010875,9.1250000000000009E-5],[0.0001,0.0001],[9.1250000000000009E-5,0.00010875]],
+    "as": "proportion",
+    "branch": true,
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "name": "controller",
+                    "base_rates": {
+                        "$": ["defaults", "gene", "base_rates"],
+                        "activation": 0.0,
+                        "protein_decay": 2e-10
+                    }},
+                {
+                    "name": "A",
+                    "base_rates": {
+                        "$": ["defaults", "gene", "base_rates"]
+                    },
+                    "activation": [{"from": "A", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "controller", "k": 0.0001},
+                        {"from": "B", "k":{"$": ["proportion",1]}}
+                    ]
+                },
+                {
+                    "name": "B",
+                    "base_rates": {
+                        "$": ["defaults", "gene", "base_rates"]                   
+                    },
+                    "activation": [{"from": "B", "at": 2.0}],
+                    "proteolysis": [
+                        {"from": "controller", "k": 0.0001},
+                        {"from": "A", "k":{"$": ["proportion",2]}}
+                    ]
+                }
+            ],
+            "reactions": [
+                    {"from": ["controller", "controller"], "rates": [0.002, 0.008], "to": ["controller_buffer"]}
+                ]
+        }},
+
+        "step": {
+            "each": {"length":50},
+            "branch": true,
+            "step": [
+                {"{add}": {
+                    "$": ["defaults", "bootstrap"],
+                    "controller.proteins": 800,
+                    "A.proteins": 100,
+                    "B.proteins": 100,
+                    "A.mrnas": 30,
+                    "B.mrnas": 30
+                }},
+                {"to": 250000.0, "step": 1000.0}
+            ]
+        }
+    }
+
+    
+}
