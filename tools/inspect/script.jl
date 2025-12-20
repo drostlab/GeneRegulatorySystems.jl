@@ -59,7 +59,8 @@ function run(arguments = ARGS)
     )
 
     @eval import InspectTool
-    Base.invokelatest(InspectTool.main; parsed...)
+    Tool = @invokelatest (@__MODULE__).InspectTool
+    @invokelatest Tool.main(; parsed...)
 end
 
 end

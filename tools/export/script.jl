@@ -105,7 +105,8 @@ function run(arguments = ARGS)
     )
 
     @eval import ExportTool
-    try Base.invokelatest(ExportTool.main; parsed...)
+    Tool = @invokelatest (@__MODULE__).ExportTool
+    try @invokelatest Tool.main(; parsed...)
     catch e
         if e == :help
             ArgParse.show_help(settings(); exit_when_done = false)

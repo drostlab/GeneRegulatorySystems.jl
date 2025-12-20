@@ -1,7 +1,6 @@
 module SciML
 
-using ..Models: Models, Model, FlatState
-
+import ..Models: Models, Model, FlatState
 import JumpProcesses
 import ModelingToolkit
 

@@ -101,7 +101,8 @@ function run(arguments = ARGS)
     )
 
     @eval import ReifyTool
-    Base.invokelatest(ReifyTool.main; parsed...)
+    Tool = @invokelatest (@__MODULE__).ReifyTool
+    @invokelatest Tool.main(; parsed...)
 end
 
 end

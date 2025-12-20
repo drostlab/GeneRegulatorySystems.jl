@@ -89,7 +89,8 @@ function run(arguments = ARGS)
     end
 
     @eval import ExperimentTool
-    try Base.invokelatest(ExperimentTool.main; parsed...)
+    Tool = @invokelatest (@__MODULE__).ExperimentTool
+    try @invokelatest Tool.main(; parsed...)
     catch e
         if e == :help
             ArgParse.show_help(settings(); exit_when_done = false)
