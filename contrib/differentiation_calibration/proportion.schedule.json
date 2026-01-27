@@ -1,0 +1,447 @@
+{
+    "each": [[0.00010875,9.1250000000000009E-5],[0.00010750000000000001,9.25E-5],[0.00010625000000000001,9.375E-5],[0.000105,9.5E-5],[0.00010375,9.6250000000000009E-5],[0.00010250000000000001,9.75E-5],[0.00010125000000000001,9.875E-5],[0.0001,0.0001],[9.875E-5,0.00010125000000000001],[9.75E-5,0.00010250000000000001],[9.6250000000000009E-5,0.00010375],[9.5E-5,0.000105],[9.375E-5,0.00010625000000000001],[9.25E-5,0.00010750000000000001],[9.1250000000000009E-5,0.00010875]],
+    "as": "proportion",
+    "branch": true,
+    "step":{
+        "do":{"{regulation/v1}": {
+                "genes": [
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state10",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": []
+                        },
+                        "base_rates": {
+                            "activation": 2.5,
+                            "protein_decay": 2.0e-10,
+                            "transcription": 0.015,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.0075,
+                            "deactivation": 10.0,
+                            "translation": 2.5e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state10",
+                        "proteolysis": [
+                            {
+                                "k": {"$": ["proportion",1]},
+                                "from": "state11"
+                            },
+                            {
+                                "k": 0.0001,
+                                "from": "state1_timer"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state0",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": []
+                        },
+                        "base_rates": {
+                            "activation": 2.5,
+                            "protein_decay": 2.0e-10,
+                            "transcription": 0.015,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.0075,
+                            "deactivation": 10.0,
+                            "translation": 2.5e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state0",
+                        "proteolysis": [
+                            {
+                                "k": {"$": ["proportion",1]},
+                                "from": "state1"
+                            },
+                            {
+                                "k": 0.0001,
+                                "from": "trigger_timer"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state1",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": []
+                        },
+                        "base_rates": {
+                            "activation": 2.5,
+                            "protein_decay": 2.0e-10,
+                            "transcription": 0.015,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.0075,
+                            "deactivation": 10.0,
+                            "translation": 2.5e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state1",
+                        "proteolysis": [
+                            {
+                                "k":{"$": ["proportion",2]},
+                                "from": "state0"
+                            },
+                            {
+                                "k": 0.0001,
+                                "from": "trigger_timer"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state1",
+                                    "at": 0.5
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state0",
+                                    "at": 0.5
+                                },
+                                {
+                                    "from": "state00",
+                                    "at": 2.0
+                                },
+                                {
+                                    "from": "state01",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "base_rates": {
+                            "activation": 0.1,
+                            "protein_decay": 6.6834391756861351E-10,
+                            "transcription": 0.016708597939215336,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.01,
+                            "deactivation": 0.1,
+                            "translation": 1.0e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state0_timer",
+                        "proteolysis": [
+                            {
+                                "k": 2.0e-6,
+                                "from": "state00"
+                            },
+                            {
+                                "k": 2.0e-6,
+                                "from": "state01"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": []
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "trigger",
+                                    "at": 0.5
+                                },
+                                {
+                                    "from": "state0",
+                                    "at": 2.0
+                                },
+                                {
+                                    "from": "state1",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "base_rates": {
+                            "activation": 0.1,
+                            "protein_decay": 2.542286270502812e-9,
+                            "transcription": 0.0635571567625703,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.01,
+                            "deactivation": 0.1,
+                            "translation": 1.0e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "trigger_timer",
+                        "proteolysis": [
+                            {
+                                "k": 2.0e-6,
+                                "from": "state0"
+                            },
+                            {
+                                "k": 2.0e-6,
+                                "from": "state1"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state11",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": []
+                        },
+                        "base_rates": {
+                            "activation": 2.5,
+                            "protein_decay": 2.0e-10,
+                            "transcription": 0.015,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.0075,
+                            "deactivation": 10.0,
+                            "translation": 2.5e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state11",
+                        "proteolysis": [
+                            {
+                                "k": {"$": ["proportion",2]},
+                                "from": "state10"
+                            },
+                            {
+                                "k": 0.0001,
+                                "from": "state1_timer"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state00",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": []
+                        },
+                        "base_rates": {
+                            "activation": 2.5,
+                            "protein_decay": 2.0e-10,
+                            "transcription": 0.015,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.0075,
+                            "deactivation": 10.0,
+                            "translation": 2.5e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state00",
+                        "proteolysis": [
+                            {
+                                "k": {"$": ["proportion",1]},
+                                "from": "state01"
+                            },
+                            {
+                                "k": 0.0001,
+                                "from": "state0_timer"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state0",
+                                    "at": 0.5
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state1",
+                                    "at": 0.5
+                                },
+                                {
+                                    "from": "state10",
+                                    "at": 2.0
+                                },
+                                {
+                                    "from": "state11",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "base_rates": {
+                            "activation": 0.1,
+                            "protein_decay": 6.6834391756861351E-10,
+                            "transcription": 0.016708597939215336,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.01,
+                            "deactivation": 0.1,
+                            "translation": 1.0e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state1_timer",
+                        "proteolysis": [
+                            {
+                                "k": 2.0e-6,
+                                "from": "state10"
+                            },
+                            {
+                                "k": 2.0e-6,
+                                "from": "state11"
+                            }
+                        ]
+                    },
+                    {
+                        "activation": {
+                            "aggregation": "minimum",
+                            "slots": [
+                                {
+                                    "from": "state01",
+                                    "at": 2.0
+                                }
+                            ]
+                        },
+                        "repression": {
+                            "aggregation": "minimum",
+                            "slots": []
+                        },
+                        "base_rates": {
+                            "activation": 2.5,
+                            "protein_decay": 2.0e-10,
+                            "transcription": 0.015,
+                            "trigger": 6.6e-7,
+                            "mrna_decay": 0.0075,
+                            "deactivation": 10.0,
+                            "translation": 2.5e-9,
+                            "abortion": 0.01,
+                            "premrna_decay": 0.001,
+                            "processing": 0.02
+                        },
+                        "name": "state01",
+                        "proteolysis": [
+                            {
+                                "k": {"$": ["proportion",2]},
+                                "from": "state00"
+                            },
+                            {
+                                "k": 0.0001,
+                                "from": "state0_timer"
+                            }
+                        ]
+                    }
+                ],
+                "reactions": [
+                    {
+                        "from": {
+                            "trigger_timer": 2
+                        },
+                        "rates": [
+                            0.002,
+                            0.008
+                        ],
+                        "to": {
+                            "trigger_timer_buffer": 1
+                        }
+                    },
+                    {
+                        "from": {
+                            "state0_timer": 2
+                        },
+                        "rates": [
+                            0.002,
+                            0.008
+                        ],
+                        "to": {
+                            "state0_timer_buffer": 1
+                        }
+                    },
+                    {
+                        "from": {
+                            "state1_timer": 2
+                        },
+                        "rates": [
+                            0.002,
+                            0.008
+                        ],
+                        "to": {
+                            "state1_timer_buffer": 1
+                        }
+                    }
+                ]
+            }
+        },
+        "step": [
+            {"{add}": {
+                "polymerases": 5e5,
+                "ribosomes": 2e6,
+                "proteasomes": 1e6,
+                "trigger": 500,
+                "trigger_timer.proteins": 30,
+                "trigger_timer_buffer": 500,
+                "trigger_timer.mrnas": 5,
+                "state0_timer.proteins": 30,
+                "state0_timer_buffer": 500,
+                "state0_timer.mrnas": 5,
+                "state1_timer.proteins": 30,
+                "state1_timer_buffer": 500,
+                "state1_timer.mrnas": 5
+            }},
+
+            {"each": {"length": 100}, "branch": true, "step": {
+                "to": 500000.0, "step": [500.0]
+            }}
+        ]
+    }
+}

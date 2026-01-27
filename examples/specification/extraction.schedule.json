@@ -1,0 +1,72 @@
+[
+    {"{add}": {
+        "$": ["defaults", "bootstrap"],
+        "1": {"proteins": 100},
+        "2": {"proteins": 100}
+    }},
+    {
+        "to": 5000.0,
+        "step": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "$": ["defaults", "gene"],
+                    "proteolysis": [{"from": 2, "k": 0.00001}]
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "repression": [{"from": 1, "at": 5.0}]
+                }
+            ]
+        }}
+    },
+    {
+        "into": "${into}-transcriptomic",
+        "branch": true,
+        "step": [
+            {"{extract-transcriptome-simple}": {"target": 50.0}},
+            {"{extract-transcriptome-amplified}": {
+                "collect": 0.9,
+                "cycles": 5,
+                "efficiency": 0.8,
+                "dropout": 0.05,
+                "target": 50.0
+            }},
+            {
+                "#": "The above {extract-transcriptome-amplified} is equivalent to this schedule.",
+                "channel'": {"$": "channel"},
+                "into'": {"$": "into"},
+                "into": null,
+                "step": [
+                    {"{filter}": "\\.(pre)?mrnas$"},
+                    {"{resample-each-binomial}": 0.9},
+                    {"each": {"length": 5}, "step": {
+                        "{resample-each-accumulate}": [0.05, 0.15, 0.8]
+                    }},
+                    {"{resample-target-mean-each-binomial}": 50.0},
+                    {
+                        "channel": {"$": "channel'"},
+                        "into": {"$": "into'"},
+                        "step": {"{pass}": true}
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "into": "{channels}",
+        "channel": "${into}-multiomic",
+        "step": [
+            {"branch": true, "step": [
+                {"{extract-transcriptome-amplified}": {
+                    "collect": 0.9,
+                    "cycles": 5,
+                    "efficiency": 0.8,
+                    "dropout": 0.05,
+                    "target": 50.0
+                }},
+                {"{extract-proteome-simple}": {"target": 100.0}}
+            ]},
+            {"{merge}": "+"}
+        ]
+    }
+]

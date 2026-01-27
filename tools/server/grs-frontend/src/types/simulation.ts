@@ -1,0 +1,382 @@
+/**
+ * Simulation frame - sparse species state at a point in time
+ */
+export interface SimulationFrame {
+    path: string
+    t: number
+    counts: Record<string, number>
+}
+
+/**
+ * Timeseries data accumulated from frames
+ * Structure: geneId -> speciesId -> path -> [(t, count), ...]
+ */
+/**
+ * Sparse timeseries data: speciesId → path → sorted time/value pairs
+ */
+export type Timeseries = Record<string, Record<string, Array<[number, number]>>>
+
+/**
+ * Simulation status values - discriminated union for type safety
+ */
+export type SimulationStatus = 'running' | 'completed' | 'error'
+
+/**
+ * Simulation data container with frames
+ */
+export interface SimulationData {
+    frames: SimulationFrame[]
+}
+
+/**
+ * Result metadata - what the /results endpoint returns
+ * Discriminator: data is null (frames not loaded)
+ */
+export interface SimulationResultMetadata {
+    id: string
+    created_at?: string
+    schedule_name: string
+    schedule_spec: string
+    status: SimulationStatus
+    frame_count: number
+    error?: string
+    data: null
+}
+
+/**
+ * Full result - metadata + frames combined
+ * Use isResultLoaded() type guard to narrow from metadata to this type
+ */
+export interface SimulationResult extends Omit<SimulationResultMetadata, 'data'> {
+    data: SimulationData
+}
+
+/**
+ * Type guard to check if result has been fully loaded with frames
+ */
+export function isResultLoaded(result: SimulationResultMetadata | SimulationResult): result is SimulationResult {
+    return result.data !== null
+}
+
+/**
+ * Compute timeseries from simulation frames
+ * Structure: geneId -> speciesId -> path -> [(t, count), ...]
+ */
+export function computeTimeseries(frames: SimulationFrame[]): Timeseries {
+    const ts: Timeseries = {}
+
+    for (const frame of frames) {
+        const { path, t, counts } = frame
+
+        for (const [speciesId, count] of Object.entries(counts)) {
+            if (!ts[speciesId]) {
+                ts[speciesId] = {}
+            }
+            if (!ts[speciesId][path]) {
+                ts[speciesId][path] = []
+            }
+
+            const series = ts[speciesId][path]
+            if (series) {
+                series.push([t, count])
+            }
+        }
+    }
+
+    // Sort each timeseries by time
+    for (const species in ts) {
+        for (const path in ts[species]) {
+            const series = ts[species][path]
+            if (series) {
+                series.sort((a, b) => a[0] - b[0])
+            }
+        }
+    }
+
+    return ts
+}
+
+/**
+ * Get maximum time across all frames
+ */
+export function getMaxTime(frames: SimulationFrame[]): number {
+    if (frames.length === 0) {
+        return 0
+    }
+    return Math.max(...frames.map(f => f.t))
+}
+
+/**
+ * Accumulate frames into a fully loaded result
+ * Requires result to be SimulationResult (data is not null)
+ */
+export function accumulateFrames(result: SimulationResult, frames: SimulationFrame[]): void {
+    result.data.frames.push(...frames)
+    result.frame_count = result.data.frames.length
+}
+
+
+/**
+ * Track series data for SciChart visualization
+ * Represents a single gene's data on a track (promoter/mrna/protein)
+ */
+export interface TrackSeriesData {
+    geneId: string
+    colour: string
+    xData: number[]
+    yData: number[]
+    path: string  // Execution path ID (for branching simulations)
+    isDashed: boolean  // True for branch segments (front != back)
+    segmentFrom: number  // Start time of execution segment
+    segmentTo: number  // End time of execution segment
+    trackIndex: number  // Y-track index for this path (0 = first path, 1 = second path, etc.)
+}
+
+/**
+ * Calculate promoter activity fraction from active/inactive state timeseries
+ * 
+ * Merges active and inactive count events and computes fraction = active / (active + inactive)
+ * at each timepoint. Matches the FractionSeries logic from inspect tool.
+ * 
+ * @param active Map of time → active count
+ * @param inactive Map of time → inactive count
+ * @returns Object with sorted time array and corresponding fraction array (0-1)
+ */
+function calculatePromoterFraction(
+    active: Map<number, number>,
+    inactive: Map<number, number>
+): { times: number[], fractions: number[] } {
+    const allTimes = new Set([...active.keys(), ...inactive.keys()])
+    const sortedTimes = Array.from(allTimes).sort((a, b) => a - b)
+    
+    const fractions: number[] = []
+    let lastActive = 0
+    let lastInactive = 0
+    
+    for (const t of sortedTimes) {
+        // Update state from events
+        if (active.has(t)) lastActive = active.get(t) || 0
+        if (inactive.has(t)) lastInactive = inactive.get(t) || 0
+        
+        // Calculate fraction
+        const total = lastActive + lastInactive
+        const fraction = total === 0 ? 0.0 : lastActive / total
+        fractions.push(fraction)
+    }
+    
+    return { times: sortedTimes, fractions }
+}
+
+/**
+ * Convert timeseries to track data for SciChart visualization
+ * Keeps execution paths separate for proper branch rendering
+ * 
+ * Species naming convention (from GRS.jl):
+ * - Promoter: "{geneId}.inactive" or "{geneId}.active"
+ * - mRNA: "{geneId}.mrnas"
+ * - Protein: "{geneId}.proteins"
+ * 
+ * @param timeseries Computed timeseries from simulation frames
+ * @param geneColours Map of geneId → hex colour string
+ * @param segments Optional timeline segments for segment boundary calculation
+ * @returns Map of track kind → array of track series data (one per gene per path)
+ */
+export function timeseriesToTrackData(
+    timeseries: Timeseries,
+    geneColours: Record<string, string>,
+    segments?: Array<{ path: string; from: number; to: number }>
+): Record<'promoter' | 'mrna' | 'protein', TrackSeriesData[]> {
+    const tracks: Record<'promoter' | 'mrna' | 'protein', TrackSeriesData[]> = {
+        promoter: [],
+        mrna: [],
+        protein: []
+    }
+
+    // Build segment boundaries map: path → {from, to}
+    const segmentBoundaries = new Map<string, { from: number; to: number }>()
+    // Build path to track index map: path → track number (0, 1, 2, ...)
+    const pathToTrackIndex = new Map<string, number>()
+    if (segments) {
+        // First pass: extract unique paths in order and build maps
+        const seen = new Set<string>()
+        for (let i = 0; i < segments.length; i++) {
+            const segment = segments[i]
+            if (!segment) continue
+            segmentBoundaries.set(segment.path, { from: segment.from, to: segment.to })
+            if (!seen.has(segment.path)) {
+                pathToTrackIndex.set(segment.path, pathToTrackIndex.size)
+                seen.add(segment.path)
+            }
+        }
+    }
+
+    // Group by gene and path: geneId → path → kind → {active, inactive} | data
+    const genePathData: Record<string, Record<string, {
+        promoter?: { active: Array<[number, number]>, inactive: Array<[number, number]> },
+        mrna?: Array<[number, number]>,
+        protein?: Array<[number, number]>
+    }>> = {}
+
+    // Iterate through all species
+    for (const [speciesId, paths] of Object.entries(timeseries)) {
+        // Determine kind and geneId from speciesId
+        let kind: 'promoter' | 'mrna' | 'protein' | null = null
+        let geneId: string | null = null
+        let isActive: boolean | null = null
+
+        if (speciesId.includes('.inactive')) {
+            kind = 'promoter'
+            isActive = false
+            const parts = speciesId.split('.')
+            geneId = parts[0] || null
+        } else if (speciesId.includes('.active')) {
+            kind = 'promoter'
+            isActive = true
+            const parts = speciesId.split('.')
+            geneId = parts[0] || null
+        } else if (speciesId.includes('.mrnas')) {
+            kind = 'mrna'
+            const parts = speciesId.split('.')
+            geneId = parts[0] || null
+        } else if (speciesId.includes('.proteins')) {
+            kind = 'protein'
+            const parts = speciesId.split('.')
+            geneId = parts[0] || null
+        }
+
+        if (!kind || !geneId) continue
+
+        // Process each path separately (keep branches distinct)
+        for (const [pathId, pathData] of Object.entries(paths)) {
+            if (!Array.isArray(pathData)) continue
+
+            // Ensure data structures exist
+            if (!genePathData[geneId]) genePathData[geneId] = {}
+            const genePaths = genePathData[geneId]
+            if (!genePaths) continue
+            if (!genePaths[pathId]) genePaths[pathId] = {}
+
+            const pathEntry = genePaths[pathId]
+            if (!pathEntry) continue
+
+            if (kind === 'promoter') {
+                if (!pathEntry.promoter) {
+                    pathEntry.promoter = { active: [], inactive: [] }
+                }
+                const targetArray = isActive ? pathEntry.promoter.active : pathEntry.promoter.inactive
+                for (const [t, v] of pathData as Array<[number, number]>) {
+                    if (t !== undefined && v !== undefined && isFinite(t) && isFinite(v)) {
+                        targetArray.push([t, v])
+                    }
+                }
+            } else {
+                if (!pathEntry[kind]) {
+                    pathEntry[kind] = []
+                }
+                for (const [t, v] of pathData as Array<[number, number]>) {
+                    if (t !== undefined && v !== undefined && isFinite(t) && isFinite(v)) {
+                        pathEntry[kind]?.push([t, v])
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert to track series (one series per gene per path)
+    for (const [geneId, paths] of Object.entries(genePathData)) {
+        const colourKey = `gene_${geneId}`
+        const colour = geneColours[colourKey] || '#808080'
+
+        for (const [pathId, data] of Object.entries(paths)) {
+            // Determine if this is a branching path (heuristic: contains more than one segment)
+            // In practice, we'd check if front != back from segment metadata
+            const isDashed = pathId.includes(',') || pathId.length > 10
+
+            // Get segment boundaries and track index for this path
+            const segmentBounds = segmentBoundaries.get(pathId) || { from: 0, to: 0 }
+            const trackIndex = pathToTrackIndex.get(pathId) ?? 0
+
+            // Process mRNA
+            if (data.mrna && data.mrna.length > 0) {
+                data.mrna.sort((a, b) => a[0] - b[0])
+                tracks.mrna.push({
+                    geneId,
+                    colour,
+                    path: pathId,
+                    isDashed,
+                    segmentFrom: segmentBounds.from,
+                    segmentTo: segmentBounds.to,
+                    trackIndex,
+                    xData: data.mrna.map(p => p[0]),
+                    yData: data.mrna.map(p => p[1])
+                })
+            }
+
+            // Process protein
+            if (data.protein && data.protein.length > 0) {
+                data.protein.sort((a, b) => a[0] - b[0])
+                tracks.protein.push({
+                    geneId,
+                    colour,
+                    path: pathId,
+                    isDashed,
+                    segmentFrom: segmentBounds.from,
+                    segmentTo: segmentBounds.to,
+                    trackIndex,
+                    xData: data.protein.map(p => p[0]),
+                    yData: data.protein.map(p => p[1])
+                })
+            }
+
+            // Process promoter (calculate fractions)
+            if (data.promoter) {
+                const { active, inactive } = data.promoter
+                if (active.length > 0 || inactive.length > 0) {
+                    active.sort((a, b) => a[0] - b[0])
+                    inactive.sort((a, b) => a[0] - b[0])
+
+                    const activeMap = new Map(active)
+                    const inactiveMap = new Map(inactive)
+                    const { times, fractions } = calculatePromoterFraction(activeMap, inactiveMap)
+
+                    tracks.promoter.push({
+                        geneId,
+                        colour,
+                        path: pathId,
+                        isDashed,
+                        segmentFrom: segmentBounds.from,
+                        segmentTo: segmentBounds.to,
+                        trackIndex,
+                        xData: times,
+                        yData: fractions
+                    })
+                }
+            }
+        }
+    }
+
+    return tracks
+}
+
+/**
+ * Format result label for display in dropdown
+ * Works with both metadata and fully loaded results
+ * Prefers created_at from API response, falls back to parsing id as ISO 8601 timestamp
+ */
+export function formatResultLabel(result: SimulationResultMetadata | SimulationResult | undefined | null): string {
+    if (!result) return ''
+    
+    let date: Date
+    if (result.created_at) {
+        date = new Date(result.created_at)
+    } else {
+        // Fallback: parse id as ISO 8601 timestamp
+        date = new Date(result.id)
+    }
+    
+    const dateStr = date.toLocaleString()
+    return `${result.schedule_name || 'Unknown'} – ${dateStr}`
+}
+
+
+

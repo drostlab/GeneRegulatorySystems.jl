@@ -1,0 +1,78 @@
+{
+    "label": "v1-to-differentiation",
+    "step": [
+        {
+            "label": "phase-1-v1-regulation",
+            "do": {"{regulation/v1}": {
+                "genes": [
+                    {
+                        "$": ["defaults", "gene"],
+                        "activation": [{"from": 1, "at": 2.0}],
+                        "repression": [{"from": 3, "at": 4.0}]
+                    },
+                    {
+                        "$": ["defaults", "gene"],
+                        "activation": [{"from": 2, "at": 2.0}],
+                        "repression": [{"from": 1, "at": 4.0}]
+                    },
+                    {
+                        "$": ["defaults", "gene"],
+                        "activation": [{"from": 3, "at": 2.0}],
+                        "repression": [{"from": 2, "at": 4.0}]
+                    }
+                ]
+            }},
+            "step": [
+                {"{seed}": "${seed}-v1"},
+                {"{add}": {
+                    "$": ["defaults", "bootstrap"],
+                    "1.proteins": 50
+                }},
+                {"to": 100000.0}
+            ]
+        },
+        {
+            "label": "phase-2-differentiation",
+            "do": {"{regulation/differentiation}": {
+                "differentiation": {
+                    "$": ["defaults", "differentiation"],
+                    "differentiator": "trigger",
+                    "duration": 10000.0,
+                    "ratio": 0.8,
+                    "next": {
+                        "$": ["defaults", "differentiation"],
+                        "differentiator": {
+                            "$": ["defaults", "differentiation", "differentiator"],
+                            "name": "specialized"
+                        },
+                        "duration": 15000.0,
+                        "next": {
+                            "$": ["defaults", "differentiation", "differentiator"],
+                            "name": "specialized_A"
+                        },
+                        "alternative": "specialized_B"
+                    },
+                    "alternative": {
+                        "$": ["defaults", "differentiation", "differentiator"],
+                        "name": "other"
+                    }
+                },
+                "genes": [
+                    {
+                        "$": ["defaults", "gene"],
+                        "name": "regulated_by_specialized",
+                        "activation": [{"from": "specialized", "at": 5.0}]
+                    },
+                    {
+                        "$": ["defaults", "differentiation", "differentiator"],
+                        "name": "specialized_B"
+                    }
+                ]
+            }},
+            "step": [
+                {"{seed}": "${seed}-diff"},
+                {"to": 100000.0}
+            ]
+        }
+    ]
+}

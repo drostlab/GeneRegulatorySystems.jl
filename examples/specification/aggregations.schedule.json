@@ -1,0 +1,37 @@
+[
+    {"{add}": {
+        "$": ["defaults", "bootstrap"],
+        "Gene 1": {"proteins": 100},
+        "Gene 2": {"proteins": 100}
+    }},
+    {
+        "to": 5000.0,
+        "step": {"{regulation/v1}": {
+            "activation": {"aggregate": "generalized_mean", "p": 0.0},
+            "repression": {"aggregate": "generalized_mean"},
+            "genes": [
+                {
+                    "$": ["defaults", "gene"],
+                    "name": "Gene 1",
+                    "activation": [],
+                    "repression": []
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "name": "Gene 2",
+                    "activation": [
+                        {"from": "Gene 1", "at": 2.0},
+                        {"from": "Gene 2", "at": 3.0}
+                    ],
+                    "repression": {
+                        "slots": [
+                            {"from": "Gene 1", "at": 4.0},
+                            {"from": "Gene 2", "at": 5.0}
+                        ],
+                        "p": 2.0
+                    }
+                }
+            ]
+        }}
+    }
+]

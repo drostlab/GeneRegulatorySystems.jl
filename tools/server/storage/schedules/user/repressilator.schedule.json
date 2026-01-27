@@ -1,0 +1,39 @@
+{
+    "label": "repressilator-plain",
+    "seed": "12314qq",
+    "step": {
+        "do": {"{regulation/v1}": {
+            "genes": [
+                {
+                    "$": ["defaults", "gene"],
+                    "repression": [{"from": 3, "at": 12.0}]
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "repression": [{"from": 1, "at": 12.0}]
+                },
+                {
+                    "$": ["defaults", "gene"],
+                    "repression": [{"from": 2, "at": 12.0}]
+                }
+            ]
+        }},
+        "step": [
+            {"{seed}": "${seed}-rep"},
+            {"{add}": {
+                "$": ["defaults", "bootstrap"],
+                "1.proteins": 100
+            }},
+            {"to": 1000.0},
+            {
+                "branch": true,
+                "each": {"length": 3},
+                "as": "i",
+                "step": [
+                    {"{seed}": "${seed}-repress-${i}"},
+                    {"to": 1000.0}
+                ]
+            }
+        ]
+    }
+}

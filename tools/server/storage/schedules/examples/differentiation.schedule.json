@@ -1,0 +1,43 @@
+{
+    "step": [
+        {"{add}": {"polymerases": 5e5, "ribosomes": 2e6, "proteasomes": 1e6}},
+        {"{bootstrap/differentiation}": {"$": "do"}},
+        {"to": 50000.0}
+    ],
+    "do": {"{regulation/differentiation}": {
+        "differentiation": {
+            "$": ["defaults", "differentiation"],
+            "differentiator": "trigger",
+            "duration": 10000.0,
+            "ratio": 0.8,
+            "next": {
+                "$": ["defaults", "differentiation"],
+                "differentiator": {
+                    "$": ["defaults", "differentiation", "differentiator"],
+                    "name": "specialized"
+                },
+                "duration": 15000.0,
+                "next": {
+                    "$": ["defaults", "differentiation", "differentiator"],
+                    "name": "specialized_A"
+                },
+                "alternative": "specialized_B"
+            },
+            "alternative": {
+                "$": ["defaults", "differentiation", "differentiator"],
+                "name": "other"
+            }
+        },
+        "genes": [
+            {
+                "$": ["defaults", "gene"],
+                "name": "regulated_by_A",
+                "activation": [{"from": "specialized_A", "at": 5.0}]
+            },
+            {
+                "$": ["defaults", "differentiation", "differentiator"],
+                "name": "specialized_B"
+            }
+        ]
+    }}
+}

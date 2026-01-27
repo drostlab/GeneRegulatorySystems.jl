@@ -1,0 +1,45 @@
+{
+    "into": "{channels}",
+    "anchor": "${into}",
+    "each": ["default", "Direct"],
+    "as": "method",
+    "step": {
+        "do": {
+            "{regulation/v1}": {
+                "method": {"$": "method"},
+                "genes": [
+                    {"$": ["defaults", "gene"], "name": "Gene 1"},
+                    {
+                        "$": ["defaults", "gene"],
+                        "name": "Gene 2",
+                        "repression": [{"from": "Gene 1", "at": 5.0}]
+                    }
+                ]
+            }
+        },
+        "each": {"start": 150, "step": 25, "stop": 200},
+        "as": "proteins",
+        "step": {
+            "each": [200.0, 5000.0],
+            "as": "t",
+            "step": {
+                "label": "${method}-p${proteins}-at${t}",
+                "channel": "${anchor}",
+                "branch": true,
+                "each": {"length": 3},
+                "step": [
+                    {"{add}": {
+                        "$": ["defaults", "bootstrap"],
+                        "Gene 1": {"proteins": {"$": "proteins"}},
+                        "Gene 2": {"proteins": {"$": "proteins"}}
+                    }},
+                    {"$": "t"},
+                    {"{extract-transcriptome-amplified}": {
+                        "cycles": 3,
+                        "target": 200.0
+                    }}
+                ]
+            }
+        }
+    }
+}

@@ -1,0 +1,409 @@
+<script setup lang="ts">
+/**
+ * ScheduleEditor Component
+ *
+ * Responsibilities:
+ * - Schedule selection dropdown (examples + user schedules)
+ * - JSON editor (Monaco) for schedule source code
+ * - Validation & error display
+ * - Save/Load/Discard workflow
+ *
+ * State:
+ * - Component-only: Editor UI state (focused, loaded indicator)
+ * - Store: Schedule data, editing session, user schedules
+ *
+ * Integrates with:
+ * - scheduleStore: schedule loading, validation, persistence
+ * - useMonacoEditor: Monaco editor lifecycle
+ * - No direct API calls (all via store → scheduleService)
+ */
+import { ref, reactive, onMounted, computed, watch, onBeforeUnmount} from 'vue'
+import { useScheduleStore } from '@/stores/scheduleStore'
+import { useMonacoEditor } from '@/composables/useMonacoEditor'
+import Button from 'primevue/button'
+import Select, { type SelectChangeEvent } from 'primevue/select'
+import InputText from 'primevue/inputtext'
+import ProgressSpinner from 'primevue/progressspinner'
+import Message from 'primevue/message'
+import * as scheduleService from '@/services/scheduleService'
+import { computeScheduleKey, parseScheduleKey } from '@/types/schedule'
+
+const store = useScheduleStore()
+
+const isLoading = computed(() => store.isLoading)
+
+interface EditorState {
+    currentName: string
+    isEditing: boolean
+}
+
+const editor = reactive<EditorState>({
+    currentName: '',
+    isEditing: false
+})
+
+// Monaco editor 
+const { init: initMonaco, setValue: setCurrentJson, getContent: getCurrentJson, updateOptions: updateOptionsMonaco, dispose: disposeMonaco } = useMonacoEditor(
+    'schedule-editor-monaco'
+)
+
+watch(
+    () => editor.isEditing,
+    (isEditing) => {
+        updateOptionsMonaco({
+            readOnly: !isEditing,
+            cursorStyle: isEditing ? 'line' : 'hidden'
+        })
+    }
+)
+
+function resetEditor() {
+    editor.isEditing = false
+    editor.currentName = store.schedule.name
+    setCurrentJson(store.schedule.spec)
+}
+
+
+const availableScheduleKeys = ref<string[]>([])
+
+interface ScheduleGroup {
+    label: string
+    items: Array<{ label: string; value: string }>
+}
+
+const scheduleOptions = computed(() => {
+    const opts: ScheduleGroup[] = []
+
+    const grouped = availableScheduleKeys.value.reduce((acc, key) => {
+        const {source, name} = parseScheduleKey(key)
+        if (!acc[source]) acc[source] = []
+        acc[source].push({ label: `${source}/${name}`, value: key })
+        return acc
+    }, {} as Record<string, Array<{ label: string; value: string }>>)
+
+    if (grouped.user?.length) {
+        opts.push({ label: 'My Schedules', items: grouped.user })
+    }
+    if (grouped.examples?.length) {
+        opts.push({ label: 'Examples', items: grouped.examples })
+    }
+
+    return opts
+})
+
+const errorMessages = computed(() => store.scheduleMessages.filter(m => m.type === 'error'))
+const warningMessages = computed(() => store.scheduleMessages.filter(m => m.type === 'warning'))
+const infoMessages = computed(() => store.scheduleMessages.filter(m => m.type === 'info'))
+
+async function handleScheduleSelect(event: SelectChangeEvent) {
+    const scheduleKey = event.value
+
+    if (!scheduleKey || scheduleKey === store.scheduleKey) {
+        return
+    }
+
+    await store.loadScheduleByKey(scheduleKey)
+}
+
+watch (
+    () => store.scheduleKey,
+    async (newKey) => {
+        if (newKey && store.schedule) {
+            resetEditor()
+        }
+    }
+)
+
+function startEdit() {
+    console.assert(!editor.isEditing, "startEdit called while editing")
+    editor.isEditing = true
+}
+
+async function saveEdit() {
+    const currentJson = getCurrentJson()
+    
+    console.assert(editor.isEditing, "saveEdit called while not editing")
+
+    // edited name: save to new user file
+    if (editor.currentName !== store.schedule.name || currentJson !== store.schedule.spec)
+        await scheduleService.uploadSchedule(currentJson, editor.currentName)
+
+    // update the schedule list
+    availableScheduleKeys.value = await scheduleService.fetchAvailableSchedules()
+
+    // load the new file
+    const scheduleKey = computeScheduleKey(editor.currentName, 'user')
+    await store.loadScheduleByKey(scheduleKey)
+
+    resetEditor()
+}
+
+function cancelEdit() {
+    resetEditor()
+}
+
+function cancelScheduleNameEdit() {
+    editor.currentName = store.schedule.name
+}
+
+onMounted(async () => {
+    try {
+        availableScheduleKeys.value = await scheduleService.fetchAvailableSchedules()
+    } catch (e) {
+        console.error('[ScheduleEditor] Failed to load schedules:', e)
+    }
+
+    await initMonaco()
+    // Load first schedule if none loaded
+    if (!store.schedule.name && availableScheduleKeys.value.length > 0) {
+        await store.loadScheduleByKey(availableScheduleKeys.value[0]!)
+    }
+    else {
+        resetEditor()
+    }
+})
+
+onBeforeUnmount(() =>
+    disposeMonaco()
+)
+
+</script>
+
+<template>
+    <div class="schedule-editor">
+        <!-- Header -->
+        <div class="editor-header">
+            <div class="header-bottom">
+                <!-- Schedule dropdown -->
+                <Select
+                    v-show="!editor.isEditing"
+                    :model-value="store.scheduleKey"
+                    :options="scheduleOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="Select schedule"
+                    class="dropdown-small"
+                    @change="handleScheduleSelect"
+                    size="small"
+                    :disabled="isLoading"
+                    option-group-label="label"
+                    option-group-children="items"
+                >
+                    <template #option="slotProps">
+                        <div class="dropdown-option">{{ slotProps.option.label }}</div>
+                    </template>
+                    <template #value="slotProps">
+                        <div v-if="slotProps.value" class="dropdown-option">
+                            {{ slotProps.value }}
+                        </div>
+                        <span v-else class="dropdown-option">Select schedule</span>
+                    </template>
+                    <template #optiongroup="slotProps">
+                        <div class="dropdown-option-group">{{ slotProps.option.label }}</div>
+                    </template>
+                </Select>
+
+                <!-- Schedule title during edit mode -->
+                <InputText
+                    v-show="editor.isEditing"
+                    v-model="editor.currentName"
+                    type="text"
+                    size="small"
+                    placeholder="Schedule name"
+                    class="input-small"
+                    @keyup.esc="cancelScheduleNameEdit"
+                />
+
+                <!-- Enter edit mode -->
+                <Button
+                    v-show="!editor.isEditing"
+                    icon="pi pi-pencil"
+                    severity="secondary"
+                    rounded
+                    title="Edit"
+                    @click="startEdit"
+                    size="small"
+                    :disabled="isLoading"
+                />
+
+                <!-- (try to) Save edited schedule -->
+                <Button
+                    v-show="editor.isEditing"
+                    icon="pi pi-check"
+                    severity="success"
+                    rounded
+                    title="Save"
+                    @click="saveEdit"
+                    size="small"
+                    :disabled="isLoading"
+                />
+
+                <!-- Cancel editing -->
+                <Button
+                    v-show="editor.isEditing"
+                    icon="pi pi-times"
+                    severity="error"
+                    rounded
+                    title="Cancel"
+                    @click="cancelEdit"
+                    size="small"
+                />
+
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div v-if="isLoading" class="loading-container">
+            <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+        </div>
+
+        <!-- Editor -->
+        <div
+            v-show="!isLoading"
+            id="schedule-editor-monaco"
+            class="editor-container"
+            :class="{ 'editor-editing': editor.isEditing }"
+        ></div>
+
+        <!-- Validation Messages -->
+        <div class="validation-area" v-if="store.scheduleMessages.length > 0">
+            <Message
+                v-if="infoMessages.length > 0 && errorMessages.length === 0"
+                severity="info"
+                class="validation-message"
+            >
+                <div class="message-list">
+                    <div
+                        v-for="(msg, i) in infoMessages"
+                        :key="i"
+                        class="message-item"
+                    >
+                        {{ msg.content }}
+                    </div>
+                </div>
+            </Message>
+            <Message
+                v-if="errorMessages.length > 0"
+                severity="error"
+                class="validation-message"
+            >
+                <div class="error-list">
+                    <div
+                        v-for="(msg, i) in errorMessages"
+                        :key="i"
+                        class="error-item"
+                    >
+                        {{ msg.content }}
+                    </div>
+                </div>
+            </Message>
+            <Message
+                v-if="warningMessages.length > 0"
+                severity="warn"
+                class="validation-message"
+            >
+                <div class="warning-list">
+                    <div v-for="(msg, i) in warningMessages" :key="i" class="warning-item">
+                        {{ msg.content }}
+                    </div>
+                </div>
+            </Message>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+@import '@fontsource/fira-code';
+
+.schedule-editor {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--p-surface-ground);
+}
+
+.editor-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--p-surface-border);
+    background: var(--p-surface-card);
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.header-bottom {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+}
+
+:deep(.p-button) {
+    min-width: 2rem;
+    min-height: 2rem;
+    font-size: 0.85rem;
+}
+
+.validation-area {
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    max-height: 90px;
+    overflow-y: auto;
+    background: var(--p-surface-section);
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--p-surface-border);
+}
+
+.validation-message {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+:deep(.validation-message .p-message-text) {
+    font-size: 0.8rem;
+}
+
+:deep(.validation-message) {
+    font-size: 0.8rem;
+}
+
+:deep(.error-item) {
+    font-size: 0.8rem;
+}
+
+.error-list,
+.warning-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.error-item {
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
+.loading-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+}
+
+.editor-container {
+    flex: 1;
+    overflow: hidden;
+    background: var(--p-surface-ground);
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.editor-container.editor-editing {
+    border: 2px solid var(--p-primary-color);
+    background: var(--p-primary-50);
+}
+</style>
