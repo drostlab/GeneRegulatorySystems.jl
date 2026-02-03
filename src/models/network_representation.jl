@@ -10,15 +10,13 @@ using ..RandomDifferentiation
 using ..Scheduling: Primitive
 using ..SciML: normalize_name
 using ..Specifications
+using ..Models
 using ..Models: Wrapped, Instant
-
 
 # TODO: move each method to the model module it belongs to
 
-using GeneRegulatorySystems.Models.SciML: normalize_name
 
-export Link, Entity, entity
-
+# TODO: maybe we can represent reaction nodes as hyperlinks instead of nodes? think that would make more sense?
 @kwdef struct Link
     kind::Symbol
     from::Symbol
@@ -46,7 +44,10 @@ end
 
 struct SpeciesId
     name::Symbol
-    SpeciesId(s::SymbolicUtils.BasicSymbolic) = SpeciesId(normalize_name(strip_time(Symbol(s))))
+end
+
+function SpeciesId(s::SymbolicUtils.BasicSymbolic)
+    SpeciesId(normalize_name(strip_time(Symbol(s))))
 end
 
 function species_components(name::Symbol)
@@ -54,7 +55,7 @@ function species_components(name::Symbol)
     if length(parts) == 1
         return (parent=nothing, species_type=parts[1])
     else
-        return (parent=parts[1], species_type=parts[2])
+        return (parent=Symbol(parts[1]), species_type=parts[2])
     end
 end
 
@@ -64,7 +65,7 @@ entity(species::SpeciesId) = let comps = species_components(species.name)
     Entity(
         kind=:species,
         name=species.name,
-        properties=Dict(:parent => comps.parent, :species_type => comps.species_type)
+        properties=Dict(:species_type => comps.species_type)
     )
 end
 
@@ -97,53 +98,37 @@ function entity(rs::ReactionSystem)
            links=links)
 end
 
-
-entity(f!::Primitive) = entity(f!.f!)
-
-entity(f!::Wrapped) = entity(f!.definition, f!)
-
-# simply descend if custom entity not implemented for the definition
-entity(definition, f!::Wrapped) = entity(f!.model)
-
-function entity(definition::V1.Definition, f!::Wrapped)
-    # extract reaction system
-    # ? is there a better way to do this? this feels kind of awkward
-    rs = f!.model.definition
-
-    rs_network = entity(rs)
-
-    # partition species by genes
+function _genes_from_reaction_network(rs_network::Entity)::Tuple{Vector{Entity}, Vector{Entity}, Vector{Link}}
     species_nodes = [n for n in rs_network.nodes if n.kind == :species]
     reaction_nodes = [n for n in rs_network.nodes if n.kind == :reaction]
-
-    nodes_dict = Dict{Union{Symbol, Nothing}, Vector{Entity}}
-    links_dict = Dict{Union{Symbol, Nothing}, Vector{Link}}
-    for s in species_nodes
-        p = get(s.properties, :parent, nothing)
-        push!(get!(nodes_dict, p, Entity[]), s)
-    end
-    # add reaction nodes to a gene if they are fully immersed inside the gene group
-    # i.e. all their substrates and products are gene products.
+    parent_dict = Dict(s.name => parent(s.name) for s in species_nodes)
+    # assign reaction nodes to genes if all the species involved in the reaction have the same parent
     for r in reaction_nodes
-        s = r.from
-        p = r.to
-        if (parent(p) == parent(s))
-            r.properties[:parent] = parent(p)
-            push!(nodes_dict[parent(p)], r)
+        connected_parents = Set(parent_dict[link.from] for link in rs_network.links if link.to == r.name && !isnothing(parent_dict[link.from]))
+        union!(connected_parents, Set(parent_dict[link.to]
+               for link in rs_network.links if link.from == r.name && !isnothing(parent_dict[link.to])))
+        if length(connected_parents) == 1
+            parent_dict[r.name] = first(connected_parents)
         else
-            r.properties[:parent] = nothing
-            push!(nodes_dict[nothing], r)
+            parent_dict[r.name] = nothing
+        end
     end
-    lookup = node_lookup(rs_network)
-    for l in rs_network.links
-        if (lookup[l.from].properties[:parent] == lookup[l.to].properties[:parent])
-            push!(links_dict[lookup[l.from].properties[:parent]], l)
-        else
-            push!(links_dict[nothing], l)
+    nodes_by_parent = Dict{Union{Symbol, Nothing}, Vector{Entity}}()
+    for node in vcat(species_nodes, reaction_nodes)
+        push!(get!(nodes_by_parent, parent_dict[node.name], Entity[]), node)
     end
-    gene_nodes = [Entity(kind=:gene, name=key, nodes=nodes_dict[key], links_dict[key]) for key in keys(nodes_dict)]
+    links_by_parent = Dict{Union{Symbol, Nothing}, Vector{Link}}()
+    for link in rs_network.links
+        from_p = parent_dict[link.from]
+        to_p = parent_dict[link.to]
+        from_p == to_p && !isnothing(from_p) && push!(get!(links_by_parent, from_p, Link[]), link)
+    end
+    genes = [Entity(kind=:gene, name=k, nodes=nodes_by_parent[k], links=links_by_parent[k])
+             for k in keys(nodes_by_parent) if !isnothing(k)]
+    (genes, get(nodes_by_parent, nothing, Entity[]), get(links_by_parent, nothing, Link[]))
+end
 
-
+function entity(definition::V1.Definition, f!::Wrapped; include_reactions::Bool=true)
     # extract regulatory links
     reg_links = let
         # ? this also feels equally awkward
@@ -152,31 +137,105 @@ function entity(definition::V1.Definition, f!::Wrapped)
         [Link(; l...) for l in components[Models.Network].links]
     end
 
-
-
-
+    if include_reactions
+        # extract reaction system then partition species and reaction nodes by genes
+        # ? is there a better way to do this? this feels kind of awkward
+        # also notice here that currently some links will seem to be orphaned unless you flatten the network
+        rs = f!.model.definition
+        rs_network = entity(rs)
+        gene_nodes, aux_nodes, aux_links = _genes_from_reaction_network(rs_network)
+        nodes = vcat(gene_nodes, aux_nodes)
+        links = vcat(reg_links, aux_links)
+    else
+        # genes only: no reactions or species nodes
+        genes_from_v1 = [Entity(kind=:gene, name=g.name) for g in definition.cascade.genes]
+        nodes = genes_from_v1
+        links = reg_links
+    end
 
     Entity(
         kind=:v1_model,
         name=:v1_model,
         properties=Dict(:polymerases => definition.polymerases, :ribosomes => definition.ribosomes, :proteasomes => definition.proteasomes),
-        nodes=vcat(gene_nodes, aux_nodes),
-        links=vcat(reg_links, aux_links)
+        nodes=nodes,
+        links=links
+    )
+end
+
+function _collect_core_symbols(t::Differentiation.Transient, symbols::Set{Symbol})
+    _collect_core_symbols(t.differentiator, symbols)
+    _collect_core_symbols(t.timer, symbols)
+    _collect_core_symbols(t.next, symbols)
+    _collect_core_symbols(t.alternative, symbols)
+end
+
+function _collect_core_symbols(s::Symbol, symbols::Set{Symbol})
+    push!(symbols, s)
+end
+
+function _collect_core_symbols(g::V1.Gene, symbols::Set{Symbol})
+    push!(symbols, g.name)
+end
+
+function entity(definition::Differentiation.Definition, f!::Wrapped; kw...)
+    v1_entity = entity(f!.model; kw...)
+
+    core_symbols = Set{Symbol}()
+    _collect_core_symbols(definition.differentiation, core_symbols)
+
+    core_nodes = [n for n in v1_entity.nodes if n.name in core_symbols]
+    core_links = [l for l in v1_entity.links if l.from in core_symbols && l.to in core_symbols]
+
+    diff_core = Entity(
+        kind=:differentiation_core,
+        name=:differentiation_core,
+        nodes=core_nodes,
+        links=core_links
     )
 
+    peripheral_nodes = [n for n in v1_entity.nodes if n.name ∉ core_symbols]
+    peripheral_links = [l for l in v1_entity.links if !(l.from in core_symbols && l.to in core_symbols)]
+
+    Entity(
+        kind=:differentiation_model,
+        name=:differentiation_model,
+        properties=v1_entity.properties,
+        nodes=vcat([diff_core], peripheral_nodes),
+        links=peripheral_links
+    )
 end
 
-function entity(definition::Differentiation.Definition, f!::Wrapped)
-    v1_entity = entity(f!.model)
+entity(f!::Primitive; kw...) = entity(f!.f!; kw...)
 
-    # here we do a bit of rejigging around
-    # we make it so that core differentiation nodes are grouped together
+entity(f!::Wrapped; kw...) = entity(f!.definition, f!; kw...)
+
+# simply descend if custom entity not implemented for the definition
+# ? maybe we should create nested entities here to tag with information from higher level models?
+entity(definition, f!::Wrapped; kw...) = entity(f!.model; kw...)
+
+# flattened hierarchy for downstream use
+@kwdef struct Node
+    kind::Symbol
+    name::Symbol
+    parent::Union{Symbol, Nothing} = nothing
+    properties::Dict{Symbol, Any} = Dict{Symbol, Any}()
 end
 
-function flatten(entity::Entity)
-    # flat representation of entity with :parent property set explicitly.
-end
+Node(entity::Entity, parent::Union{Symbol, Nothing}=nothing) =
+    Node(kind=entity.kind, name=entity.name, parent=parent, properties=entity.properties)
 
+function flatten(entity::Entity, parent::Union{Symbol, Nothing}=nothing)::Tuple{Vector{Node}, Vector{Link}}
+    nodes = Node[Node(entity, parent)]
+    links = copy(entity.links)
+
+    for child in entity.nodes
+        child_nodes, child_links = flatten(child, entity.name)
+        append!(nodes, child_nodes)
+        append!(links, child_links)
+    end
+
+    (nodes, links)
+end
 
 
 end

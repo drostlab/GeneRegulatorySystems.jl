@@ -11,7 +11,7 @@ module ScheduleVisualization
 using GeneRegulatorySystems
 using GeneRegulatorySystems.Models
 using GeneRegulatorySystems.Models.Scheduling
-using GeneRegulatorySystems.Models.NetworkCreation
+using GeneRegulatorySystems.Models.NetworkRepresentation
 using GeneRegulatorySystems.Specifications
 using JSON
 using Colors
@@ -21,14 +21,14 @@ using Colors
 # ============================================================================
 
 # Schema types (frontend contract)
-export Node, Edge, Network
+export Network
 export TimelineSegment, ScheduleData, ScheduleVisMetadata
 
 # API types
 export ReifiedSchedule, ValidationMessage
 
 # Public API
-export reify_schedule, extract_network, flatten_network, is_valid, get_error_messages
+export reify_schedule, extract_network, is_valid, get_error_messages
 
 # ============================================================================
 # Schema Types
@@ -47,55 +47,19 @@ Visualization metadata for schedule rendering.
 end
 
 """
-    Node
-
-Cytoscape-compatible node for network visualization.
-
-# Fields
-- `id::String`: Unique node identifier
-- `label::String`: Display label
-- `parent::Union{String, Nothing}`: Parent node id for hierarchy (compound nodes)
-- `kind::String`: Node type (e.g., "gene", "species", "reaction")
-- `properties::Dict{String, Any}`: Custom properties for rendering and data access
-"""
-@kwdef struct Node
-    id::String
-    label::String = ""
-    parent::Union{String, Nothing} = nothing
-    kind::String
-    properties::Dict{String, Any} = Dict{String, Any}()
-end
-
-"""
-    Edge
-
-Cytoscape-compatible edge for network visualization.
-
-# Fields
-- `source::String`: Source node id
-- `target::String`: Target node id
-- `kind::String`: Edge type (e.g., "activation", "repression", "substrate")
-- `properties::Dict{String, Any}`: Custom properties (e.g., rate, affinity)
-"""
-@kwdef struct Edge
-    source::String
-    target::String
-    kind::String
-    properties::Dict{String, Any} = Dict{String, Any}()
-end
-
-"""
     Network
 
-Flat network representation for Cytoscape rendering.
+Flat network representation for visualization.
+
+Uses NetworkRepresentation.Node and NetworkRepresentation.Link directly.
 
 # Fields
-- `nodes::Vector{Node}`: Flat list of all nodes
-- `edges::Vector{Edge}`: Flat list of all edges
+- `nodes::Vector{NetworkRepresentation.Node}`: Flat list of all nodes
+- `links::Vector{NetworkRepresentation.Link}`: Flat list of all links
 """
 @kwdef struct Network
-    nodes::Vector{Node}
-    edges::Vector{Edge}
+    nodes::Vector{NetworkRepresentation.Node}
+    links::Vector{NetworkRepresentation.Link}
 end
 
 """
@@ -287,7 +251,7 @@ function get_error_messages(reified::ReifiedSchedule)::String
 end
 
 """
-    extract_network(schedule::Scheduling.Schedule)::NetworkCreation.Entity
+    extract_network(schedule::Scheduling.Schedule)::NetworkRepresentation.Entity
 
 Extract network entity tree from schedule via dryrun.
 
@@ -295,7 +259,7 @@ Uses the NetworkCreation.entity() dispatch to handle all model types polymorphic
 Extracts the network from the first dynamic primitive encountered during dryrun.
 
 # Returns
-- `NetworkCreation.Entity`: Hierarchical entity tree with nodes and links
+- `NetworkRepresentation.Entity`: Hierarchical entity tree with nodes and links
 """
 function extract_network(schedule::Scheduling.Schedule)
     network = nothing
@@ -305,85 +269,12 @@ function extract_network(schedule::Scheduling.Schedule)
             return
         end
         if network === nothing
-            network = NetworkCreation.entity(primitive!)
+            network = NetworkRepresentation.entity(primitive!)
         end
     end
 
     schedule(Models.FlatState(); dryrun=dryrun_collector)
     return network
-end
-
-"""
-    flatten_network(entity::NetworkCreation.Entity; parent_id::Union{String, Nothing}=nothing, id_prefix::String="")::Network
-
-Flatten hierarchical NetworkCreation.Entity tree into Cytoscape-compatible Node/Edge lists.
-
-Recursively traverses the entity tree, converting:
-- Each entity → Node with unique id, kind, label, and parent reference
-- Each link → Edge with source/target references
-
-# Arguments
-- `entity::NetworkCreation.Entity`: Root entity to flatten
-- `parent_id::Union{String, Nothing}`: Parent node id for hierarchy
-- `id_prefix::String`: Prefix for generating unique ids
-
-# Returns
-- `Network`: Flat network with nodes and edges arrays
-"""
-function flatten_network(entity::NetworkCreation.Entity; parent_id::Union{String, Nothing}=nothing, id_prefix::String="")::Network
-    nodes = Node[]
-    edges = Edge[]
-
-    # Generate unique id for this entity
-    entity_id = isempty(id_prefix) ? string(entity.name) : "$(id_prefix)_$(entity.name)"
-
-    # Create node from this entity
-    push!(nodes, Node(
-        id = entity_id,
-        label = isempty(entity.label) ? string(entity.name) : entity.label,
-        parent = parent_id,
-        kind = string(entity.kind),
-        properties = Dict{String, Any}(string(k) => v for (k, v) in entity.properties)
-    ))
-
-    # Recursively flatten child nodes
-    for (idx, child) in enumerate(entity.nodes)
-        child_prefix = "$(entity_id)"
-        child_network = flatten_network(child; parent_id=entity_id, id_prefix=child_prefix)
-        append!(nodes, child_network.nodes)
-        append!(edges, child_network.edges)
-    end
-
-    # Convert links to edges
-    for link in entity.links
-        source_id = string(link.from)
-        target_id = string(link.to)
-
-        # Try to resolve relative names to full ids within this scope
-        if !occursin("_", source_id) && !occursin(".", source_id)
-            # Check if it's a child node
-            child_match = findfirst(n -> endswith(n.id, "_$source_id") || n.id == source_id, nodes)
-            if child_match !== nothing
-                source_id = nodes[child_match].id
-            end
-        end
-
-        if !occursin("_", target_id) && !occursin(".", target_id)
-            child_match = findfirst(n -> endswith(n.id, "_$target_id") || n.id == target_id, nodes)
-            if child_match !== nothing
-                target_id = nodes[child_match].id
-            end
-        end
-
-        push!(edges, Edge(
-            source = source_id,
-            target = target_id,
-            kind = string(link.kind),
-            properties = Dict{String, Any}(string(k) => v for (k, v) in link.properties)
-        ))
-    end
-
-    return Network(nodes=nodes, edges=edges)
 end
 
 # ============================================================================
@@ -431,7 +322,7 @@ function generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetad
     # Extract genes from first segment
     if !isempty(vis_data.segments)
         network = vis_data.segments[1].network
-        genes = filter(n -> n.kind == "gene", network.nodes)
+        genes = filter(n -> n.kind == :gene, network.nodes)
 
         # Generate distinguishable colour palette
         if !isempty(genes)
@@ -441,7 +332,7 @@ function generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetad
             colors = convert.(RGB, colors)
             for (idx, gene) in enumerate(genes)
                 color_hex = hex(colors[idx])
-                gene_colours[gene.id] = "#$color_hex"
+                gene_colours[string(gene.name)] = "#$color_hex"
             end
         end
     end
@@ -593,7 +484,7 @@ function _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
     end
 
     # Extract network entity from first primitive
-    network_entity = NetworkCreation.entity(segments_data[1].primitive)
+    network_entity = NetworkRepresentation.entity(segments_data[1].primitive)
 
     if network_entity === nothing
         @debug "build_timeline_segments: Could not extract network entity from first primitive"
@@ -603,8 +494,9 @@ function _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
     @debug "build_timeline_segments: Extracted network entity with $(length(network_entity.nodes)) child nodes"
 
     # Flatten the network entity tree
-    flat_network = flatten_network(network_entity)
-    @debug "build_timeline_segments: Flattened network has $(length(flat_network.nodes)) nodes and $(length(flat_network.edges)) edges"
+    nodes_flat, links_flat = NetworkRepresentation.flatten(network_entity)
+    flat_network = Network(nodes=nodes_flat, links=links_flat)
+    @debug "build_timeline_segments: Flattened network has $(length(flat_network.nodes)) nodes and $(length(flat_network.links)) links"
 
     # Create TimelineSegments from collected data with pre-flattened network
     segments = [
@@ -612,7 +504,13 @@ function _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
             path = data.path,
             from = data.from,
             to = data.to,
-            network = flat_network,    return segments
+            network = flat_network,
+            bindings = Dict()
+        )
+        for data in segments_data
+    ]
+
+    return segments
 end
 
 end # module ScheduleVisualization
