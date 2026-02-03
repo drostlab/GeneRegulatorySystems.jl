@@ -35,8 +35,6 @@ export interface ScheduleData {
     visMetadata: ScheduleVisMetadata 
 }
 
-
-
 /**
  * Extract all unique gene IDs from schedule data
  * @param data - Schedule data with segments
@@ -46,9 +44,11 @@ export function extractAllGeneIds(data: ScheduleData): string[] {
     const allGenes = new Set<string>()
     
     for (const segment of data.segments) {
-        if (segment.network?.entities) {
-            for (const entity of segment.network.entities) {
-                allGenes.add(entity.uid)
+        if (segment.network?.nodes) {
+            for (const node of segment.network.nodes) {
+                if (node.kind === 'gene') {
+                    allGenes.add(node.id)
+                }
             }
         }
     }

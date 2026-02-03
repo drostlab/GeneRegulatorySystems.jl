@@ -367,6 +367,7 @@ include("regulation/sampling.jl")
 include("regulation/kronecker_networks.jl")
 include("regulation/random_differentiation.jl")
 include("extraction.jl")
+include("network_representation.jl")
 
 """
     parse(

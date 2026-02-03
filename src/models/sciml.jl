@@ -68,7 +68,7 @@ end
 Models.t(x::JumpState) = x.integrator.t
 Models.randomness(x::JumpState) = x.problem.rng
 
-FlatState(x::JumpState) = FlatState(
+Models.FlatState(x::JumpState) = Models.FlatState(
     counts = Dict(
         normalize_name(s) => x.integrator[s]
         for s in ModelingToolkit.SymbolicIndexingInterface.variable_symbols(
@@ -112,7 +112,7 @@ extracted before the next invocation of `f!`.
 
 Unfortunately, JumpProcesses.jl always uses a dense trajectory encoding, so that
 the recorded trajectory information is highly redundant and needs to be filtered
-by `each_event` for output in sparse long format. 
+by `each_event` for output in sparse long format.
 """
 @kwdef struct JumpModel <: Model{JumpState}
     system::ModelingToolkit.JumpSystem
@@ -135,10 +135,10 @@ Models.adapt!(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
         # model. Presumably this is slower than calling remake, yet safer, and
         # anyway could only be avoided when we are branching the simulation
         # without changing models.
-        Models.adapt!(FlatState(x), f!)
+        Models.adapt!(Models.FlatState(x), f!)
     end
 
-Models.adapt!(x::FlatState, f!::JumpModel, _copy) = JumpState(
+Models.adapt!(x::Models.FlatState, f!::JumpModel, _copy) = JumpState(
     problem = JumpProcesses.JumpProblem(
         f!.system,
         JumpProcesses.DiscreteProblem(

@@ -9,7 +9,7 @@
 import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { useScheduleStore } from '@/stores/scheduleStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import { networkToCytoscapeData } from '@/types/network'
+import { convertToElements, getDefaultStyles, getDefaultLayout } from '@/composables/useCytoscapeRenderer'
 import cytoscape from 'cytoscape'
 // @ts-ignore - cytoscape-fcose doesn't have types
 import fcose from 'cytoscape-fcose'
@@ -121,11 +121,11 @@ function renderNetwork() {
     const network: Network = firstSegment.network
     
     console.debug('[NetworkDiagram] Rendering network:', { 
-        numEntities: network.entities.length,
+        numNodes: network.nodes.length,
         numEdges: network.edges.length
     })
     
-    const elements = networkToCytoscapeData(network, store.geneColours || {})
+    const elements = convertToElements(network, store.geneColours || {})
     
     console.debug('[NetworkDiagram] Generated Cytoscape elements:', { 
         total: elements.length,
@@ -142,141 +142,8 @@ function renderNetwork() {
         container: containerRef.value,
         elements,
         wheelSensitivity: 0.1,
-        style: [
-            {
-                selector: 'node',
-                style: {
-                    'content': 'data(label)',
-                    'text-valign': 'bottom',
-                    'text-halign': 'center',
-                    'font-size': 10,
-                    'font-family': 'Montserrat',
-                    'border-width': 2,
-                    'border-color': '#333',
-                    'background-color': 'data(colour)'
-                }
-            },
-            {
-                selector: 'node.gene',
-                style: {
-                    'shape': 'rectangle',
-                    'width': 180,
-                    'height': 80,
-                    'padding': '20px',
-                    'text-valign': 'top',
-                    'text-margin-y': -20,
-                    'font-size': 50,
-                    'font-family': 'Montserrat',
-                    'background-color': 'data(colour)'
-                }
-            },
-            {
-                selector: 'node.species',
-                style: {
-                    'shape': 'ellipse',
-                    'width': 50,
-                    'height': 50,
-                    'font-size': 8
-                }
-            },
-            {
-                selector: 'node.species[id*="mrna"]',
-                style: {
-                    'shape': 'triangle',
-                    'width': 50,
-                    'height': 50
-                }
-            },
-            {
-                selector: 'node.species[id*="promoter"]',
-                style: {
-                    'shape': 'rectangle',
-                    'width': 60,
-                    'height': 60
-                }
-            },
-            {
-                selector: 'node.reaction',
-                style: {
-                    'shape': 'diamond',
-                    'width': 30,
-                    'height': 30,
-                    'font-size': 8
-                }
-            },
-            {
-                selector: 'node.differentiator',
-                style: {
-                    'shape': 'ellipse',
-                    'width': 40,
-                    'height': 40,
-                    'font-size': 8
-                }
-            },
-            {
-                selector: 'edge',
-                style: {
-                    'curve-style': 'unbundled-bezier',
-                    'width': 1,
-                    'target-arrow-shape': 'triangle',
-                    'target-arrow-fill': 'filled',
-                    'arrow-scale': 1.2,
-                    'line-color': 'data(edgeColour)',
-                    'target-arrow-color': 'data(edgeColour)',
-                    'control-point-step-size': 80,
-                    'edge-distances': 'node-position'
-                }
-            },
-            {
-                selector: 'edge.repression',
-                style: {
-                    'target-arrow-shape': 'tee'
-                }
-            },
-            {
-                selector: 'edge.activation, edge.repression, edge.proteolysis',
-                style: {
-                    'label': 'data(label)',
-                    'text-background-color': '#ffffff',
-                    'text-background-padding': '3px',
-                    'font-size': 25,
-                    'font-family': 'Montserrat',
-                    'color': '#333'
-                }
-            },
-            {
-                selector: 'edge.activation, edge.repression, edge.proteolysis',
-                style: {
-                    'width': 8
-                }
-            },
-            {
-                selector: 'edge.input, edge.output',
-                style: {
-                    'width': 1
-                }
-            }
-        ],
-        layout: {
-            name: 'cola',
-            animate: true,
-            animationDuration: 1000,
-            animationEasing: 'ease-out',
-            nodeSpacing: 60,
-            nodeRepulsion: 20000,
-            edgeLength: 100,
-            edgeElasticity: 0.2,
-            nestingFactor: 0.05,
-            gravity: 0.05,
-            numIter: 10000,
-            tile: true,
-            tilingPaddingVertical: 10,
-            tilingPaddingHorizontal: 10,
-            randomize: false,
-            infinite: true,
-            maxSimulationTime: 0,
-            fit: false
-        } as any,
+        style: getDefaultStyles(),
+        layout: getDefaultLayout(),
         userPanningEnabled: true,
         userZoomingEnabled: true,
         boxSelectionEnabled: true,
@@ -312,76 +179,32 @@ function renderNetwork() {
 function updateNodeStyles() {
     if (!cy) return
     
-    // First pass: find global maximum values separately for each node type
-    const globalMaxValues = {
-        mrna: 0,
-        protein: 0
-    }
-    
-    cy.nodes().forEach((node: any) => {
-        const nodeType = node.data('type')
-        if (nodeType === 'species') {
-            const nodeId = node.id()
-            const geneNum = nodeId.match(/^(\d+)_/)?.[1]
-            if (geneNum) {
-                if (nodeId.includes('_mrna')) {
-                    const speciesId = `${geneNum}.mrnas`
-                    const max = viewerStore.maxValues[speciesId] ?? 0
-                    globalMaxValues.mrna = Math.max(globalMaxValues.mrna, max)
-                } else if (nodeId.includes('_protein')) {
-                    const speciesId = `${geneNum}.proteins`
-                    const max = viewerStore.maxValues[speciesId] ?? 0
-                    globalMaxValues.protein = Math.max(globalMaxValues.protein, max)
-                }
-            }
-        }
-    })
-    
-    console.debug('[NetworkDiagram] updateNodeStyles - globalMaxValues', {
-        globalMaxValues
-    })
-    
-    // Ensure we have minimum max values to avoid division by zero
-    if (globalMaxValues.mrna < 0.01) globalMaxValues.mrna = 0.01
-    if (globalMaxValues.protein < 0.01) globalMaxValues.protein = 0.01
+    // Get timepoint data
+    const currentValues = viewerStore.speciesValuesAtTimepoint || {}
+    const maxValues = viewerStore.maxValues || {}
     
     try {
         cy.nodes().forEach((node: any) => {
             const nodeId = node.id()
-            const nodeType = node.data('type')
+            const nodeKind = node.data('kind')
             
-            // Map species IDs to node IDs
-            // e.g., "gene_1.promoters.active" or "gene_1.promoters.inactive" → "gene_1_promoter_active/inactive"
-            // "gene_1.mrnas" → mRNA node for gene_1
-            // "gene_1.proteins" → protein node for gene_1
+            // Use node.id directly as FlatState key
+            const value = currentValues[nodeId] ?? 0
+            const maxValue = maxValues[nodeId] ?? 1
             
-            if (nodeType === 'species') {
-                if (nodeId.includes('_promoter_')) {
-                    // Promoter node - white when off, gene color when on
-                    const geneNum = nodeId.match(/^(\d+)_/)?.[1]
-                    if (!geneNum) return
-                    
-                    // Get value for active promoter species
-                    const activeSpeciesId = `${geneNum}.active`
-                    const rawValue = viewerStore.speciesValuesAtTimepoint[activeSpeciesId] ?? 0
-                    const perGeneMax = viewerStore.maxValues[activeSpeciesId] ?? 1
-                    
-                    // Get gene color
-                    const geneColor = node.data('colour') || '#999999'
-                    
-                    // Blend from white (off) to gene color (on)
-                    const activationFactor = Math.min(1, rawValue / perGeneMax)
-                    const promoterColor = blendColors('#FFFFFF', geneColor, activationFactor)
-                    
-                    node.style({
-                        'background-color': promoterColor
-                    })
-            } else if (nodeId.includes('_mrna') || nodeId.includes('_protein')) {
-                // mRNA/Protein node - scale and opacity based on expression
-                const geneNum = nodeId.match(/^(\d+)_/)?.[1]
-                if (!geneNum) return
+            if (nodeKind === 'species') {
+                // Scale opacity and size based on expression level
+                const normalizedValue = Math.min(1, value / maxValue)
+                const baseColour = node.data('colour') || '#999999'
                 
-                const kind = nodeId.includes('_mrna') ? 'mrnas' : 'proteins'
+                // Blend to full saturation at max expression
+                const blendedColour = blendColors('#FFFFFF', baseColour, normalizedValue)
+                
+                node.style({
+                    'background-color': blendedColour,
+                    'opacity': 0.4 + (0.6 * normalizedValue)
+                })
+            }                const kind = nodeId.includes('_mrna') ? 'mrnas' : 'proteins'
                 const speciesId = `${geneNum}.${kind}`
                 const rawValue = viewerStore.speciesValuesAtTimepoint[speciesId] ?? 0
                 const maxForAllGenes = kind === 'mrnas' ? globalMaxValues.mrna : globalMaxValues.protein

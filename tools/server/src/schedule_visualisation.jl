@@ -11,7 +11,7 @@ module ScheduleVisualization
 using GeneRegulatorySystems
 using GeneRegulatorySystems.Models
 using GeneRegulatorySystems.Models.Scheduling
-using GeneRegulatorySystems.Models.V1
+using GeneRegulatorySystems.Models.NetworkCreation
 using GeneRegulatorySystems.Specifications
 using JSON
 using Colors
@@ -21,14 +21,14 @@ using Colors
 # ============================================================================
 
 # Schema types (frontend contract)
-export Entity, SpeciesEntity, ReactionEntity, GeneEntity, DifferentiatorEntity
-export Network, TimelineSegment, ScheduleData, ScheduleVisMetadata
+export Node, Edge, Network
+export TimelineSegment, ScheduleData, ScheduleVisMetadata
 
 # API types
 export ReifiedSchedule, ValidationMessage
 
 # Public API
-export reify_schedule, extract_network, is_valid, get_error_messages
+export reify_schedule, extract_network, flatten_network, is_valid, get_error_messages
 
 # ============================================================================
 # Schema Types
@@ -39,193 +39,76 @@ export reify_schedule, extract_network, is_valid, get_error_messages
 
 Visualization metadata for schedule rendering.
 
-Contains aesthetic configuration for interactive visualisation (gene colours, etc.).
-
 # Fields
-- `geneColours::Dict{String, String}`: Maps gene UID to hex colour string for visualization
+- `geneColours::Dict{String, String}`: Maps gene name to hex colour string
 """
 @kwdef struct ScheduleVisMetadata
     geneColours::Dict{String, String} = Dict{String, String}()
 end
 
 """
-    Entity
+    Node
 
-Abstract base type for all entities in a network.
-
-All Entity subtypes enforce a common interface:
-- `uid::String`: Unique identifier within this network (for hierarchy references)
-- `stateId::String`: Maps to FlatState counts (can collide across segments)
-- `type::String`: Discriminator string ("species", "reaction", "gene", "differentiator")
-- `parent::Union{String, Nothing}`: Optional parent uid for hierarchical relationships
-
-The flat entity list with parent references enables simple traversal via
-`filter(e -> e.parent == parent_uid, entities)` to find children.
-"""
-abstract type Entity end
-
-"""
-    SpeciesEntity
-
-Represents a molecular species (gene product or intermediate).
+Cytoscape-compatible node for network visualization.
 
 # Fields
-- `uid::String`: Unique identifier within this network
-- `stateId::String`: FlatState mapping (e.g., "1_protein", "1_mrna")
-- `type::String`: Always "species"
-- `parent::Union{String, Nothing}`: Optional parent uid (e.g., gene uid if produced by that gene)
-- `label::String`: Display name for visualization
+- `id::String`: Unique node identifier
+- `label::String`: Display label
+- `parent::Union{String, Nothing}`: Parent node id for hierarchy (compound nodes)
+- `kind::String`: Node type (e.g., "gene", "species", "reaction")
+- `properties::Dict{String, Any}`: Custom properties for rendering and data access
 """
-@kwdef struct SpeciesEntity <: Entity
-    uid::String
-    stateId::String
-    type::String = "species"
+@kwdef struct Node
+    id::String
+    label::String = ""
     parent::Union{String, Nothing} = nothing
-    label::String
+    kind::String
+    properties::Dict{String, Any} = Dict{String, Any}()
 end
 
 """
-    ReactionEntity
+    Edge
 
-Represents a reaction (mass action with kinetic rate).
-
-Reactions are typically owned by a GeneEntity (via parent) and form part of the
-transcription/translation/decay cascade. Can also be top-level when extracting from
-other model types.
+Cytoscape-compatible edge for network visualization.
 
 # Fields
-- `uid::String`: Unique identifier within this network
-- `stateId::Union{String, Nothing}`: Optional FlatState mapping if this reaction is tracked
-- `type::String`: Always "reaction"
-- `parent::Union{String, Nothing}`: Optional parent gene uid (e.g., gene uid for cascade reactions)
-- `inputs::Vector{Dict}`: Reactants as `{speciesStateId, stoichiometry}` dicts
-- `outputs::Vector{Dict}`: Products in same format
-- `rate_forward::Float64`: Forward reaction rate
-- `rate_reverse::Union{Float64, Nothing}`: Optional reverse rate for equilibrium reactions
+- `source::String`: Source node id
+- `target::String`: Target node id
+- `kind::String`: Edge type (e.g., "activation", "repression", "substrate")
+- `properties::Dict{String, Any}`: Custom properties (e.g., rate, affinity)
 """
-@kwdef struct ReactionEntity <: Entity
-    uid::String
-    stateId::Union{String, Nothing} = nothing
-    type::String = "reaction"
-    parent::Union{String, Nothing} = nothing
-    inputs::Vector{Dict{String, Any}} = []  # {speciesStateId, stoichiometry}
-    outputs::Vector{Dict{String, Any}} = []
-    rate_forward::Float64
-    rate_reverse::Union{Float64, Nothing} = nothing
-end
-
-"""
-    GeneEntity
-
-Represents a gene with its regulatory network and cascade reactions.
-
-Genes own child ReactionEntities (transcription, translation, mRNA decay, protein decay).
-Regulation edges represent transcriptional interactions with other genes.
-
-# Fields
-- `uid::String`: Unique identifier within this network
-- `stateId::String`: FlatState mapping (e.g., "1" for gene 1)
-- `type::String`: Always "gene"
-- `parent::Union{String, Nothing}`: Can be nothing (top-level) or a differentiator uid
-- `label::String`: Display name (e.g., "Gene 1")
-- `baseRates::Dict{String, Float64}`: Base kinetic rates for the cascade
-- `activation::Vector{Dict}`: Inbound transcriptional activation edges with fields:
-  - `fromGeneId`: Regulating gene (protein product)
-  - `at`: Binding affinity (molecules at half-saturation)
-  - `k`: Hill coefficient (cooperativity)
-- `repression::Vector{Dict}`: Inbound transcriptional repression edges (same format as activation)
-- `proteolysis::Vector{Dict}`: Inbound proteolytic degradation edges with fields:
-  - `fromGeneId`: Protease gene
-  - `k`: Reaction rate constant
-- `promoterInactiveId::String`: FlatState ID of inactive promoter state
-- `promoterActiveId::String`: FlatState ID of active promoter state
-- `proteinStateId::String`: FlatState ID of the protein species
-- `mrnaStateId::String`: FlatState ID of the mRNA species (always present)
-"""
-@kwdef struct GeneEntity <: Entity
-    uid::String
-    stateId::String
-    type::String = "gene"
-    parent::Union{String, Nothing} = nothing
-    label::String
-    baseRates::Dict{String, Float64}
-
-    # Regulation edges (owned by gene, reference by stateId)
-    activation::Vector{Dict{String, Any}} = []  # {fromGeneId, at, k}
-    repression::Vector{Dict{String, Any}} = []  # {fromGeneId, at, k}
-    proteolysis::Vector{Dict{String, Any}} = []  # {fromGeneId, k}
-
-    # Structure (FlatState IDs)
-    promoterInactiveId::String
-    promoterActiveId::String
-    proteinStateId::String
-    mrnaStateId::String
-end
-
-"""
-    DifferentiatorEntity
-
-Represents a cellular differentiation decision point in the schedule.
-
-Differentiators are used in Models.Differentiation to create branching execution paths.
-They can own child genes that are only expressed in certain branches.
-
-# Fields
-- `uid::String`: Unique identifier within this network
-- `stateId::String`: FlatState mapping for differentiation state tracking
-- `type::String`: Always "differentiator"
-- `parent::Union{String, Nothing}`: Optional parent uid (another differentiator or scope)
-- `label::String`: Display name (e.g., "Branch A")
-- `branchInfo::Union{Dict, Nothing}`: Metadata about branches (e.g., branching probabilities)
-"""
-@kwdef struct DifferentiatorEntity <: Entity
-    uid::String
-    stateId::String
-    type::String = "differentiator"
-    parent::Union{String, Nothing} = nothing
-    label::String
-    branchInfo::Union{Dict{String, Any}, Nothing} = nothing
+@kwdef struct Edge
+    source::String
+    target::String
+    kind::String
+    properties::Dict{String, Any} = Dict{String, Any}()
 end
 
 """
     Network
 
-A flat collection of entities representing molecular interactions at one timeline segment.
-
-Stored as a flat array (not hierarchical tree) to simplify serialisation and traversal.
-Hierarchical relationships encoded via `Entity.parent` references. All entities in a
-network share the same simulation scope and time window.
+Flat network representation for Cytoscape rendering.
 
 # Fields
-- `id::String`: Identifier for this network (typically the execution path)
-- `entities::Vector{Entity}`: Flat list of all entities (genes, reactions, species, differentiators)
-- `edges::Vector{Dict}`: Array of edges with fields:
-  - `source::String`: Source entity uid
-  - `target::String`: Target entity uid
-  - `type::String`: Edge type ("input", "output", "activation", "repression", "proteolysis")
-  - `affinity::Union{Float64, Nothing}`: Optional affinity/binding parameter
-  - `hill::Union{Float64, Nothing}`: Optional Hill coefficient
+- `nodes::Vector{Node}`: Flat list of all nodes
+- `edges::Vector{Edge}`: Flat list of all edges
 """
 @kwdef struct Network
-    id::String
-    entities::Vector{Entity}
-    edges::Vector{Dict{String, Any}} = []
+    nodes::Vector{Node}
+    edges::Vector{Edge}
 end
 
 """
     TimelineSegment
 
-Represents one execution segment within a schedule's timeline.
-
-Maps one-to-one with a Primitive (unique path). Contains a snapshot of the network
-at that execution point and the bindings applied.
+Execution segment within a schedule's timeline.
 
 # Fields
-- `path::String`: Unique identifier encoding the execution path through the schedule AST
-- `from::Float64`: Start time of this segment in simulation
-- `to::Float64`: End time of this segment in simulation
-- `network::Network`: Embedded network representation at this execution point
-- `bindings::Dict{String, Any}`: Parameter bindings active during this segment
+- `path::String`: Unique execution path identifier
+- `from::Float64`: Start time
+- `to::Float64`: End time
+- `network::Network`: Pre-flattened network with nodes and edges
+- `bindings::Dict{String, Any}`: Parameter bindings during this segment
 """
 @kwdef struct TimelineSegment
     path::String
@@ -404,98 +287,103 @@ function get_error_messages(reified::ReifiedSchedule)::String
 end
 
 """
-    extract_network(definition::V1.Definition)::Network
+    extract_network(schedule::Scheduling.Schedule)::NetworkCreation.Entity
 
-Extract genes, reactions, and regulation from V1 model definition.
+Extract network entity tree from schedule via dryrun.
 
-Creates a flat entity list where:
-- GeneEntity owns its reactions (via parent)
-- ReactionEntity has parent pointing to its gene
-- Reactions represent the transcription/translation/decay cascade
+Uses the NetworkCreation.entity() dispatch to handle all model types polymorphically.
+Extracts the network from the first dynamic primitive encountered during dryrun.
 
-Public API for debugging and testing purposes.
+# Returns
+- `NetworkCreation.Entity`: Hierarchical entity tree with nodes and links
 """
-function extract_network(definition::V1.Definition)::Network
-    entities = Entity[]
+function extract_network(schedule::Scheduling.Schedule)
+    network = nothing
 
-    # Extract genes
-    for (gene_id, gene) in enumerate(definition.genes)
-        gene_str = string(gene_id)
-        gene_uid = "gene_$(gene_str)"
+    function dryrun_collector(primitive!, x, Δt; path, _...)
+        if !(isfinite(Δt) && Δt > 0.0)
+            return
+        end
+        if network === nothing
+            network = NetworkCreation.entity(primitive!)
+        end
+    end
 
-        # Create GeneEntity
-        gene_entity = GeneEntity(
-            uid = gene_uid,
-            stateId = gene_str,
-            type = "gene",
-            parent = nothing,  # Top-level
-            label = "Gene $gene_id",
-            baseRates = Dict(
-                "transcription" => gene.base_rates.transcription,
-                "translation" => gene.base_rates.translation,
-                "mrna_decay" => gene.base_rates.mrna_decay,
-                "protein_decay" => gene.base_rates.protein_decay
-            ),
-            activation = _extract_regulation(gene.activation.slots),
-            repression = _extract_regulation(gene.repression.slots),
-            proteolysis = _extract_proteolysis(gene.proteolysis.slots),
-            promoterInactiveId = "$(gene_str)_promoter_inactive",
-            promoterActiveId = "$(gene_str)_promoter_active",
-            proteinStateId = "$(gene_str)_protein",
-            mrnaStateId = "$(gene_str)_mrna"
-        )
-        push!(entities, gene_entity)
+    schedule(Models.FlatState(); dryrun=dryrun_collector)
+    return network
+end
 
-        # Create reaction entities for this gene's cascade
-        # Transcription reaction
-        push!(entities, ReactionEntity(
-            uid = "$(gene_uid)_transcription",
-            stateId = nothing,
-            type = "reaction",
-            parent = gene_uid,
-            inputs = [Dict("stateId" => "$(gene_str)_promoter_active", "stoichiometry" => 1)],
-            outputs = [Dict("stateId" => "$(gene_str)_mrna", "stoichiometry" => 1)],
-            rate_forward = gene.base_rates.transcription
-        ))
+"""
+    flatten_network(entity::NetworkCreation.Entity; parent_id::Union{String, Nothing}=nothing, id_prefix::String="")::Network
 
-        # Translation reaction
-        push!(entities, ReactionEntity(
-            uid = "$(gene_uid)_translation",
-            stateId = nothing,
-            type = "reaction",
-            parent = gene_uid,
-            inputs = [Dict("stateId" => "$(gene_str)_mrna", "stoichiometry" => 1)],
-            outputs = [Dict("stateId" => "$(gene_str)_protein", "stoichiometry" => 1)],
-            rate_forward = gene.base_rates.translation
-        ))
+Flatten hierarchical NetworkCreation.Entity tree into Cytoscape-compatible Node/Edge lists.
 
-        # mRNA decay
-        push!(entities, ReactionEntity(
-            uid = "$(gene_uid)_mrna_decay",
-            stateId = nothing,
-            type = "reaction",
-            parent = gene_uid,
-            inputs = [Dict("stateId" => "$(gene_str)_mrna", "stoichiometry" => 1)],
-            outputs = [],
-            rate_forward = gene.base_rates.mrna_decay
-        ))
+Recursively traverses the entity tree, converting:
+- Each entity → Node with unique id, kind, label, and parent reference
+- Each link → Edge with source/target references
 
-        # Protein decay
-        push!(entities, ReactionEntity(
-            uid = "$(gene_uid)_protein_decay",
-            stateId = nothing,
-            type = "reaction",
-            parent = gene_uid,
-            inputs = [Dict("stateId" => "$(gene_str)_protein", "stoichiometry" => 1)],
-            outputs = [],
-            rate_forward = gene.base_rates.protein_decay
+# Arguments
+- `entity::NetworkCreation.Entity`: Root entity to flatten
+- `parent_id::Union{String, Nothing}`: Parent node id for hierarchy
+- `id_prefix::String`: Prefix for generating unique ids
+
+# Returns
+- `Network`: Flat network with nodes and edges arrays
+"""
+function flatten_network(entity::NetworkCreation.Entity; parent_id::Union{String, Nothing}=nothing, id_prefix::String="")::Network
+    nodes = Node[]
+    edges = Edge[]
+
+    # Generate unique id for this entity
+    entity_id = isempty(id_prefix) ? string(entity.name) : "$(id_prefix)_$(entity.name)"
+
+    # Create node from this entity
+    push!(nodes, Node(
+        id = entity_id,
+        label = isempty(entity.label) ? string(entity.name) : entity.label,
+        parent = parent_id,
+        kind = string(entity.kind),
+        properties = Dict{String, Any}(string(k) => v for (k, v) in entity.properties)
+    ))
+
+    # Recursively flatten child nodes
+    for (idx, child) in enumerate(entity.nodes)
+        child_prefix = "$(entity_id)"
+        child_network = flatten_network(child; parent_id=entity_id, id_prefix=child_prefix)
+        append!(nodes, child_network.nodes)
+        append!(edges, child_network.edges)
+    end
+
+    # Convert links to edges
+    for link in entity.links
+        source_id = string(link.from)
+        target_id = string(link.to)
+
+        # Try to resolve relative names to full ids within this scope
+        if !occursin("_", source_id) && !occursin(".", source_id)
+            # Check if it's a child node
+            child_match = findfirst(n -> endswith(n.id, "_$source_id") || n.id == source_id, nodes)
+            if child_match !== nothing
+                source_id = nodes[child_match].id
+            end
+        end
+
+        if !occursin("_", target_id) && !occursin(".", target_id)
+            child_match = findfirst(n -> endswith(n.id, "_$target_id") || n.id == target_id, nodes)
+            if child_match !== nothing
+                target_id = nodes[child_match].id
+            end
+        end
+
+        push!(edges, Edge(
+            source = source_id,
+            target = target_id,
+            kind = string(link.kind),
+            properties = Dict{String, Any}(string(k) => v for (k, v) in link.properties)
         ))
     end
 
-    # Build edges from entity relationships
-    edges = _build_edges_from_entities(entities)
-
-    return Network(id = "v1_network", entities = entities, edges = edges)
+    return Network(nodes=nodes, edges=edges)
 end
 
 # ============================================================================
@@ -533,136 +421,32 @@ end
 """
     generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetadata
 
-Generate default visualization metadata (e.g., gene colours) from schedule data.
+Generate default visualization metadata (gene colours) from schedule data.
 
-Assigns unique colours to each gene found in the network entities.
+Assigns unique colours to each gene found in the network.
 """
 function generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetadata
     gene_colours = Dict{String, String}()
 
-    # Extract unique genes from first segment
+    # Extract genes from first segment
     if !isempty(vis_data.segments)
-        genes = filter(e -> e isa GeneEntity, vis_data.segments[1].network.entities)
+        network = vis_data.segments[1].network
+        genes = filter(n -> n.kind == "gene", network.nodes)
 
-        # Generate distinguishable colour palette using Colors.jl
+        # Generate distinguishable colour palette
         if !isempty(genes)
             seed = [colorant"white", colorant"black", colorant"crimson"]
             colors = distinguishable_colors(length(genes), seed, dropseed = true)
-            # Reduce saturation to make colours more pastel
             colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.7, hsv.v * 1.3) end for c in colors]
             colors = convert.(RGB, colors)
             for (idx, gene) in enumerate(genes)
                 color_hex = hex(colors[idx])
-                gene_colours[gene.uid] = "#$color_hex"
+                gene_colours[gene.id] = "#$color_hex"
             end
         end
     end
 
     return ScheduleVisMetadata(geneColours = gene_colours)
-end
-
-"""
-    _build_edges_from_entities(entities::Vector{Entity})::Vector{Dict{String, Any}}
-
-Extract edges from entity relationships.
-
-Edges come from:
-- Reactions: inputs/outputs create "input"/"output" edges to/from species
-- Genes: activation/repression/proteolysis edges to target genes
-
-# Returns
-- `Vector{Dict}`: Array of edges with source, target, type, and optional parameters
-"""
-function _build_edges_from_entities(entities::Vector{Entity})::Vector{Dict{String, Any}}
-    edges = Dict{String, Any}[]
-    edge_set = Set{String}()
-
-    for entity in entities
-        if entity isa GeneEntity
-            # Activation edges
-            for act in entity.activation
-                key = "$(act["fromGeneId"])→$(entity.uid):activation"
-                if !in(key, edge_set)
-                    push!(edge_set, key)
-                    push!(edges, Dict(
-                        "source" => act["fromGeneId"],
-                        "target" => entity.uid,
-                        "type" => "activation",
-                        "affinity" => get(act, "at", nothing),
-                        "hill" => get(act, "k", nothing)
-                    ))
-                end
-            end
-
-            # Repression edges
-            for rep in entity.repression
-                key = "$(rep["fromGeneId"])→$(entity.uid):repression"
-                if !in(key, edge_set)
-                    push!(edge_set, key)
-                    push!(edges, Dict(
-                        "source" => rep["fromGeneId"],
-                        "target" => entity.uid,
-                        "type" => "repression",
-                        "affinity" => get(rep, "at", nothing),
-                        "hill" => get(rep, "k", nothing)
-                    ))
-                end
-            end
-
-            # Proteolysis edges
-            for prot in entity.proteolysis
-                key = "$(prot["fromGeneId"])→$(entity.uid):proteolysis"
-                if !in(key, edge_set)
-                    push!(edge_set, key)
-                    push!(edges, Dict(
-                        "source" => prot["fromGeneId"],
-                        "target" => entity.uid,
-                        "type" => "proteolysis",
-                        "affinity" => nothing,
-                        "hill" => get(prot, "k", nothing)
-                    ))
-                end
-            end
-        elseif entity isa ReactionEntity
-            # Input edges (reactants)
-            for inp in entity.inputs
-                stateId = get(inp, "stateId", nothing)
-                if !isnothing(stateId)
-                    key = "$stateId→$(entity.uid):input"
-                    if !in(key, edge_set)
-                        push!(edge_set, key)
-                        push!(edges, Dict(
-                            "source" => stateId,
-                            "target" => entity.uid,
-                            "type" => "input",
-                            "affinity" => nothing,
-                            "hill" => nothing
-                        ))
-                    end
-                end
-            end
-
-            # Output edges (products)
-            for out in entity.outputs
-                stateId = get(out, "stateId", nothing)
-                if !isnothing(stateId)
-                    key = "$(entity.uid)→$stateId:output"
-                    if !in(key, edge_set)
-                        push!(edge_set, key)
-                        push!(edges, Dict(
-                            "source" => entity.uid,
-                            "target" => stateId,
-                            "type" => "output",
-                            "affinity" => nothing,
-                            "hill" => nothing
-                        ))
-                    end
-                end
-            end
-        end
-    end
-
-    return edges
 end
 
 # ============================================================================
@@ -674,24 +458,17 @@ end
 
 Validate a schedule specification dictionary.
 
-Uses GRS.jl's Models construction for comprehensive validation including:
-- JSON structure validation
-- Required fields
-- Model type checking
-- Semantic constraints
-
-Internal function - validation messages returned for aggregation.
+# Returns
+- `Vector{ValidationMessage}`: Validation messages
 """
 function _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
     messages = ValidationMessage[]
 
-    # Check 1: Non-empty specification
     if isempty(spec)
         push!(messages, ValidationMessage(type="error", content="Schedule specification is empty"))
         return messages
     end
 
-    # Check 2: Validate seed if present
     if haskey(spec, :seed)
         seed = spec[:seed]
         if !isa(seed, String)
@@ -701,7 +478,6 @@ function _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
         push!(messages, ValidationMessage(type="info", content="No seed specified (will use default)"))
     end
 
-    # Check 3: Try to construct Model using GRS.jl's validation
     try
         Models.Model(
             spec,
@@ -723,11 +499,11 @@ end
 """
     _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple{Bool, Vector{String}}
 
-Validate that timeline segments form a continuous progression without gaps or overlaps.
+Validate timeline segments form a continuous progression.
 
 # Returns
-- `Bool`: true if timeline is valid
-- `Vector{String}`: error messages (empty if valid)
+- `Bool`: true if valid
+- `Vector{String}`: error messages
 """
 function _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple{Bool, Vector{String}}
     errors = String[]
@@ -736,19 +512,16 @@ function _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple
         return (true, errors)
     end
 
-    # Check 1: First segment starts at time zero
     if segments[1].from != 0.0
         push!(errors, "First timeline segment must start at time 0.0, got $(segments[1].from)")
     end
 
-    # Check 2: All segments have positive duration
     for (idx, segment) in enumerate(segments)
         if segment.from >= segment.to
             push!(errors, "Segment $idx: invalid time range from=$(segment.from) to=$(segment.to)")
         end
     end
 
-    # Check 3: No overlaps on same path
     path_segments = Dict{String, Vector{TimelineSegment}}()
     for seg in segments
         if !haskey(path_segments, seg.path)
@@ -773,118 +546,34 @@ function _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple
     return (isempty(errors), errors)
 end
 
-# ============================================================================
-# Internal: Network Extraction Helpers
-# ============================================================================
-
-"""
-    _extract_regulation(slots::Vector)::Vector{Dict{String, Any}}
-
-Convert V1 HillRegulator slots to flat dictionaries.
-
-# Returns
-- `Vector{Dict}`: Array of {"fromGeneId" => ..., "at" => ..., "k" => ...} dicts
-"""
-function _extract_regulation(slots::Vector)::Vector{Dict{String, Any}}
-    [Dict(
-        "fromGeneId" => string(regulator.from),
-        "at" => regulator.at,
-        "k" => regulator.k
-    ) for regulator in slots]
-end
-
-"""
-    _extract_proteolysis(slots::Vector)::Vector{Dict{String, Any}}
-
-Convert V1 DirectRegulator proteolysis slots to flat dictionaries.
-
-# Returns
-- `Vector{Dict}`: Array of {"fromGeneId" => ..., "k" => ...} dicts
-"""
-function _extract_proteolysis(slots::Vector)::Vector{Dict{String, Any}}
-    [Dict(
-        "fromGeneId" => string(regulator.from),
-        "k" => regulator.k
-    ) for regulator in slots]
-end
-
-# ============================================================================
-# Internal: Timeline Building
-# ============================================================================
-
-"""
-    _unwrap_definition(model)
-
-Extract V1.Definition from a wrapped model, traversing nested Wrapped layers.
-
-# Returns
-- `V1.Definition` or `nothing` if no Definition found
-"""
-function _unwrap_definition(model)
-    # Unwrap Wrapped layers
-    while model isa Models.Wrapped
-        inner = model.model
-        if inner isa V1.Definition
-            return inner
-        end
-        # Check if inner has a definition attribute
-        if hasfield(typeof(inner), :definition)
-            def = getfield(inner, :definition)
-            if def isa V1.Definition
-                return def
-            end
-        end
-        model = inner
-    end
-
-    # Check if model itself has definition
-    if hasfield(typeof(model), :definition)
-        def = getfield(model, :definition)
-        if def isa V1.Definition
-            return def
-        end
-    end
-
-    return nothing
-end
-
 """
     _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
 
-Create TimelineSegments from schedule primitives with correct timing and entities.
+Create TimelineSegments from schedule via dryrun.
 
-Algorithm:
-1. Run dryrun to collect all dynamic model execution intervals
-2. Extract Definition from each primitive via dryrun callback
-3. Merge consecutive segments with identical definitions on same execution path
-4. Create TimelineSegment for each merged interval with embedded Network
+Extracts network entity from first dynamic primitive and creates timeline segments
+Extracts network entity from first dynamic primitive, flattens it, and creates timeline segments
+for all execution intervals.
 
 # Returns
-- `Vector{TimelineSegment}`: Timeline segments in execution order
+- `Vector{TimelineSegment}`: Timeline segments in execution order with pre-flattened networks
 """
 function _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
     segments_data = []
 
     # Dryrun callback that collects segment timing and primitives
     function collect_segments(primitive!, x, Δt; path, _...)
-        # Filter: only interested in callbacks with finite, positive Δt
-        is_dynamic_interval = isfinite(Δt) && Δt > 0.0
-
-        if !is_dynamic_interval
+        if !(isfinite(Δt) && Δt > 0.0)
             return
         end
 
         model = primitive!.f!
-
-        # Unwrap to get final model type
         while model isa Models.Wrapped
             model = model.model
         end
 
-        # Only add non-Instant models
         if !(model isa Models.Instant)
-            definition = _unwrap_definition(primitive!.f!)
-            push!(segments_data, (path = path, from = x.t, to = x.t + Δt, definition = definition))
+            push!(segments_data, (path = path, from = x.t, to = x.t + Δt, primitive = primitive!))
         end
     end
 
@@ -903,62 +592,27 @@ function _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
         return TimelineSegment[]
     end
 
-    # Collate consecutive segments with identical definitions on same path
-    merged_segments = []
-    current_merge = nothing
+    # Extract network entity from first primitive
+    network_entity = NetworkCreation.entity(segments_data[1].primitive)
 
-    for seg in segments_data
-        if isnothing(current_merge)
-            current_merge = seg
-        elseif (current_merge.definition == seg.definition) &&
-               current_merge.to == seg.from &&
-               current_merge.path == seg.path
-            # Same definition, continuous time, same path → merge
-            current_merge = (path = current_merge.path, from = current_merge.from, to = seg.to, definition = current_merge.definition)
-        else
-            # Different definition, gap, or different path → push current and start new
-            push!(merged_segments, current_merge)
-            current_merge = seg
-        end
-    end
-
-    # Don't forget the last one
-    if !isnothing(current_merge)
-        push!(merged_segments, current_merge)
-    end
-
-    @debug "build_timeline_segments: After merging: $(length(merged_segments)) segments"
-
-    if isempty(merged_segments)
+    if network_entity === nothing
+        @debug "build_timeline_segments: Could not extract network entity from first primitive"
         return TimelineSegment[]
     end
 
-    # Extract first definition for network creation
-    first_def = merged_segments[1].definition
-    if isnothing(first_def) || isempty(first_def.genes)
-        @debug "build_timeline_segments: First definition is nothing or has no genes"
-        return TimelineSegment[]
-    end
+    @debug "build_timeline_segments: Extracted network entity with $(length(network_entity.nodes)) child nodes"
 
-    @debug "build_timeline_segments: Definition has $(length(first_def.genes)) genes"
+    # Flatten the network entity tree
+    flat_network = flatten_network(network_entity)
+    @debug "build_timeline_segments: Flattened network has $(length(flat_network.nodes)) nodes and $(length(flat_network.edges)) edges"
 
-    # Extract network
-    network = extract_network(first_def)
-    @debug "build_timeline_segments: Extracted $(length(merged_segments)) timeline segments with $(length(network.entities)) total entities"
-
-    # Create TimelineSegments from merged data
+    # Create TimelineSegments from collected data with pre-flattened network
     segments = [
         TimelineSegment(
             path = data.path,
             from = data.from,
             to = data.to,
-            network = network,
-            bindings = Dict{String, Any}()
-        )
-        for data in merged_segments
-    ]
-
-    return segments
+            network = flat_network,    return segments
 end
 
 end # module ScheduleVisualization
