@@ -19,7 +19,6 @@ export interface TimelineSegment {
     path: string
     from: number
     to: number
-    network: Network
     bindings?: Record<string, unknown>
 }
 
@@ -31,24 +30,23 @@ export interface ScheduleVisMetadata {
  * Complete visualization schema from backend
  */
 export interface ScheduleData {
+    network: Network
     segments: TimelineSegment[]
     visMetadata: ScheduleVisMetadata 
 }
 
 /**
  * Extract all unique gene IDs from schedule data
- * @param data - Schedule data with segments
+ * @param data - Schedule data with shared network
  * @returns Sorted array of unique gene IDs
  */
 export function extractAllGeneIds(data: ScheduleData): string[] {
     const allGenes = new Set<string>()
     
-    for (const segment of data.segments) {
-        if (segment.network?.nodes) {
-            for (const node of segment.network.nodes) {
-                if (node.kind === 'gene') {
-                    allGenes.add(node.id)
-                }
+    if (data.network?.nodes) {
+        for (const node of data.network.nodes) {
+            if (node.kind === 'gene') {
+                allGenes.add(node.id)
             }
         }
     }

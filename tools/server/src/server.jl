@@ -17,15 +17,14 @@ include("streaming_sink.jl")
 include("schedule_storage.jl")
 include("schedule_visualisation.jl")
 include("simulation.jl")
-include("types.jl")
 
 # Use submodules
 using .ScheduleStorage
 using .StreamingSink
 using .Simulation
-using .SchemaTypes
 using .ScheduleVisualization
 using Base: @kwdef
+
 
 
 ### Schedule service
@@ -46,7 +45,6 @@ end
     isnothing(spec_str) && throw("Schedule not found")
     return ScheduleVisualization.reify_schedule(spec_str, name=name, source=source)::ScheduleVisualization.ReifiedSchedule
 end
-
 
 @kwdef struct LoadScheduleRequest
     schedule_name::String

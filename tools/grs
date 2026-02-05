@@ -32,12 +32,16 @@ JULIA_VERSION_CHECK
 JULIA_VERSION="$("$JULIA" --version)"
 REPOSITORY_VERSION="$(cd "$BIN/.."; "$JULIA" -e '
     import LibGit2;
-    @__DIR__() |>
-    LibGit2.GitRepo |>
-    LibGit2.GitDescribeResult |>
-    LibGit2.format |>
-    print
-')"
+    try
+        @__DIR__() |>
+        LibGit2.GitRepo |>
+        LibGit2.GitDescribeResult |>
+        LibGit2.format |>
+        print
+    catch
+        print("unknown")
+    end
+' 2>/dev/null || echo "unknown")"
 
 # Check if `]instantiate` needs to be run for the tool environment's
 # `Manifest.toml`. If so, run it and take note of the instantiated repository

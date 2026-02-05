@@ -1,73 +1,67 @@
 /**
- * Cytoscape rendering composable
- * 
- * Isolates all Cytoscape-specific logic for network visualization.
- * Makes it easy to swap rendering engines in the future.
+ * Cytoscape network renderer
+ * Converts GRS network data to Cytoscape format
  */
-import type { Network, Node, Edge } from '@/types/network'
-import { desaturateAndLighten } from '@/utils/colorUtils'
-import { 
-    getEdgeColour, 
+import type { Network } from '@/types/network'
+import { lighten } from '@/utils/colorUtils'
+import {
+    getEdgeColour,
     shouldShowEdgeLabel,
     NODE_DEFAULTS,
-    NODE_SIZES 
+    NODE_SIZES
 } from '@/config/networkVisualization'
 
 /**
- * Convert network to Cytoscape element format
+ * Convert network to Cytoscape elements
  */
 export function convertToElements(network: Network, geneColours: Record<string, string> = {}): any[] {
     const elements: any[] = []
     
     // Add nodes
     for (const node of network.nodes) {
-        const colour = getNodeColour(node, geneColours)
+        const nodeColour = getNodeColour(node, geneColours)
         
         elements.push({
             data: {
-                id: node.id,
-                label: node.label || node.id,
+                id: node.name,
+                label: node.name,
                 kind: node.kind,
                 parent: node.parent,
-                colour,
+                colour: nodeColour,
                 ...node.properties
             },
             classes: node.kind
         })
     }
     
-    // Add edges
-    for (const edge of network.edges) {
-        const edgeColour = getEdgeColour(edge.kind)
-        const edgeLabel = shouldShowEdgeLabel(edge.kind) ? getEdgeLabel(edge) : ''
+    // Add links as edges
+    for (const link of network.links) {
+        const edgeColour = getEdgeColour(link.kind)
+        const label = shouldShowEdgeLabel(link.kind) ? formatLinkLabel(link) : ''
         
         elements.push({
             data: {
-                id: `${edge.source}-${edge.target}`,
-                source: edge.source,
-                target: edge.target,
-                kind: edge.kind,
+                id: `${link.from}_${link.to}`,
+                source: link.from,
+                target: link.to,
+                kind: link.kind,
                 edgeColour,
-                label: edgeLabel,
-                ...edge.properties
+                label,
+                ...link.properties
             },
-            classes: edge.kind
+            classes: link.kind
         })
     }
     
     return elements
 }
 
-/**
- * Get node colour based on type and parent
- */
-function getNodeColour(node: Node, geneColours: Record<string, string>): string {
+function getNodeColour(node: any, geneColours: Record<string, string>): string {
     if (node.kind === 'gene') {
-        const baseColour = geneColours[node.id] || NODE_DEFAULTS.colour
-        return desaturateAndLighten(baseColour)
+        const base = geneColours[node.name] || NODE_DEFAULTS.colour
+        return lighten(base, 0.4)
     }
     
-    // Child nodes inherit parent gene colour
     if (node.parent && geneColours[node.parent]) {
         return geneColours[node.parent]
     }
@@ -75,23 +69,16 @@ function getNodeColour(node: Node, geneColours: Record<string, string>): string 
     return NODE_DEFAULTS.colour
 }
 
-
-
-/**
- * Get edge label from properties (affinity/rate)
- */
-function getEdgeLabel(edge: Edge): string {
-    const affinity = edge.properties.at || edge.properties.affinity
+function formatLinkLabel(link: any): string {
+    const affinity = link.properties?.at || link.properties?.affinity
     if (affinity !== undefined) {
         return `K=${Number(affinity).toFixed(2)}`
     }
     return ''
 }
 
-
-
 /**
- * Get default Cytoscape styles
+ * Cytoscape style definitions
  */
 export function getDefaultStyles(): any[] {
     return [
@@ -118,7 +105,6 @@ export function getDefaultStyles(): any[] {
                 'text-valign': 'top',
                 'text-margin-y': -20,
                 'font-size': 50,
-                'font-family': NODE_DEFAULTS.fontFamily,
                 'background-color': 'data(colour)'
             }
         },
@@ -167,14 +153,7 @@ export function getDefaultStyles(): any[] {
             }
         },
         {
-            selector: 'edge[kind="substrate"]',
-            style: {
-                'line-style': 'dashed',
-                'width': 1
-            }
-        },
-        {
-            selector: 'edge[kind="product"]',
+            selector: 'edge[kind="substrate"], edge[kind="product"]',
             style: {
                 'line-style': 'dashed',
                 'width': 1
@@ -184,7 +163,7 @@ export function getDefaultStyles(): any[] {
 }
 
 /**
- * Get default Cytoscape layout configuration
+ * Cytoscape layout configuration
  */
 export function getDefaultLayout(): any {
     return {

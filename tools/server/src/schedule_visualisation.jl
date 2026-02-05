@@ -71,14 +71,12 @@ Execution segment within a schedule's timeline.
 - `path::String`: Unique execution path identifier
 - `from::Float64`: Start time
 - `to::Float64`: End time
-- `network::Network`: Pre-flattened network with nodes and edges
 - `bindings::Dict{String, Any}`: Parameter bindings during this segment
 """
 @kwdef struct TimelineSegment
     path::String
     from::Float64
     to::Float64
-    network::Network
     bindings::Dict{String, Any} = Dict()
 end
 
@@ -87,14 +85,16 @@ end
 
 Complete visualization schema for schedule execution.
 
-Contains the full execution timeline with embedded networks and visualization metadata.
+Contains network shared across all segments, execution timeline, and visualization metadata.
 Maps one-to-one to TypeScript ScheduleData for frontend visualization.
 
 # Fields
+- `network::Network`: Shared network (nodes and links) across all segments
 - `segments::Vector{TimelineSegment}`: Execution timeline (one per execution path)
 - `visMetadata::ScheduleVisMetadata`: Visualization configuration (gene colours, etc.)
 """
 @kwdef struct ScheduleData
+    network::Network
     segments::Vector{TimelineSegment}
     visMetadata::ScheduleVisMetadata = ScheduleVisMetadata()
 end
@@ -163,12 +163,16 @@ Validation is performed implicitly during construction.
 - `ReifiedSchedule`: Complete schedule object with validation messages and visualization data
 """
 function reify_schedule(spec_string::String; name::String="", source::String="snapshot")::ReifiedSchedule
+    start_time = time()
     validation_messages = ValidationMessage[]
     visualization = nothing
 
     try
         # Parse spec
+        parse_start = time()
         spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
+        parse_time = time() - parse_start
+        @info "Schedule parsed" name source parse_time
 
         # Validate by attempting construction
         validation_msgs = _validate_spec(spec)
@@ -178,6 +182,8 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
         has_errors = any(m -> m.type == "error", validation_messages)
         if !has_errors
             try
+                @info "Starting schedule visualization generation" name source
+                vis_start = time()
                 bindings = Dict(
                     :seed => get(spec, :seed, "default"),
                     :into => "",
@@ -187,10 +193,13 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
                 specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
                 grs_schedule = Models.Scheduling.Schedule(; specification, bindings)
                 vis_data = generate_vis_data(grs_schedule, name)
+                vis_time = time() - vis_start
+                @info "Schedule visualization generated" name source vis_time segments=length(vis_data.segments)
                 vis_metadata = isempty(vis_data.visMetadata.geneColours) ?
                     generate_default_vis_metadata(vis_data) :
                     vis_data.visMetadata
                 visualization = ScheduleData(
+                    network = vis_data.network,
                     segments = vis_data.segments,
                     visMetadata = vis_metadata
                 )
@@ -209,6 +218,9 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
             content = "Invalid JSON: $(string(e))"
         ))
     end
+
+    total_time = time() - start_time
+    @info "Schedule load completed" name source valid=is_valid(ReifiedSchedule(name=name, source=source, spec=spec_string, validationMessages=validation_messages)) total_time
 
     return ReifiedSchedule(
         name = name,
@@ -286,7 +298,7 @@ end
 
 Convert a GRS Schedule object to ScheduleData for visualization.
 
-Returns a complete visualization schema with execution timeline and embedded networks.
+Returns a complete visualization schema with shared network and timeline segments.
 Internal function used by reify_schedule.
 
 # Arguments
@@ -294,8 +306,8 @@ Internal function used by reify_schedule.
 - `label::String`: Optional schedule name/identifier
 """
 function generate_vis_data(grs_schedule, label::String="")::ScheduleData
-    # Build timeline segments by reifying each execution path
-    segments = _build_timeline_segments(grs_schedule)
+    # Build timeline segments and extract shared network
+    network, segments = _build_timeline_segments(grs_schedule)
 
     # Validate timeline continuity (strict check to prevent bugs)
     valid, errors = _validate_timeline_continuity(segments)
@@ -304,6 +316,7 @@ function generate_vis_data(grs_schedule, label::String="")::ScheduleData
     end
 
     return ScheduleData(
+        network = network,
         segments = segments,
         visMetadata = ScheduleVisMetadata()
     )
@@ -314,26 +327,24 @@ end
 
 Generate default visualization metadata (gene colours) from schedule data.
 
-Assigns unique colours to each gene found in the network.
+Assigns unique colours to each gene found in the shared network.
 """
 function generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetadata
     gene_colours = Dict{String, String}()
 
-    # Extract genes from first segment
-    if !isempty(vis_data.segments)
-        network = vis_data.segments[1].network
-        genes = filter(n -> n.kind == :gene, network.nodes)
+    # Extract genes from shared network
+    network = vis_data.network
+    genes = filter(n -> n.kind == :gene, network.nodes)
 
-        # Generate distinguishable colour palette
-        if !isempty(genes)
-            seed = [colorant"white", colorant"black", colorant"crimson"]
-            colors = distinguishable_colors(length(genes), seed, dropseed = true)
-            colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.7, hsv.v * 1.3) end for c in colors]
-            colors = convert.(RGB, colors)
-            for (idx, gene) in enumerate(genes)
-                color_hex = hex(colors[idx])
-                gene_colours[string(gene.name)] = "#$color_hex"
-            end
+    # Generate distinguishable colour palette
+    if !isempty(genes)
+        seed = [colorant"white", colorant"black", colorant"crimson"]
+        colors = distinguishable_colors(length(genes), seed, dropseed = true)
+        colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.7, hsv.v * 1.3) end for c in colors]
+        colors = convert.(RGB, colors)
+        for (idx, gene) in enumerate(genes)
+            color_hex = hex(colors[idx])
+            gene_colours[string(gene.name)] = "#$color_hex"
         end
     end
 
@@ -438,18 +449,17 @@ function _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple
 end
 
 """
-    _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
+    _build_timeline_segments(grs_schedule)::Tuple{Network, Vector{TimelineSegment}}
 
-Create TimelineSegments from schedule via dryrun.
+Create timeline segments and extract shared network from schedule via dryrun.
 
-Extracts network entity from first dynamic primitive and creates timeline segments
-Extracts network entity from first dynamic primitive, flattens it, and creates timeline segments
-for all execution intervals.
+Extracts network entity from first dynamic primitive, flattens it once, and creates
+lightweight timeline segments for all execution intervals.
 
 # Returns
-- `Vector{TimelineSegment}`: Timeline segments in execution order with pre-flattened networks
+- `Tuple{Network, Vector{TimelineSegment}}`: Shared network and timeline segments
 """
-function _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
+function _build_timeline_segments(grs_schedule)::Tuple{Network, Vector{TimelineSegment}}
     segments_data = []
 
     # Dryrun callback that collects segment timing and primitives
@@ -498,19 +508,18 @@ function _build_timeline_segments(grs_schedule)::Vector{TimelineSegment}
     flat_network = Network(nodes=nodes_flat, links=links_flat)
     @debug "build_timeline_segments: Flattened network has $(length(flat_network.nodes)) nodes and $(length(flat_network.links)) links"
 
-    # Create TimelineSegments from collected data with pre-flattened network
+    # Create TimelineSegments from collected data without embedding network
     segments = [
         TimelineSegment(
             path = data.path,
             from = data.from,
             to = data.to,
-            network = flat_network,
             bindings = Dict()
         )
         for data in segments_data
     ]
 
-    return segments
+    return (flat_network, segments)
 end
 
 end # module ScheduleVisualization

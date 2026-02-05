@@ -99,20 +99,25 @@ function entity(rs::ReactionSystem)
 end
 
 function _genes_from_reaction_network(rs_network::Entity)::Tuple{Vector{Entity}, Vector{Entity}, Vector{Link}}
+
     species_nodes = [n for n in rs_network.nodes if n.kind == :species]
     reaction_nodes = [n for n in rs_network.nodes if n.kind == :reaction]
+
     parent_dict = Dict(s.name => parent(s.name) for s in species_nodes)
-    # assign reaction nodes to genes if all the species involved in the reaction have the same parent
-    for r in reaction_nodes
-        connected_parents = Set(parent_dict[link.from] for link in rs_network.links if link.to == r.name && !isnothing(parent_dict[link.from]))
-        union!(connected_parents, Set(parent_dict[link.to]
-               for link in rs_network.links if link.from == r.name && !isnothing(parent_dict[link.to])))
-        if length(connected_parents) == 1
-            parent_dict[r.name] = first(connected_parents)
-        else
-            parent_dict[r.name] = nothing
-        end
+
+    links_by_to = Dict{Symbol, Vector{Link}}()
+    links_by_from = Dict{Symbol, Vector{Link}}()
+    for link in rs_network.links
+        push!(get!(links_by_to, link.to, Link[]), link)
+        push!(get!(links_by_from, link.from, Link[]), link)
     end
+
+    for r in reaction_nodes
+        connected_parents = Set(parent_dict[link.from] for link in get(links_by_to, r.name, Link[]) if !isnothing(parent_dict[link.from]))
+        union!(connected_parents, Set(parent_dict[link.to] for link in get(links_by_from, r.name, Link[]) if !isnothing(parent_dict[link.to])))
+        parent_dict[r.name] = length(connected_parents) == 1 ? first(connected_parents) : nothing
+    end
+
     nodes_by_parent = Dict{Union{Symbol, Nothing}, Vector{Entity}}()
     for node in vcat(species_nodes, reaction_nodes)
         push!(get!(nodes_by_parent, parent_dict[node.name], Entity[]), node)
@@ -123,8 +128,10 @@ function _genes_from_reaction_network(rs_network::Entity)::Tuple{Vector{Entity},
         to_p = parent_dict[link.to]
         from_p == to_p && !isnothing(from_p) && push!(get!(links_by_parent, from_p, Link[]), link)
     end
+
     genes = [Entity(kind=:gene, name=k, nodes=nodes_by_parent[k], links=links_by_parent[k])
              for k in keys(nodes_by_parent) if !isnothing(k)]
+
     (genes, get(nodes_by_parent, nothing, Entity[]), get(links_by_parent, nothing, Link[]))
 end
 

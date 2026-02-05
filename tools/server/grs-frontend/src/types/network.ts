@@ -1,30 +1,24 @@
 /**
- * Node in a network - Cytoscape compatible
+ * Network types matching Julia backend NetworkRepresentation module
  */
+
 export interface Node {
-    id: string
-    label: string
+    kind: string
+    name: string
     parent: string | null
-    kind: string
     properties: Record<string, any>
 }
 
-/**
- * Edge in a network - Cytoscape compatible
- */
-export interface Edge {
-    source: string
-    target: string
+export interface Link {
     kind: string
+    from: string
+    to: string
     properties: Record<string, any>
 }
 
-/**
- * Flat network representation
- */
 export interface Network {
     nodes: Node[]
-    edges: Edge[]
+    links: Link[]
 }
 
     const elements: any[] = []

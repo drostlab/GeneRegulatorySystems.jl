@@ -99,12 +99,20 @@ export async function apiFetchJson<T = any>(
     endpoint: string,
     options: FetchOptions = {}
 ): Promise<T> {
+    console.debug(`[API] apiFetch starting for ${endpoint}`)
     const response = await apiFetch(endpoint, options)
+    console.debug(`[API] apiFetch completed, status: ${response.status}`)
+    
     if (!response.ok) {
         const error = await parseApiError(response)
         throw new Error(`API Error: ${error}`)
     }
-    return (await response.json()) as T
+    
+    console.debug(`[API] Starting JSON parse for ${endpoint}`)
+    const parseStart = performance.now()
+    const data = (await response.json()) as T
+    console.debug(`[API] JSON parse completed in ${(performance.now() - parseStart).toFixed(2)}ms, data type: ${typeof data}`)
+    return data
 }
 
 /**

@@ -47,32 +47,64 @@ export const useScheduleStore = defineStore(
         const isValid = computed(() => schedule.value.data !== null)
 
         async function loadScheduleByKey(key: string): Promise<Schedule> {
+            const startTime = performance.now()
+            console.debug(`[ScheduleStore] loadScheduleByKey started for: ${key}`)
+            console.debug(`[ScheduleStore] Setting isLoading = true`)
+            
             isLoading.value = true
-            // Clear previous validation messages
-            schedule.value.validationMessages = []
+            // Clear previous schedule data immediately
+            schedule.value.data = null
+            console.debug(`[ScheduleStore] Cleared old schedule data`)
+            
             try {
+                const serviceStart = performance.now()
                 const res = await scheduleService.loadScheduleFromKey(key)
+                console.debug(`[ScheduleStore] Service call took ${(performance.now() - serviceStart).toFixed(2)}ms`)
 
+                const assignStart = performance.now()
                 schedule.value = res
+                console.debug(`[ScheduleStore] Store assignment took ${(performance.now() - assignStart).toFixed(2)}ms`)
                 
+                console.debug(`[ScheduleStore] Total loadScheduleByKey time: ${(performance.now() - startTime).toFixed(2)}ms`)
                 return schedule.value
+            } catch (error) {
+                console.error(`[ScheduleStore] Error in loadScheduleByKey:`, error)
+                throw error
             } finally {
+                console.debug(`[ScheduleStore] Setting isLoading = false`)
                 isLoading.value = false
+                console.debug(`[ScheduleStore] isLoading is now: ${isLoading.value}`)
             }
         }
 
         async function loadScheduleBySpec(spec: string, name: string): Promise<Schedule> {
+            const startTime = performance.now()
+            console.debug(`[ScheduleStore] loadScheduleBySpec started for: ${name}`)
+            console.debug(`[ScheduleStore] Setting isLoading = true`)
+            
             isLoading.value = true
-            // Clear previous validation messages
-            schedule.value.validationMessages = []
+            // Clear previous schedule data immediately
+            schedule.value.data = null
+            console.debug(`[ScheduleStore] Cleared old schedule data`)
+            
             try {
+                const serviceStart = performance.now()
                 const res = await scheduleService.loadScheduleFromSpec(spec, name)
+                console.debug(`[ScheduleStore] Service call took ${(performance.now() - serviceStart).toFixed(2)}ms`)
 
+                const assignStart = performance.now()
                 schedule.value = res
+                console.debug(`[ScheduleStore] Store assignment took ${(performance.now() - assignStart).toFixed(2)}ms`)
                 
+                console.debug(`[ScheduleStore] Total loadScheduleBySpec time: ${(performance.now() - startTime).toFixed(2)}ms`)
                 return schedule.value
+            } catch (error) {
+                console.error(`[ScheduleStore] Error in loadScheduleBySpec:`, error)
+                throw error
             } finally {
+                console.debug(`[ScheduleStore] Setting isLoading = false`)
                 isLoading.value = false
+                console.debug(`[ScheduleStore] isLoading is now: ${isLoading.value}`)
             }
         }
 

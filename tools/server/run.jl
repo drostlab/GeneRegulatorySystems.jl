@@ -21,6 +21,9 @@ using Logging
 
 global_logger(ConsoleLogger(stderr, Logging.Info))
 
+import JSON
+
+JSON.lower(s::Symbol) = String(s)
 
 using Oxygen
 using server

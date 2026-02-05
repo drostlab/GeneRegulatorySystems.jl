@@ -284,8 +284,13 @@ export function timeseriesToTrackData(
 
     // Convert to track series (one series per gene per path)
     for (const [geneId, paths] of Object.entries(genePathData)) {
+        // Try both formats: 'gene_X' and plain 'X'
         const colourKey = `gene_${geneId}`
-        const colour = geneColours[colourKey] || '#808080'
+        let colour = geneColours[colourKey]
+        if (!colour) {
+            colour = geneColours[geneId]
+        }
+        const resolvedColour = colour || '#808080'
 
         for (const [pathId, data] of Object.entries(paths)) {
             // Determine if this is a branching path (heuristic: contains more than one segment)
@@ -299,32 +304,50 @@ export function timeseriesToTrackData(
             // Process mRNA
             if (data.mrna && data.mrna.length > 0) {
                 data.mrna.sort((a, b) => a[0] - b[0])
+                const xData = data.mrna.map(p => p[0])
+                const yData = data.mrna.map(p => p[1])
+                
+                // Extend to segment end by copying last value
+                if (xData.length > 0 && segmentBounds.to > xData[xData.length - 1]) {
+                    xData.push(segmentBounds.to)
+                    yData.push(yData[yData.length - 1])
+                }
+                
                 tracks.mrna.push({
                     geneId,
-                    colour,
+                    colour: resolvedColour,
                     path: pathId,
                     isDashed,
                     segmentFrom: segmentBounds.from,
                     segmentTo: segmentBounds.to,
                     trackIndex,
-                    xData: data.mrna.map(p => p[0]),
-                    yData: data.mrna.map(p => p[1])
+                    xData,
+                    yData
                 })
             }
 
             // Process protein
             if (data.protein && data.protein.length > 0) {
                 data.protein.sort((a, b) => a[0] - b[0])
+                const xData = data.protein.map(p => p[0])
+                const yData = data.protein.map(p => p[1])
+                
+                // Extend to segment end by copying last value
+                if (xData.length > 0 && segmentBounds.to > xData[xData.length - 1]) {
+                    xData.push(segmentBounds.to)
+                    yData.push(yData[yData.length - 1])
+                }
+                
                 tracks.protein.push({
                     geneId,
-                    colour,
+                    colour: resolvedColour,
                     path: pathId,
                     isDashed,
                     segmentFrom: segmentBounds.from,
                     segmentTo: segmentBounds.to,
                     trackIndex,
-                    xData: data.protein.map(p => p[0]),
-                    yData: data.protein.map(p => p[1])
+                    xData,
+                    yData
                 })
             }
 
@@ -337,7 +360,15 @@ export function timeseriesToTrackData(
 
                     const activeMap = new Map(active)
                     const inactiveMap = new Map(inactive)
-                    const { times, fractions } = calculatePromoterFraction(activeMap, inactiveMap)
+                    const fracResult = calculatePromoterFraction(activeMap, inactiveMap)
+                    const times = [...fracResult.times]
+                    const fractions = [...fracResult.fractions]
+
+                    // Extend to segment end by copying last value
+                    if (times.length > 0 && segmentBounds.to > times[times.length - 1]) {
+                        times.push(segmentBounds.to)
+                        fractions.push(fractions[fractions.length - 1])
+                    }
 
                     tracks.promoter.push({
                         geneId,
