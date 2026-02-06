@@ -11,6 +11,7 @@
 
 import type { Ref } from 'vue'
 import type { TrackSeriesData } from '@/types'
+import type { ScheduleSegmentDisplay } from '@/types/schedule'
 import {
     SciChartSurface,
     NumericAxis,
@@ -76,7 +77,16 @@ class NearestPointRolloverModifier extends RolloverModifier {
  */
 function tooltipDataTemplate(seriesInfo: any): string[] {
     const seriesName = seriesInfo.seriesName || 'Unknown'
-    // Parse "geneId (path) [trackKind]" format
+    
+    // Handle schedule segments: format "label (path) [schedule]"
+    const scheduleMatch = seriesName.match(/^(.+?)\s*\((.+?)\)\s*\[schedule\]$/)
+    if (scheduleMatch) {
+        const label = scheduleMatch[1]
+        const path = scheduleMatch[2]
+        return [`${label}`, `Path ${path}`]
+    }
+    
+    // Handle simulation tracks: format "geneId (path) [trackKind]"
     const match = seriesName.match(/^(.+?)\s*\((.+?)\)\s*\[(.+?)\]$/)
     if (match) {
         const geneId = match[1]
@@ -118,6 +128,12 @@ function lightenColor(hex: string, percent: number = 50): string {
 
 // Track configuration (hardcoded for gene regulatory systems)
 const TRACK_CONFIG = {
+    schedule: {
+        axisId: 'scheduleAxis',
+        title: 'Schedule Timeline',
+        strokeThickness: 2,
+        renderType: 'line' as const
+    },
     promoter: {
         axisId: 'promoterAxis',
         title: 'Promoter Activity',
@@ -178,7 +194,11 @@ export function useTrajectoryChart() {
     /**
      * Initialize SciChart surface with 3 vertically stacked Y-axes
      */
-    async function initChart(containerRef: Ref<HTMLDivElement | undefined>): Promise<void> {
+    async function initChart(containerRef: Ref<HTMLDivElement | undefined>, enabledTracks?: Set<string>): Promise<void> {
+        console.log('[initChart] Starting initialization')
+        console.log('[initChart] containerRef.value:', containerRef.value)
+        console.log('[initChart] containerRef.value size:', containerRef.value?.clientWidth, 'x', containerRef.value?.clientHeight)
+        
         if (!containerRef.value) {
             throw new Error('Container reference is required to initialize chart')
         }
@@ -188,17 +208,22 @@ export function useTrajectoryChart() {
             return
         }
 
+        // Use provided tracks or default to all enabled
+        const tracksToEnable = enabledTracks ?? new Set(['schedule', 'promoter', 'mrna', 'protein'])
+
         try {
 
             const theme = await createTheme()
 
             // Create surface
+            console.log('[initChart] Creating SciChartSurface...')
             const { sciChartSurface: surface, wasmContext: context } = await SciChartSurface.create(
                 containerRef.value,
                 { theme }
             )
             sciChartSurface = surface
             wasmContext = context
+            console.log('[initChart] SciChartSurface created successfully')
 
             // Ensure layout manager is initialized before proceeding
             await new Promise(resolve => setTimeout(resolve, 50))
@@ -226,8 +251,31 @@ export function useTrajectoryChart() {
             })
             sciChartSurface.xAxes.add(xAxis)
 
-            // Y-axes for each track (based on config)
-            for (const [trackKind, trackConfig] of Object.entries(TRACK_CONFIG)) {
+            // Y-axes for all possible tracks (so they can be dynamically shown/hidden)
+            // but only visible if track is enabled
+            const trackKinds = Object.keys(TRACK_CONFIG) as TrackKind[]
+            for (let trackIndex = 0; trackIndex < trackKinds.length; trackIndex++) {
+                const trackKind = trackKinds[trackIndex]
+                const trackConfig = TRACK_CONFIG[trackKind]
+                const isFirstTrack = trackIndex === 0  // topmost track (schedule)
+                
+                // Determine separator line colour based on theme
+                const isDarkMode = document.documentElement.classList.contains('app-dark')
+                const separatorColor = isDarkMode ? '#444444' : '#d0d0d0'
+                
+                const borderConfig: any = {}
+                if (isFirstTrack) {
+                    // Topmost track: add both top and bottom borders
+                    borderConfig.borderTop = 1
+                    borderConfig.borderTopBrush = separatorColor
+                    borderConfig.borderBottom = 1
+                    borderConfig.borderBottomBrush = separatorColor
+                } else {
+                    // Other tracks: bottom border only (shared with track above)
+                    borderConfig.borderBottom = 1
+                    borderConfig.borderBottomBrush = separatorColor
+                }
+                
                 const axis = new NumericAxis(wasmContext, {
                     id: trackConfig.axisId,
                     axisAlignment: EAxisAlignment.Left,
@@ -243,12 +291,21 @@ export function useTrajectoryChart() {
                         fontSize: 12,
                         fontFamily: 'Arial'
                     },
-                    flippedCoordinates: trackKind === 'promoter'  // Reverse Y-axis for promoter
+                    flippedCoordinates: trackKind === 'promoter',  // Reverse Y-axis for promoter
+                    isVisible: tracksToEnable.has(trackKind),  // Hide axis if track not enabled initially
+                    border: borderConfig,
+                    drawMajorBands: false
                 })
                 
-                // Hide tick labels for promoter track
-                if (trackKind === 'promoter') {
+                // Hide tick labels for promoter track and schedule track
+                if (trackKind === 'promoter' || trackKind === 'schedule') {
                     axis.drawLabels = false
+                    axis.drawMajorGridLines = false
+                    axis.drawMinorGridLines = false
+                } else {
+                    // Add subtle grid for simulation tracks
+                    axis.drawMajorGridLines = true
+                    axis.drawMinorGridLines = false
                 }
                 
                 sciChartSurface.yAxes.add(axis)
@@ -337,11 +394,21 @@ export function useTrajectoryChart() {
      * Render or update trajectory from pre-converted track data
      * Handles both initial creation and streaming updates
      */
-    function updateTrajectory(trackData: Record<string, TrackSeriesData[]>): void {
+    function updateTrajectory(trackData: Record<string, TrackSeriesData[]>, enabledTracks?: Set<string>): void {
+        console.log('[updateTrajectory] Entry point - trackData keys:', Object.keys(trackData))
+        for (const [kind, tracks] of Object.entries(trackData)) {
+            console.log(`[updateTrajectory] ${kind}: ${tracks.length} tracks`)
+        }
+        console.log('[updateTrajectory] enabledTracks:', enabledTracks)
+        
         if (!sciChartSurface || !wasmContext) {
             console.warn('[useTrajectoryChart] Chart not initialized - cannot update trajectory')
             return
         }
+
+        // Use provided tracks or default to all enabled
+        const tracksToEnable = enabledTracks ?? new Set(['schedule', 'promoter', 'mrna', 'protein'])
+        console.log('[updateTrajectory] tracksToEnable:', tracksToEnable)
 
         try {
             // Calculate data bounds for X-axis limits
@@ -359,9 +426,17 @@ export function useTrajectoryChart() {
                 }
             }
 
-            // Update each track that exists in the data
+            console.log('[updateTrajectory] X-axis bounds: minX=', minX, 'maxX=', maxX)
+
+            // Update each track that exists in the data and is enabled
             for (const [trackKind, tracks] of Object.entries(trackData)) {
+                console.log(`[updateTrajectory] Processing ${trackKind}: ${tracks.length} tracks, enabled=${tracksToEnable.has(trackKind)}`)
+                if (!tracksToEnable.has(trackKind)) {
+                    console.log(`[updateTrajectory] Skipping ${trackKind} - not enabled`)
+                    continue  // Skip disabled tracks
+                }
                 if (tracks.length > 0) {
+                    console.log(`[updateTrajectory] Updating ${trackKind} with ${tracks.length} series`)
                     updateTrack(trackKind as TrackKind, tracks)
                 }
             }
@@ -379,6 +454,7 @@ export function useTrajectoryChart() {
                 }
             }
 
+            console.log('[updateTrajectory] Calling zoomExtents()')
             // Auto-fit view
             sciChartSurface.zoomExtents()
         } catch (err) {
@@ -908,6 +984,171 @@ export function useTrajectoryChart() {
         onTimepointChangeCallback = callback
     }
 
+    /**
+     * Render schedule segments on the schedule track
+     * @param segments Schedule segment display data to render
+     * @param enabledTracks Set of enabled tracks
+     */
+    function renderScheduleSegments(segments: ScheduleSegmentDisplay[], enabledTracks: Set<string>): void {
+        if (!sciChartSurface || !wasmContext) {
+            console.warn('[useTrajectoryChart] Chart not initialized - cannot render schedule segments')
+            return
+        }
+
+        // Skip if schedule track is disabled
+        if (!enabledTracks.has('schedule')) {
+            return
+        }
+
+        try {
+            // Get or create the schedule track series map
+            if (!sciChartSeries.has('schedule')) {
+                sciChartSeries.set('schedule', new Map())
+                seriesPointCounts.set('schedule', new Map())
+            }
+
+            const scheduleSeriesMap = sciChartSeries.get('schedule')!
+            const scheduleConfig = TRACK_CONFIG['schedule']
+            const yAxis = sciChartSurface.yAxes.getById(scheduleConfig.axisId)
+
+            if (!yAxis) {
+                console.warn('[useTrajectoryChart] Schedule axis not found')
+                return
+            }
+
+            // Clear existing schedule series
+            scheduleSeriesMap.forEach((series) => {
+                if (sciChartSurface.renderableSeries.contains(series)) {
+                    sciChartSurface.renderableSeries.remove(series)
+                }
+            })
+            scheduleSeriesMap.clear()
+
+            // Group segments by path for combined rendering
+            const segmentsByPath = new Map<string, ScheduleSegmentDisplay[]>()
+            for (const segment of segments) {
+                if (!segmentsByPath.has(segment.path)) {
+                    segmentsByPath.set(segment.path, [])
+                }
+                segmentsByPath.get(segment.path)!.push(segment)
+            }
+
+            // Create one series per path
+            for (const [path, pathSegments] of segmentsByPath.entries()) {
+                const xData: number[] = []
+                const yData: number[] = []
+
+                // Sort segments by time
+                const sorted = [...pathSegments].sort((a, b) => a.from - b.from)
+
+                for (const segment of sorted) {
+                    if (segment.isInstant) {
+                        // Instant segment: vertical line with fixed height
+                        xData.push(segment.from, segment.from)
+                        yData.push(0, 0.3)
+                    } else {
+                        // Non-instant segment: horizontal line at path track level
+                        xData.push(segment.from, segment.to)
+                        yData.push(segment.trackIndex, segment.trackIndex)
+                    }
+                }
+
+                if (xData.length === 0) continue
+
+                // Use first segment's label for series name
+                const firstLabel = sorted[0]?.label ?? ''
+                const seriesName = `${firstLabel} (${path}) [schedule]`
+                const colour = sorted[0]?.colour ?? '#999999'
+
+                // Create data series
+                const dataSeries = new XyDataSeries(wasmContext, {
+                    dataSeriesName: seriesName,
+                    containsNaN: false,
+                    xValues: xData,
+                    yValues: yData
+                })
+
+                // Create line series
+                const lineSeries = new FastLineRenderableSeries(wasmContext, {
+                    dataSeries,
+                    stroke: colour,
+                    strokeThickness: 3,
+                    yAxisId: scheduleConfig.axisId,
+                    isDigitalLine: false,
+                    opacity: 0.8
+                })
+
+                // Add point markers for instant segments
+                if (sorted.some(s => s.isInstant)) {
+                    const markerSeries = new XyScatterRenderableSeries(wasmContext, {
+                        dataSeries: new XyDataSeries(wasmContext, {
+                            xValues: sorted
+                                .filter(s => s.isInstant)
+                                .map(s => s.from),
+                            yValues: sorted
+                                .filter(s => s.isInstant)
+                                .map((_, i) => i * 0.15)
+                        }),
+                        pointMarker: new EllipsePointMarker(wasmContext, {
+                            width: 8,
+                            height: 8,
+                            fill: colour,
+                            stroke: colour,
+                            strokeThickness: 1
+                        }),
+                        yAxisId: scheduleConfig.axisId,
+                        opacity: 0.8
+                    })
+                    sciChartSurface.renderableSeries.add(markerSeries)
+                }
+
+                sciChartSurface.renderableSeries.add(lineSeries)
+                scheduleSeriesMap.set(path, lineSeries)
+                
+                // Update point counts for schedule track
+                const schedulePointCounts = seriesPointCounts.get('schedule')
+                if (schedulePointCounts) {
+                    schedulePointCounts.set(path, xData.length)
+                }
+            }
+
+            // Auto-fit view to include schedule data
+            sciChartSurface.zoomExtents()
+        } catch (err) {
+            console.error('[useTrajectoryChart] Failed to render schedule segments:', err)
+            throw err
+        }
+    }
+
+    /**
+     * Update axis visibility when track visibility changes
+     * Removes disabled axes from the surface so they don't take up space
+     */
+    function updateTrackVisibility(enabledTracks: Set<string>): void {
+        if (!sciChartSurface) {
+            console.warn('[useTrajectoryChart] Chart not initialized - cannot update visibility')
+            return
+        }
+
+        for (const [trackKind, trackConfig] of Object.entries(TRACK_CONFIG)) {
+            const axis = sciChartSurface.yAxes.getById(trackConfig.axisId)
+            if (!axis) continue
+
+            if (enabledTracks.has(trackKind)) {
+                // Enable: make sure axis is visible and in the surface
+                if (!sciChartSurface.yAxes.contains(axis)) {
+                    sciChartSurface.yAxes.add(axis)
+                }
+                axis.isVisible = true
+            } else {
+                // Disable: remove from surface so it doesn't take space
+                if (sciChartSurface.yAxes.contains(axis)) {
+                    sciChartSurface.yAxes.remove(axis)
+                }
+            }
+        }
+    }
+
     return {
         initChart,
         updateTrajectory,
@@ -915,6 +1156,8 @@ export function useTrajectoryChart() {
         dispose,
         showLoader,
         hideLoader,
-        onTimepointChange
+        onTimepointChange,
+        renderScheduleSegments,
+        updateTrackVisibility
     }
 }

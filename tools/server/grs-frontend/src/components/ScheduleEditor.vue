@@ -172,8 +172,8 @@ onBeforeUnmount(() =>
 <template>
     <div class="schedule-editor">
         <!-- Header -->
-        <div class="editor-header">
-            <div class="header-bottom">
+        <div class="card-header">
+            <div class="card-header-row">
                 <!-- Schedule dropdown -->
                 <Select
                     v-show="!editor.isEditing"
@@ -253,8 +253,11 @@ onBeforeUnmount(() =>
         </div>
 
         <!-- Loading Spinner -->
-        <div v-if="isLoading" class="loading-container">
-            <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+        <div v-if="isLoading" class="loading-overlay">
+            <div class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+                <div class="loading-text">Loading schedule...</div>
+            </div>
         </div>
 
         <!-- Editor -->
@@ -315,6 +318,7 @@ onBeforeUnmount(() =>
 <style scoped>
 @import '@fontsource/fira-code';
 
+/* Component layout */
 .schedule-editor {
     display: flex;
     flex-direction: column;
@@ -322,35 +326,12 @@ onBeforeUnmount(() =>
     background: var(--p-surface-ground);
 }
 
-.editor-header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 1rem;
-    border-bottom: 1px solid var(--p-surface-border);
-    background: var(--p-surface-card);
-    flex-shrink: 0;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.header-bottom {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.875rem;
-}
-
-:deep(.p-button) {
-    min-width: 2rem;
-    min-height: 2rem;
-    font-size: 0.85rem;
-}
-
+/* Validation area */
 .validation-area {
-    padding: 0.5rem 0.75rem;
+    padding: var(--spacing-md) var(--spacing-lg);
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--spacing-sm);
     max-height: 90px;
     overflow-y: auto;
     background: var(--p-surface-section);
@@ -360,40 +341,29 @@ onBeforeUnmount(() =>
 
 .validation-message {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: var(--font-size-md);
 }
 
 :deep(.validation-message .p-message-text) {
-    font-size: 0.8rem;
-}
-
-:deep(.validation-message) {
-    font-size: 0.8rem;
-}
-
-:deep(.error-item) {
-    font-size: 0.8rem;
+    font-size: var(--font-size-md);
 }
 
 .error-list,
-.warning-list {
+.warning-list,
+.message-list {
     display: flex;
     flex-direction: column;
-    gap: 0.125rem;
+    gap: var(--spacing-xs);
 }
 
-.error-item {
-    font-size: 0.75rem;
+.error-item,
+.warning-item,
+.message-item {
+    font-size: var(--font-size-sm);
     line-height: 1.3;
 }
 
-.loading-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-}
-
+/* Editor container */
 .editor-container {
     flex: 1;
     overflow: hidden;

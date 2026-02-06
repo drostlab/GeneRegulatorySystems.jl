@@ -3,35 +3,37 @@
  * Re-exports all types from their respective modules
  */
 
-
 // Network types
 export type {
-    Entity,
-    SpeciesEntity,
-    ReactionEntity,
-    GeneEntity,
-    Edge,
+    Node,
+    Link,
     Network
 } from './network'
 
 // Schedule types
 export {
-    GENE_COLOUR_PALETTE,
+    SPECIES_TYPES,
 } from './schedule'
 export type {
     Schedule,
-    ScheduleData
+    ScheduleData,
+    SpeciesType,
+    TimelineSegment
 } from './schedule'
 
-
-export type {
-    SimulationResult,
-    SimulationResultMetadata,
-    SimulationFrame,
-    Timeseries,
-    TrackSeriesData
+// Simulation types and functions
+export {
+    isResultLoaded,
+    getMaxTime,
+    formatResultLabel
 } from './simulation'
-export { timeseriesToTrackData, isResultLoaded } from './simulation'
+export type {
+    TimeseriesData,
+    SimulationStatus,
+    SimulationData,
+    SimulationResultMetadata,
+    SimulationResult
+} from './simulation'
 
 
 

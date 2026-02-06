@@ -5,88 +5,21 @@
  * averaged across branches. Used to sync trajectory viewer with network diagram.
  */
 
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { Timeseries } from '@/types/simulation'
+import { type SpeciesType } from '@/types'
 
 export const useViewerStore = defineStore('viewer', () => {
     // Current timepoint in simulation (set by trajectory chart scrubbing)
     const currentTimepoint = ref<number>(0)
     
-    // Timeseries data (loaded when simulation result is loaded)
-    const timeseries = ref<Timeseries | null>(null)
-    
-    // Pre-computed maximum values for each species (for normalization)
-    // Structure: speciesId → max value across entire simulation
-    const maxValues = ref<Record<string, number>>({})
 
-    /**
-     * Compute expression values at current timepoint, averaged across branches
-     * Returns: speciesId → averaged value
-     */
-    const speciesValuesAtTimepoint = computed(() => {
-        if (!timeseries.value) return {}
-        
-        const result: Record<string, number> = {}
-        
-        for (const [speciesId, paths] of Object.entries(timeseries.value)) {
-            const values: number[] = []
-            
-            // Collect values from all paths at current timepoint (or nearest)
-            for (const timeSeries of Object.values(paths)) {
-                const value = getValueAtTimepoint(timeSeries as Array<[number, number]>, currentTimepoint.value)
-                if (value !== null) {
-                    values.push(value)
-                }
-            }
-            
-            // Average across paths
-            if (values.length > 0) {
-                result[speciesId] = values.reduce((a, b) => a + b, 0) / values.length
-            }
-        }
-        
-        return result
-    })
+    // Gene filter state - which genes to display (empty array = all genes)
+    const selectedGenes = ref<string[]>([])
 
-    /**
-     * Get normalized value (0-1) for a species at current timepoint
-     */
-    function getNormalizedValue(speciesId: string): number {
-        const value = speciesValuesAtTimepoint.value[speciesId] ?? 0
-        const max = maxValues.value[speciesId] ?? 1
-        const normalized = max > 0 ? value / max : 0
-        
-        // Log species lookups to debug mismatch
-        if (normalized === 0 && speciesId.includes('gene')) {
-            console.debug('[viewerStore] Species lookup', {
-                requestedSpeciesId: speciesId,
-                value,
-                max,
-                normalized,
-                allAvailableSpecies: Object.keys(speciesValuesAtTimepoint.value)
-            })
-        }
-        
-        return normalized
-    }
+    // Species type filter state - which species types to display (one-way read-out from SimulationViewer)
+    const selectedSpeciesTypes = ref<SpeciesType[]>([])
 
-    /**
-     * Initialize store with timeseries data
-     * Pre-computes max values for normalization
-     */
-    function initializeWithTimeseries(newTimeseries: Timeseries): void {
-        console.debug('initializeWithTimeseries called', {
-            speciesCount: Object.keys(newTimeseries).length,
-            firstSpecies: Object.keys(newTimeseries)[0]
-        })
-        timeseries.value = newTimeseries
-        maxValues.value = computeMaxValues(newTimeseries)
-        currentTimepoint.value = 0
-        console.debug('initializeWithTimeseries complete', {
-            maxValuesCount: Object.keys(maxValues.value).length
-        })
-    }
 
     /**
      * Update current timepoint
@@ -97,63 +30,18 @@ export const useViewerStore = defineStore('viewer', () => {
     }
 
     /**
-     * Reset store
+     * Reset store and remove simulation tracks from visibility
      */
     function reset(): void {
         currentTimepoint.value = 0
-        timeseries.value = null
-        maxValues.value = {}
+        // Remove simulation tracks when resetting
     }
 
     return {
         currentTimepoint,
-        timeseries,
-        maxValues,
-        speciesValuesAtTimepoint,
-        getNormalizedValue,
-        initializeWithTimeseries,
+        selectedGenes,
+        selectedSpeciesTypes,
         setTimepoint,
         reset
     }
 })
-
-/**
- * Get value from timeseries at given timepoint
- * Uses nearest-neighbour lookup (no interpolation)
- */
-function getValueAtTimepoint(timeSeries: Array<[number, number]>, timepoint: number): number | null {
-    if (timeSeries.length === 0) return null
-    
-    // Find nearest timepoint
-    let nearest = timeSeries[0]!
-    let minDist = Math.abs(timeSeries[0]![0] - timepoint)
-    
-    for (const point of timeSeries) {
-        const dist = Math.abs(point[0] - timepoint)
-        if (dist < minDist) {
-            minDist = dist
-            nearest = point
-        }
-    }
-    
-    return nearest[1]
-}
-
-/**
- * Compute maximum value for each species across entire timeseries
- */
-function computeMaxValues(ts: Timeseries): Record<string, number> {
-    const maxVals: Record<string, number> = {}
-    
-    for (const [speciesId, paths] of Object.entries(ts)) {
-        let max = 0
-        for (const timeSeries of Object.values(paths)) {
-            for (const [_, value] of timeSeries as Array<[number, number]>) {
-                max = Math.max(max, value)
-            }
-        }
-        maxVals[speciesId] = max
-    }
-    
-    return maxVals
-}

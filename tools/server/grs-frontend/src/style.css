@@ -1,5 +1,25 @@
 :root {
   font-family: "Montserrat", sans-serif;
+
+  /* Typography Scale */
+  --font-size-xs: 0.65rem;
+  --font-size-sm: 0.75rem;
+  --font-size-md: 0.875rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.25rem;
+
+  /* Spacing Scale */
+  --spacing-xs: 0.125rem;
+  --spacing-sm: 0.25rem;
+  --spacing-md: 0.5rem;
+  --spacing-lg: 0.75rem;
+  --spacing-xl: 1rem;
+  --spacing-2xl: 2rem;
+
+  /* Border Radius */
+  --border-radius-sm: 3px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 16px;
 }
 
 * {
@@ -14,32 +34,182 @@ html, body, #app {
   font-family: "Montserrat", sans-serif;
 }
 
-/* Shared dropdown styles for schedule and results selection */
+/* ========================================================================
+   Utility Classes
+   ======================================================================== */
+
+/* Flexbox utilities */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gap-xs { gap: var(--spacing-xs); }
+.gap-sm { gap: var(--spacing-sm); }
+.gap-md { gap: var(--spacing-md); }
+.gap-lg { gap: var(--spacing-lg); }
+.gap-xl { gap: var(--spacing-xl); }
+
+/* ========================================================================
+   Component Patterns
+   ======================================================================== */
+
+/* Common header/panel styling */
+.card-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-xl);
+  border-bottom: 1px solid var(--p-surface-border);
+  background: var(--p-surface-card);
+  flex-shrink: 0;
+  box-shadow: var(--p-shadow-sm);
+}
+
+.card-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  font-size: var(--font-size-md);
+}
+
+/* ========================================================================
+   PrimeVue Component Overrides
+   ======================================================================== */
+
+/* Dropdown/Select styling */
 .dropdown-small {
-  flex: 1;
+  width: 250px;
   max-width: 250px;
 }
 
 .dropdown-small :deep(.p-select-option) {
-  font-size: 0.75rem;
+  font-size: var(--font-size-sm);
 }
 
 .dropdown-small :deep(.p-select-label) {
-  font-size: 0.75rem;
+  font-size: var(--font-size-sm);
 }
 
-/* Dropdown option text */
+/* Empty state styling for dropdowns */
+:deep(.p-select-empty-message),
+:deep(.p-multiselect-empty-message) {
+  font-size: var(--font-size-sm) !important;
+  padding: var(--spacing-md);
+}
+
+/* Constrain dropdown overlay panels */
+:deep(.p-select-overlay),
+:deep(.p-multiselect-overlay) {
+  max-width: 350px;
+}
+
 .dropdown-option {
-  font-size: 0.75rem;
+  font-size: var(--font-size-sm);
 }
 
-/* Dropdown option group header */
 .dropdown-option-group {
-  font-size: 0.75rem;
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
-/* Small input text */
+/* MultiSelect styling */
+:deep(.dropdown-small.p-multiselect) {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+:deep(.dropdown-small.p-multiselect .p-multiselect-label) {
+  padding: 0 !important;
+}
+
+:deep(.dropdown-small.p-multiselect .p-multiselect-trigger) {
+  width: 2rem;
+  padding: var(--spacing-sm);
+}
+
+/* Button styling */
+:deep(.p-button) {
+  min-width: 2rem;
+  min-height: 2rem;
+  font-size: var(--font-size-md);
+}
+
+/* Chip styling */
+:deep(.p-chip),
+:deep(.dropdown-small .p-chip) {
+  padding: 0.25rem 0.5rem !important;
+  font-size: var(--font-size-xs) !important;
+  margin: 0.25rem !important;
+  line-height: 1 !important;
+}
+
+/* Input styling */
 .input-small {
-  font-size: 0.75rem !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+/* ========================================================================
+   Loading States
+   ======================================================================== */
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--p-overlay-ground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(1px);
+}
+
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xl);
+  padding: var(--spacing-2xl);
+  border-radius: var(--border-radius-md);
+  background: var(--p-surface-card);
+  box-shadow: var(--p-shadow-lg);
+}
+
+.loading-text {
+  font-size: var(--font-size-md);
+  color: var(--p-text-color);
+  font-weight: 500;
+}
+
+/* ========================================================================
+   Chip Containers
+   ======================================================================== */
+
+.chip-container {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.chip {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-lg);
+  font-size: var(--font-size-xs);
+  border: 1px solid;
+  line-height: 1;
+  display: inline-block;
+  white-space: nowrap;
 }

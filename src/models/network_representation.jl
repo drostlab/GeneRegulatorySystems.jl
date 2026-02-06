@@ -216,6 +216,9 @@ entity(f!::Primitive; kw...) = entity(f!.f!; kw...)
 
 entity(f!::Wrapped; kw...) = entity(f!.definition, f!; kw...)
 
+# TODO include more info here?
+entity(f!::Instant; kw...) = Entity(kind=:instant, name=:instant)
+
 # simply descend if custom entity not implemented for the definition
 # ? maybe we should create nested entities here to tag with information from higher level models?
 entity(definition, f!::Wrapped; kw...) = entity(f!.model; kw...)

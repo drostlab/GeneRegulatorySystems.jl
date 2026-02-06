@@ -6,8 +6,8 @@
 import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { useScheduleStore } from '@/stores/scheduleStore'
 import { convertToElements, getDefaultStyles, getDefaultLayout } from '@/composables/useCytoscapeRenderer'
-import { useNetworkDynamics } from '@/composables/useNetworkDynamics'
 import { useAdaptiveZoom } from '@/composables/useAdaptiveZoom'
+import ProgressSpinner from 'primevue/progressspinner'
 import cytoscape from 'cytoscape'
 // @ts-ignore
 import fcose from 'cytoscape-fcose'
@@ -18,7 +18,6 @@ const containerRef = ref<HTMLDivElement>()
 const cy = ref<cytoscape.Core | null>(null)
 const store = useScheduleStore()
 
-useNetworkDynamics(cy)
 
 let cleanupAdaptiveZoom: (() => void) | null = null
 
@@ -28,7 +27,7 @@ function renderNetwork() {
     const startTime = performance.now()
     console.debug('Starting network render')
     
-    if (!store.isValid || !store.schedule.data) return
+    if (!store.schedule.data) return
 
     const network = store.schedule.data.network
     if (!network) return
@@ -62,7 +61,7 @@ function renderNetwork() {
         userZoomingEnabled: true,
         boxSelectionEnabled: false,
         selectionType: 'single'
-    })
+    } as any)
     console.debug(`Cytoscape init took ${(performance.now() - cyStart).toFixed(2)}ms`)
 
     // Grid background
@@ -76,7 +75,6 @@ function renderNetwork() {
     
     // Fit viewport after layout
     fitZoomTimeout = setTimeout(() => {
-        const layoutCompleteTime = performance.now()
         console.debug('Layout complete, applying fit and zoom')
         
         if (cy.value && cy.value.nodes().length > 0) {
@@ -125,9 +123,9 @@ watch(() => store.isLoading, (isLoading) => {
     <div class="network-diagram-container">
         <div ref="containerRef" class="cytoscape-container" />
         <div v-if="store.isLoading" class="loading-overlay">
-            <div class="loading-content">
+            <div class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading schedule...</div>
-                <div class="spinner" />
             </div>
         </div>
     </div>
@@ -146,41 +144,5 @@ watch(() => store.isLoading, (isLoading) => {
     height: 100%;
     position: absolute;
     inset: 0;
-}
-
-.loading-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: rgba(255, 255, 255, 0.9);
-    z-index: 10;
-}
-
-.loading-content {
-    text-align: center;
-}
-
-.loading-text {
-    font-size: 18px;
-    color: #333;
-    margin-bottom: 16px;
-}
-
-.spinner {
-    display: inline-block;
-    width: 40px;
-    height: 40px;
-    border: 4px solid #e0e0e0;
-    border-top-color: #333;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
 }
 </style>

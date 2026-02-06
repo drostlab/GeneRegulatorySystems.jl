@@ -54,10 +54,10 @@ export async function pollResult(resultId: string): Promise<SimulationResultMeta
 /**
  * Run a simulation with the provided schedule name and JSON
  * Accepts schedule specification as JSON instead of loading from stored schedules
- * Returns simulation result metadata (result will be streamed via WebSocket)
+ * Returns full simulation result with all frames (synchronous)
  */
-export async function runSimulation(scheduleName: string, scheduleJson: string): Promise<SimulationResultMetadata> {
-    const response = await apiFetchJson<SimulationResultMetadata>('/simulations/run', {
+export async function runSimulation(scheduleName: string, scheduleJson: string): Promise<SimulationResult> {
+    const response = await apiFetchJson<SimulationResult>('/simulations/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -67,7 +67,7 @@ export async function runSimulation(scheduleName: string, scheduleJson: string):
     })
 
     if (!response.id) {
-        throw new Error('Server did not return result metadata')
+        throw new Error('Server did not return result')
     }
 
     return response

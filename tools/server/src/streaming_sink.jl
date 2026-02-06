@@ -230,10 +230,10 @@ end
 Internal: convert events to frames and stream via WebSocket.
 
 Groups events by (episode_i, time), reconstructs frames, and sends
-as a single WebSocket message.
+via WebSocket if client is connected.
 """
 function _convert_and_stream_frames(sink::StreamingSimulationSink, events::NamedTuple)
-    isnothing(sink.ws_client) && (@debug "[StreamingSink] No WebSocket client connected"; return)
+    isnothing(sink.ws_client) && (@debug "[StreamingSink] No WebSocket client; skipping frame conversion"; return)
 
     # Group events by (episode_i, time)
     events_by_state = Dict{Tuple{Int, Float64}, Vector}()

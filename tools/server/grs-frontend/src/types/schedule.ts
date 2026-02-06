@@ -1,6 +1,28 @@
 import type { Network } from './network'
 
 /**
+ * Species types in the regulatory network
+ */
+export const SPECIES_TYPES = ['active', 'elongations', 'premrnas', 'rnas', 'proteins'] as const
+export type SpeciesType = typeof SPECIES_TYPES[number]
+
+/**
+ * Default species types to display
+ */
+export const DEFAULT_VISIBLE_SPECIES_TYPES: SpeciesType[] = ['active', 'rnas', 'proteins']
+
+/**
+ * Display labels for species types
+ */
+export const speciesTypeLabels: Record<SpeciesType, string> = {
+    'active': 'Promoters',
+    'elongations': 'Elongations',
+    'premrnas': 'Pre-mRNAs',
+    'rnas': 'RNAs',
+    'proteins': 'Proteins'
+}
+
+/**
  * Schedule represents a specification loaded for visualization and editing.
  * It contains the specification in two forms:
  * - data: ScheduleData (reified specification structure for visualization)
@@ -19,11 +41,11 @@ export interface TimelineSegment {
     path: string
     from: number
     to: number
-    bindings?: Record<string, unknown>
+    label: string
 }
 
 export interface ScheduleVisMetadata {
-    geneColours: Record<string, string>
+    gene_colours: Record<string, string>
 }
 
 /**
@@ -32,7 +54,8 @@ export interface ScheduleVisMetadata {
 export interface ScheduleData {
     network: Network
     segments: TimelineSegment[]
-    visMetadata: ScheduleVisMetadata 
+    vis_metadata: ScheduleVisMetadata
+    species_gene_mapping: Record<string, string>
 }
 
 /**
@@ -46,7 +69,7 @@ export function extractAllGeneIds(data: ScheduleData): string[] {
     if (data.network?.nodes) {
         for (const node of data.network.nodes) {
             if (node.kind === 'gene') {
-                allGenes.add(node.id)
+                allGenes.add(node.name)
             }
         }
     }
@@ -54,34 +77,7 @@ export function extractAllGeneIds(data: ScheduleData): string[] {
     return Array.from(allGenes).sort()
 }
 
-/**
- * Colour palette for genes (20+ distinct colours)
- */
-export const GENE_COLOUR_PALETTE: string[] = [
-    '#E41A1C', '#FF7F00', '#4DAF4A', '#984EA3', '#377EB8',
-    '#A65628', '#F781BF', '#999999', '#66C2A5', '#FC8D62',
-    '#8DA0CB', '#E78AC3', '#A6D854', '#FFD92F', '#E5C494',
-    '#B3B3B3', '#FB8072', '#80B1D3', '#FDB462', '#B3DE69'
-]
 
-/**
- * Generate default visualization metadata from schedule data
- * Extracts all unique genes from segments and assigns colours deterministically
- * @param data - Schedule data with segments
- * @returns Default visualization metadata with gene colours
- */
-export function generateDefaultVisMetadata(data: ScheduleData): ScheduleVisMetadata {
-    const geneList = extractAllGeneIds(data)
-    const geneColours: Record<string, string> = {}
-    
-    // assign gene colours
-    for (let i = 0; i < geneList.length; i++) {
-        const colour = GENE_COLOUR_PALETTE[i % GENE_COLOUR_PALETTE.length]
-        geneColours[geneList[i]!] = colour ?? '#999999'
-    }
-    
-    return { geneColours }
-}
 
 export const VALID_SCHEDULE_SOURCES = ['examples', 'user', 'snapshot'] as const;
 export type ScheduleSource = typeof VALID_SCHEDULE_SOURCES[number];
@@ -144,6 +140,40 @@ export function extractPaths(segments: TimelineSegment[]): string[] {
 }
 
 /**
+ * Group segments by their path prefix (before the final index)
+ * Segments with the same prefix (e.g., all "++/1", "++/3", "++/4") share a track
+ * The prefix determines grouping: "-" means sequential, "/" means branched
+ */
+function buildTemporalChains(segments: TimelineSegment[]): Map<string, number> {
+    const pathToTrack = new Map<string, number>()
+    const prefixToTrack = new Map<string, number>()
+    let nextTrackIndex = 0
+
+    // Sort by first appearance
+    const seen = new Set<string>()
+    const ordered = segments.filter(s => {
+        if (seen.has(s.path)) return false
+        seen.add(s.path)
+        return true
+    })
+
+    for (const segment of ordered) {
+        // Extract prefix by removing trailing digits/separators
+        // E.g., "++/1" → "++/", "++/3" → "++/", "++-1" → "++-"
+        const prefix = segment.path.replace(/(-|\/)\d+$/, '$1')
+
+        if (!prefixToTrack.has(prefix)) {
+            prefixToTrack.set(prefix, nextTrackIndex++)
+        }
+
+        const trackIndex = prefixToTrack.get(prefix)!
+        pathToTrack.set(segment.path, trackIndex)
+    }
+
+    return pathToTrack
+}
+
+/**
  * Build mapping of execution path to track index (y-position)
  * Each unique path gets a track number based on order of first appearance in segments
  * Used for positioning bands vertically - each execution path gets its own row
@@ -151,12 +181,7 @@ export function extractPaths(segments: TimelineSegment[]): string[] {
  * @returns Map of path ID → track index (0, 1, 2, ...)
  */
 export function buildPathToTrackMap(segments: TimelineSegment[]): Map<string, number> {
-    const pathToTrack = new Map<string, number>()
-    const paths = extractPaths(segments)
-    for (let i = 0; i < paths.length; i++) {
-        pathToTrack.set(paths[i], i)
-    }
-    return pathToTrack
+    return buildTemporalChains(segments)
 }
 
 /**
@@ -167,10 +192,51 @@ export function isValidPath(paths: string[], path: string): boolean {
 }
 
 /**
+ * Timeline segment for visualization on schedule track
+ * Represents a single segment's display properties for rendering
+ */
+export interface ScheduleSegmentDisplay {
+    path: string
+    from: number
+    to: number
+    label: string
+    isInstant: boolean  // from === to
+    colour: string
+    trackIndex: number  // Y-position (0 = first path, 1 = second path, etc.)
+}
+
+/**
  * Get the first available path from segments
  */
 export function getFirstPath(segments: TimelineSegment[]): string | null {
     const paths = extractPaths(segments)
     return paths[0] ?? null
+}
+
+/**
+ * Convert schedule segments to display data for timeline visualization
+ * Creates one display entry per segment with colour based on type (instant vs non-instant)
+ * 
+ * @param segments Timeline segments from schedule
+ * @returns Array of ScheduleSegmentDisplay for timeline rendering
+ */
+export function convertSegmentsToDisplayData(segments: TimelineSegment[]): ScheduleSegmentDisplay[] {
+    const pathToTrack = buildPathToTrackMap(segments)
+
+    return segments.map(segment => {
+        const isInstant = segment.from === segment.to
+        const trackIndex = pathToTrack.get(segment.path) ?? 0
+        const colour = isInstant ? '#e45649' : '#50a14f'  // Red for instant, green for non-instant
+
+        return {
+            path: segment.path,
+            from: segment.from,
+            to: segment.to,
+            label: segment.label,
+            isInstant,
+            colour,
+            trackIndex
+        }
+    })
 }
 

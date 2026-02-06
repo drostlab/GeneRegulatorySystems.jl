@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Schedule} from '@/types/schedule'
 import * as scheduleService from '@/services/scheduleService'
-import { computeScheduleKey } from '@/types/schedule'
+import { computeScheduleKey, extractAllGeneIds } from '@/types/schedule'
 
 export const useScheduleStore = defineStore(
     'schedule',
@@ -32,7 +32,9 @@ export const useScheduleStore = defineStore(
          */
         const isLoading = ref<boolean>(false)
 
-        const geneColours = computed(() => schedule.value.data?.visMetadata.geneColours ?? null)
+        const allGenes = computed(() => schedule.value.data ? extractAllGeneIds(schedule.value.data) : null)
+
+        const geneColours = computed(() => schedule.value.data?.vis_metadata.gene_colours ?? null)
 
         /**
          * Timeline segments from running schedule. Empty if no schedule loaded.
@@ -41,10 +43,7 @@ export const useScheduleStore = defineStore(
          */
         const segments = computed(() => schedule.value.data?.segments || [])
 
-        /**
-         * Checks whether the schedule data is valid (loaded)
-         */
-        const isValid = computed(() => schedule.value.data !== null)
+        const isLoaded = computed(() => schedule.value.data !== null)
 
         async function loadScheduleByKey(key: string): Promise<Schedule> {
             const startTime = performance.now()
@@ -64,6 +63,19 @@ export const useScheduleStore = defineStore(
                 const assignStart = performance.now()
                 schedule.value = res
                 console.debug(`[ScheduleStore] Store assignment took ${(performance.now() - assignStart).toFixed(2)}ms`)
+                console.debug(`[ScheduleStore] Schedule loaded:`, res)
+                
+                // Log vis_metadata for debugging gene colors
+                if (res.data) {
+                    if (res.data.vis_metadata) {
+                        console.debug(`[ScheduleStore] Schedule vis_metadata:`, res.data.vis_metadata)
+                        console.debug(`[ScheduleStore] Gene colours:`, res.data.vis_metadata.gene_colours)
+                    } else {
+                        console.warn(`[ScheduleStore] No vis_metadata found in schedule data`)
+                    }
+                } else {
+                    console.warn(`[ScheduleStore] No data found in schedule`)
+                }
                 
                 console.debug(`[ScheduleStore] Total loadScheduleByKey time: ${(performance.now() - startTime).toFixed(2)}ms`)
                 return schedule.value
@@ -114,9 +126,10 @@ export const useScheduleStore = defineStore(
             scheduleKey,
             scheduleMessages,
             isLoading,
+            allGenes,
             geneColours,
             segments,
-            isValid,
+            isLoaded,
             loadScheduleByKey,
             loadScheduleBySpec
         }

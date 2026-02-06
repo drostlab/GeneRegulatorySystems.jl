@@ -10,6 +10,7 @@ module ScheduleVisualization
 
 using GeneRegulatorySystems
 using GeneRegulatorySystems.Models
+using GeneRegulatorySystems.Models: Wrapped, Instant, Label, Descriptions
 using GeneRegulatorySystems.Models.Scheduling
 using GeneRegulatorySystems.Models.NetworkRepresentation
 using GeneRegulatorySystems.Specifications
@@ -40,10 +41,10 @@ export reify_schedule, extract_network, is_valid, get_error_messages
 Visualization metadata for schedule rendering.
 
 # Fields
-- `geneColours::Dict{String, String}`: Maps gene name to hex colour string
+- `gene_colours::Dict{String, String}`: Maps gene name to hex colour string
 """
 @kwdef struct ScheduleVisMetadata
-    geneColours::Dict{String, String} = Dict{String, String}()
+    gene_colours::Dict{String, String} = Dict{String, String}()
 end
 
 """
@@ -71,13 +72,13 @@ Execution segment within a schedule's timeline.
 - `path::String`: Unique execution path identifier
 - `from::Float64`: Start time
 - `to::Float64`: End time
-- `bindings::Dict{String, Any}`: Parameter bindings during this segment
+- `label::String`: Label of the executed model
 """
 @kwdef struct TimelineSegment
     path::String
     from::Float64
     to::Float64
-    bindings::Dict{String, Any} = Dict()
+    label::String
 end
 
 """
@@ -85,18 +86,20 @@ end
 
 Complete visualization schema for schedule execution.
 
-Contains network shared across all segments, execution timeline, and visualization metadata.
-Maps one-to-one to TypeScript ScheduleData for frontend visualization.
+Contains network shared across all segments, execution timeline, visualization metadata,
+and species-to-gene mapping. Maps one-to-one to TypeScript ScheduleData for frontend visualization.
 
 # Fields
 - `network::Network`: Shared network (nodes and links) across all segments
 - `segments::Vector{TimelineSegment}`: Execution timeline (one per execution path)
-- `visMetadata::ScheduleVisMetadata`: Visualization configuration (gene colours, etc.)
+- `vis_metadata::ScheduleVisMetadata`: Visualization configuration (gene colours, etc.)
+- `species_gene_mapping::Dict{Symbol, Symbol}`: Maps species ID to gene name
 """
 @kwdef struct ScheduleData
     network::Network
     segments::Vector{TimelineSegment}
-    visMetadata::ScheduleVisMetadata = ScheduleVisMetadata()
+    vis_metadata::ScheduleVisMetadata = ScheduleVisMetadata()
+    species_gene_mapping::Dict{Symbol, Symbol} = Dict{Symbol, Symbol}()
 end
 
 # ============================================================================
@@ -132,6 +135,7 @@ visualization-ready form with validation.
 - `source::String`: Source location - \"examples\", \"user\", or \"snapshot\"
 - `spec::String`: Original schedule specification as JSON string
 - `data::Union{ScheduleData, Nothing}`: Parsed visualization data (null if parsing failed)
+- `species_gene_mapping::Dict{Symbol, Union{Symbol, Nothing}}`: Maps species ID (as Symbol) to gene name (as Symbol), or null if not found
 - `validationMessages::Vector{ValidationMessage}`: Validation errors, warnings, and info messages
 """
 @kwdef struct ReifiedSchedule
@@ -139,6 +143,7 @@ visualization-ready form with validation.
     source::String  # \"examples\", \"user\", or \"snapshot\"
     spec::String
     data::Union{ScheduleData, Nothing} = nothing
+    species_gene_mapping::Dict{Symbol, Symbol} = Dict{Symbol, Symbol}()
     validationMessages::Vector{ValidationMessage} = ValidationMessage[]
 end
 
@@ -195,13 +200,13 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
                 vis_data = generate_vis_data(grs_schedule, name)
                 vis_time = time() - vis_start
                 @info "Schedule visualization generated" name source vis_time segments=length(vis_data.segments)
-                vis_metadata = isempty(vis_data.visMetadata.geneColours) ?
+                vis_metadata = isempty(vis_data.vis_metadata.gene_colours) ?
                     generate_default_vis_metadata(vis_data) :
-                    vis_data.visMetadata
+                    vis_data.vis_metadata
                 visualization = ScheduleData(
                     network = vis_data.network,
                     segments = vis_data.segments,
-                    visMetadata = vis_metadata
+                    vis_metadata = vis_metadata
                 )
             catch e
                 push!(validation_messages, ValidationMessage(
@@ -290,6 +295,25 @@ function extract_network(schedule::Scheduling.Schedule)
 end
 
 # ============================================================================
+# Internal: Label Extraction
+# ============================================================================
+
+_label(wrapped::Models.Wrapped) = _label(Models.describe(wrapped.definition))
+
+_label(label::Models.Label) = label.label
+
+_label(model::Models.Instant) = repr(model)
+
+function _label(desc::Descriptions)
+    i = findfirst(d -> d isa Label, desc.descriptions)
+    if i !== nothing
+        _label(desc.descriptions[i])
+    else
+        ""
+    end
+end
+
+# ============================================================================
 # Internal: Visualization Generation
 # ============================================================================
 
@@ -315,10 +339,14 @@ function generate_vis_data(grs_schedule, label::String="")::ScheduleData
         @warn "Timeline continuity issues detected: $(join(errors, "; "))"
     end
 
+    # Extract species → gene mapping from network
+    species_gene_mapping = _extract_species_gene_mapping(network)
+
     return ScheduleData(
         network = network,
         segments = segments,
-        visMetadata = ScheduleVisMetadata()
+        vis_metadata = ScheduleVisMetadata(),
+        species_gene_mapping = species_gene_mapping
     )
 end
 
@@ -348,7 +376,7 @@ function generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetad
         end
     end
 
-    return ScheduleVisMetadata(geneColours = gene_colours)
+    return ScheduleVisMetadata(gene_colours = gene_colours)
 end
 
 # ============================================================================
@@ -419,8 +447,8 @@ function _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple
     end
 
     for (idx, segment) in enumerate(segments)
-        if segment.from >= segment.to
-            push!(errors, "Segment $idx: invalid time range from=$(segment.from) to=$(segment.to)")
+        if segment.from > segment.to
+            push!(errors, "Segment $idx: invalid time range from=$(segment.from) to=$(segment.to) (from cannot be greater than to)")
         end
     end
 
@@ -453,52 +481,46 @@ end
 
 Create timeline segments and extract shared network from schedule via dryrun.
 
+Combines network extraction with segment collection in single dryrun pass.
 Extracts network entity from first dynamic primitive, flattens it once, and creates
-lightweight timeline segments for all execution intervals.
+timeline segments for all execution intervals (including instant ones).
+Merges consecutive segments with the same path and label.
 
 # Returns
-- `Tuple{Network, Vector{TimelineSegment}}`: Shared network and timeline segments
+- `Tuple{Network, Vector{TimelineSegment}}`: Shared network and merged timeline segments
 """
 function _build_timeline_segments(grs_schedule)::Tuple{Network, Vector{TimelineSegment}}
+    network_entity = nothing
     segments_data = []
 
-    # Dryrun callback that collects segment timing and primitives
-    function collect_segments(primitive!, x, Δt; path, _...)
-        if !(isfinite(Δt) && Δt > 0.0)
-            return
+    # Combined dryrun callback for network extraction and segment collection
+    function collect_data(primitive!, x, Δt; path, _...)
+        # Extract network from first finite-duration primitive
+        if network_entity === nothing && isfinite(Δt) && Δt > 0.0
+            network_entity = NetworkRepresentation.entity(primitive!)
         end
 
-        model = primitive!.f!
-        while model isa Models.Wrapped
-            model = model.model
-        end
-
-        if !(model isa Models.Instant)
-            push!(segments_data, (path = path, from = x.t, to = x.t + Δt, primitive = primitive!))
-        end
+        # Collect all segments (including instant ones)
+        label = _label(primitive!.f!.model)
+        push!(segments_data, (path = path, from = x.t, to = x.t + Δt, label = label))
     end
 
     # Run dryrun to traverse schedule
     @debug "build_timeline_segments: Starting dryrun"
     try
         state = Models.FlatState()
-        grs_schedule(state; dryrun = collect_segments)
+        grs_schedule(state; dryrun = collect_data)
     catch e
         @debug "build_timeline_segments: Dryrun caught error: $(typeof(e)) - $(e)"
     end
 
     @debug "build_timeline_segments: Collected $(length(segments_data)) raw segments"
 
-    if isempty(segments_data)
-        return TimelineSegment[]
-    end
-
-    # Extract network entity from first primitive
-    network_entity = NetworkRepresentation.entity(segments_data[1].primitive)
-
-    if network_entity === nothing
-        @debug "build_timeline_segments: Could not extract network entity from first primitive"
-        return TimelineSegment[]
+    if isempty(segments_data) || network_entity === nothing
+        if network_entity === nothing
+            @debug "build_timeline_segments: Could not extract network entity from schedule"
+        end
+        return (Network(nodes=NetworkRepresentation.Node[], links=NetworkRepresentation.Link[]), TimelineSegment[])
     end
 
     @debug "build_timeline_segments: Extracted network entity with $(length(network_entity.nodes)) child nodes"
@@ -508,18 +530,101 @@ function _build_timeline_segments(grs_schedule)::Tuple{Network, Vector{TimelineS
     flat_network = Network(nodes=nodes_flat, links=links_flat)
     @debug "build_timeline_segments: Flattened network has $(length(flat_network.nodes)) nodes and $(length(flat_network.links)) links"
 
-    # Create TimelineSegments from collected data without embedding network
+    # Create TimelineSegments from collected data
     segments = [
         TimelineSegment(
             path = data.path,
             from = data.from,
             to = data.to,
-            bindings = Dict()
+            label = data.label
         )
         for data in segments_data
     ]
 
-    return (flat_network, segments)
+    # Merge consecutive segments with same path and label
+    merged_segments = _merge_timeline_segments(segments)
+    @debug "build_timeline_segments: Merged $(length(segments)) segments into $(length(merged_segments)) segments"
+
+    return (flat_network, merged_segments)
+end
+
+"""
+    _extract_species_gene_mapping(network::Network)::Dict{Symbol, Union{Symbol, Nothing}}
+
+Extract mapping from species IDs to gene names from the network.
+
+For each species node, looks up its parent and checks if it's a gene.
+Returns a dict where key is the species ID (as Symbol) and value is the gene name (as Symbol) or nothing if parent is not a gene.
+"""
+function _extract_species_gene_mapping(network::Network)::Dict{Symbol, Symbol}
+    mapping = Dict{Symbol, Symbol}()
+
+    gene_names = Set(n.name for n in filter(n -> n.kind == :gene, network.nodes))
+
+    # For each species, check if parent is a gene
+    species_nodes = filter(n -> n.kind == :species, network.nodes)
+    for node in species_nodes
+        species_id = node.name
+
+        if node.parent !== nothing && node.parent in gene_names
+            mapping[species_id] = node.parent
+        end
+    end
+
+    return mapping
+end
+
+"""
+    _merge_timeline_segments(segments::Vector{TimelineSegment})::Vector{TimelineSegment}
+
+Merge all segments with the same path into a single segment per path.
+
+Groups segments by path, then for each path creates a single merged segment with:
+- `from`: minimum time across all segments on that path
+- `to`: maximum time across all segments on that path
+- `label`: the common label (asserts all labels in a path group are identical)
+
+Returns merged segments in order of appearance by path.
+"""
+function _merge_timeline_segments(segments::Vector{TimelineSegment})::Vector{TimelineSegment}
+    if isempty(segments)
+        return TimelineSegment[]
+    end
+
+    # Group segments by path
+    path_groups = Dict{String, Vector{TimelineSegment}}()
+    path_order = String[]
+
+    for seg in segments
+        if !haskey(path_groups, seg.path)
+            path_groups[seg.path] = TimelineSegment[]
+            push!(path_order, seg.path)
+        end
+        push!(path_groups[seg.path], seg)
+    end
+
+    # Merge each path group
+    merged = TimelineSegment[]
+    for path in path_order
+        group = path_groups[path]
+
+        # Assert all labels are the same within the group
+        labels = unique(seg.label for seg in group)
+        @assert length(labels) == 1 "Path '$path' has multiple labels: $(labels)"
+
+        label = labels[1]
+        from = minimum(seg.from for seg in group)
+        to = maximum(seg.to for seg in group)
+
+        push!(merged, TimelineSegment(
+            path = path,
+            from = from,
+            to = to,
+            label = label
+        ))
+    end
+
+    return merged
 end
 
 end # module ScheduleVisualization

@@ -42,9 +42,9 @@ export async function loadScheduleFromKey(key: string): Promise<Schedule> {
         
         if (schedule.data) {
             const networkParseStart = performance.now()
-            const nodeCount = schedule.data.segments.reduce((sum, seg) => sum + (seg.network?.nodes?.length || 0), 0)
-            const linkCount = schedule.data.segments.reduce((sum, seg) => sum + (seg.network?.links?.length || 0), 0)
-            console.debug(`[ScheduleService] Schedule has ${schedule.data.segments.length} segments, ${nodeCount} total nodes, ${linkCount} total links`)
+            const nodeCount = schedule.data.network?.nodes?.length || 0
+            const linkCount = schedule.data.network?.links?.length || 0
+            console.debug(`[ScheduleService] Schedule has ${schedule.data.segments.length} segments, ${nodeCount} nodes, ${linkCount} links`)
             console.debug(`[ScheduleService] Network data parsing took ${(performance.now() - networkParseStart).toFixed(2)}ms`)
         }
         
@@ -82,9 +82,9 @@ export async function loadScheduleFromSpec(spec: string, name: string): Promise<
         console.debug(`[ScheduleService] API processing took ${(performance.now() - fetchStart).toFixed(2)}ms`)
         
         if (schedule.data) {
-            const nodeCount = schedule.data.segments.reduce((sum, seg) => sum + (seg.network?.nodes?.length || 0), 0)
-            const linkCount = schedule.data.segments.reduce((sum, seg) => sum + (seg.network?.links?.length || 0), 0)
-            console.debug(`[ScheduleService] Generated ${schedule.data.segments.length} segments, ${nodeCount} total nodes, ${linkCount} total links`)
+            const nodeCount = schedule.data.network?.nodes?.length || 0
+            const linkCount = schedule.data.network?.links?.length || 0
+            console.debug(`[ScheduleService] Generated ${schedule.data.segments.length} segments, ${nodeCount} nodes, ${linkCount} links`)
         }
         
         console.debug(`[ScheduleService] Total spec load time: ${(performance.now() - startTime).toFixed(2)}ms`)

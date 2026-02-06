@@ -21,4 +21,3 @@ export interface Network {
     links: Link[]
 }
 
-    const elements: any[] = []

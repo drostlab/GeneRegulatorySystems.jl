@@ -23,7 +23,7 @@ import HTTP: send
 # Re-export SimulationFrame from StreamingSink
 export SimulationFrame, SimulationData, SimulationResultMetadata, SimulationResult
 export update_result_metadata, load_result_metadata, load_result, list_results, delete_result,
-       get_result_path, load_frames_from_result, results_dir
+       get_result_path, load_timeseries_from_result, results_dir
 
 # ============================================================================
 # Types
@@ -35,13 +35,15 @@ const SimulationFrame = StreamingSink.SimulationFrame
 """
     SimulationData
 
-Container for simulation frame data.
+Container for simulation timeseries data.
 
 # Fields
-- `frames::Vector{SimulationFrame}`: Collected simulation frames in execution order
+- `timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}`:
+  Timeseries data nested by species symbol → execution path → [(time, count), ...]
+  Each path's timeseries is sorted by time.
 """
 @kwdef struct SimulationData
-    frames::Vector{SimulationFrame} = SimulationFrame[]
+    timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}} = Dict()
 end
 
 """
@@ -427,10 +429,8 @@ Returns nothing if result not found.
 function load_result(simulation_id::String)::Union{SimulationResult, Nothing}
     metadata = load_result_metadata(simulation_id)
     isnothing(metadata) && return nothing
-    frames = load_frames_from_result(metadata.path)
-    return SimulationResult(metadata, data = SimulationData(frames = frames))
-
-    return result
+    timeseries = load_timeseries_from_result(metadata.path)
+    return SimulationResult(metadata, data = SimulationData(timeseries = timeseries))
 end
 
 # ============================================================================
@@ -503,19 +503,92 @@ end
 # ============================================================================
 
 """
-    _load_path_mapping(result_path::String)::Dict{Int, String}
+    load_timeseries_from_result(result_path::String)::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
 
-Load episode index to path mapping from index.arrow.
+Load and convert events from Arrow files to timeseries format.
 
-Returns empty dict if index.arrow not found or can't be read.
+Groups events by species → path and returns a nested dictionary where each
+path's timeseries is a sorted vector of (time, count) tuples.
 """
-function _load_path_mapping(result_path::String)::Dict{Int, String}
+function load_timeseries_from_result(result_path::String)::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
+    timeseries = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
+
+    if !isdir(result_path)
+        @warn "Result directory not found" result_path
+        return timeseries
+    end
+
+    # Load path mapping and time bounds from index.arrow
+    (i_to_path, path_time_bounds) = _load_index_mapping(result_path)
+
+    # Look for events*.stream.arrow files
+    for file in readdir(result_path)
+        if startswith(file, "events") && endswith(file, ".stream.arrow")
+            events_file = joinpath(result_path, file)
+
+            events_table = Arrow.Table(events_file)
+
+            # Group events by (species_symbol, execution_path)
+            for (i, t, name, value) in zip(events_table.i, events_table.t, events_table.name, events_table.value)
+                path = get(i_to_path, i, string(i))
+                species_symbol = name  # name is already a Symbol from Arrow
+
+                if !haskey(timeseries, species_symbol)
+                    timeseries[species_symbol] = Dict{String, Vector{Tuple{Float64, Int}}}()
+                end
+                if !haskey(timeseries[species_symbol], path)
+                    timeseries[species_symbol][path] = Tuple{Float64, Int}[]
+                end
+                push!(timeseries[species_symbol][path], (t, value))
+            end
+        end
+    end
+
+    # Sort each timeseries by time
+    for species in values(timeseries)
+        for path_data in values(species)
+            sort!(path_data; by = x -> x[1])
+        end
+    end
+
+    # Add artificial final timepoint at the end of each path
+    for species_symbol in keys(timeseries)
+        for path in keys(timeseries[species_symbol])
+            if !isempty(timeseries[species_symbol][path])
+                _, max_time = get(path_time_bounds, path, (0.0, 0.0))
+                if max_time > 0.0
+                    last_time, last_count = timeseries[species_symbol][path][end]
+                    if last_time < max_time
+                        push!(timeseries[species_symbol][path], (max_time, last_count))
+                    end
+                end
+            end
+        end
+    end
+
+    @info "Converted to timeseries" result_path series_count=length(timeseries)
+    return timeseries
+end
+
+"""
+    _load_index_mapping(result_path::String)::Tuple{Dict{Int, String}, Dict{String, Tuple{Float64, Float64}}}
+
+Load episode index to path mapping from index.arrow and time bounds from events.
+
+Returns:
+- `i_to_path::Dict{Int, String}`: Maps episode index to execution path
+- `path_time_bounds::Dict{String, Tuple{Float64, Float64}}`: Maps path to (min_time, max_time)
+
+Returns empty dicts if files not found or can't be read.
+"""
+function _load_index_mapping(result_path::String)::Tuple{Dict{Int, String}, Dict{String, Tuple{Float64, Float64}}}
     i_to_path = Dict{Int, String}()
+    path_time_bounds = Dict{String, Tuple{Float64, Float64}}()
 
     index_file = joinpath(result_path, "index.arrow")
     if !isfile(index_file)
         @debug "No index.arrow found" result_path
-        return i_to_path
+        return (i_to_path, path_time_bounds)
     end
 
     index_table = Arrow.Table(index_file)
@@ -526,7 +599,26 @@ function _load_path_mapping(result_path::String)::Dict{Int, String}
     end
     @debug "Loaded path mapping from index" result_path path_count=length(i_to_path)
 
-    return i_to_path
+    # Extract time bounds for each path from events files
+    for file in readdir(result_path)
+        if startswith(file, "events") && endswith(file, ".stream.arrow")
+            events_file = joinpath(result_path, file)
+            events_table = Arrow.Table(events_file)
+
+            for (i, t) in zip(events_table.i, events_table.t)
+                path = get(i_to_path, i, string(i))
+                if !haskey(path_time_bounds, path)
+                    path_time_bounds[path] = (t, t)
+                else
+                    min_t, max_t = path_time_bounds[path]
+                    path_time_bounds[path] = (min(min_t, t), max(max_t, t))
+                end
+            end
+        end
+    end
+    @debug "Extracted time bounds" result_path path_count=length(path_time_bounds)
+
+    return (i_to_path, path_time_bounds)
 end
 
 # ============================================================================
@@ -562,8 +654,8 @@ function load_frames_from_result(result_path::String)::Vector{SimulationFrame}
         return frames
     end
 
-    # Load path mapping from index.arrow
-    i_to_path = _load_path_mapping(result_path)
+    # Load path mapping and time bounds from index.arrow
+    (i_to_path, _) = _load_index_mapping(result_path)
 
     # Look for events*.stream.arrow files
     for file in readdir(result_path)

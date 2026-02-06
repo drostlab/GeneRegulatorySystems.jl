@@ -113,8 +113,9 @@ end
     schedule_name::String
     schedule_spec::String
 end
-# start a simulation run
-@post "/simulations/run" function(req, data::Json{RunSimulationRequest})
+
+# start a simulation run (streamed)
+@post "/simulations/run/stream" function(req, data::Json{RunSimulationRequest})
     # Load and validate model from spec (throws on invalid spec)
     model = Simulation.load_model_from_spec(data.payload.schedule_spec)
 
@@ -133,6 +134,16 @@ end
     return res_metadata::Simulation.SimulationResultMetadata
 end
 
+# start a simulation run (non-streamed)
+@post "/simulations/run/" function (req, data::Json{RunSimulationRequest})
+    model = Simulation.load_model_from_spec(data.payload.schedule_spec)
+
+    res_metadata = Simulation.prepare_result(data.payload.schedule_name, data.payload.schedule_spec)
+
+    Simulation.run_simulation(res_metadata, model, nothing)
+    result = Simulation.load_result(res_metadata.id)
+    return result
+end
 
 
 end

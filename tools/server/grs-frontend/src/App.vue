@@ -3,7 +3,7 @@ import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import ScheduleEditor from './components/ScheduleEditor.vue'
 import NetworkDiagram from './components/NetworkDiagram.vue'
-import SimulationViewer from './components/SimulationViewer.vue'
+import SimulationViewer from './components/TrackViewer.vue'
 
 
 </script>
