@@ -307,7 +307,7 @@ watch(
                         placeholder="Filter genes..."
                         :max-selected-labels="3"
                         class="dropdown-small"
-                        style="width: 280px; font-size: 0.75rem"
+                        style="width: 620px; font-size: 0.75rem"
                         filter
                         :virtual-scroller-options="{ itemSize: 44 }"
                     >
@@ -522,15 +522,19 @@ watch(
 }
 
 /* Gene-specific chip styling (dynamic colors) */
+.chip-container {
+    display: flex;
+    min-height: 26px;
+    max-height: 26px;
+    overflow-y: auto;
+}
+
 .custom-gene-chip {
     color: white;
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-sm);
     border-radius: var(--border-radius-lg);
     font-size: var(--font-size-xs);
     border: 1px solid;
-    line-height: 1;
-    display: inline-block;
-    white-space: nowrap;
 }
 
 /* Smaller chips in track selector */
