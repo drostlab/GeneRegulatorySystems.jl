@@ -19,16 +19,17 @@
  */
 import { ref, reactive, onMounted, computed, watch, onBeforeUnmount} from 'vue'
 import { useScheduleStore } from '@/stores/scheduleStore'
+import { useSimulationStore } from '@/stores/simulationStore'
 import { useMonacoEditor } from '@/composables/useMonacoEditor'
 import Button from 'primevue/button'
 import Select, { type SelectChangeEvent } from 'primevue/select'
 import InputText from 'primevue/inputtext'
-import ProgressSpinner from 'primevue/progressspinner'
 import Message from 'primevue/message'
 import * as scheduleService from '@/services/scheduleService'
 import { computeScheduleKey, parseScheduleKey } from '@/types/schedule'
 
 const store = useScheduleStore()
+const simulationStore = useSimulationStore()
 
 const isLoading = computed(() => store.isLoading)
 
@@ -102,6 +103,9 @@ async function handleScheduleSelect(event: SelectChangeEvent) {
         return
     }
 
+    // Clear simulation when user selects a new schedule
+    simulationStore.clearResult()
+    
     await store.loadScheduleByKey(scheduleKey)
 }
 
@@ -252,21 +256,14 @@ onBeforeUnmount(() =>
             </div>
         </div>
 
-        <!-- Loading Spinner -->
-        <div v-if="isLoading" class="loading-overlay">
-            <div class="loading-card">
-                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
-                <div class="loading-text">Loading schedule...</div>
-            </div>
-        </div>
-
         <!-- Editor -->
-        <div
-            v-show="!isLoading"
-            id="schedule-editor-monaco"
-            class="editor-container"
-            :class="{ 'editor-editing': editor.isEditing }"
-        ></div>
+        <div class="editor-wrapper">
+            <div
+                id="schedule-editor-monaco"
+                class="editor-container"
+                :class="{ 'editor-editing': editor.isEditing }"
+            ></div>
+        </div>
 
         <!-- Validation Messages -->
         <div class="validation-area" v-if="store.scheduleMessages.length > 0">
@@ -312,6 +309,9 @@ onBeforeUnmount(() =>
                 </div>
             </Message>
         </div>
+
+        <!-- Loading overlay -->
+        <div v-if="isLoading" class="loading-overlay"></div>
     </div>
 </template>
 
@@ -324,6 +324,7 @@ onBeforeUnmount(() =>
     flex-direction: column;
     height: 100%;
     background: var(--p-surface-ground);
+    position: relative;
 }
 
 /* Validation area */
@@ -339,13 +340,10 @@ onBeforeUnmount(() =>
     border-bottom: 1px solid var(--p-surface-border);
 }
 
-.validation-message {
-    margin: 0;
-    font-size: var(--font-size-md);
-}
 
 :deep(.validation-message .p-message-text) {
     font-size: var(--font-size-md);
+    font-weight: 400 !important;
 }
 
 .error-list,
@@ -364,8 +362,14 @@ onBeforeUnmount(() =>
 }
 
 /* Editor container */
-.editor-container {
+.editor-wrapper {
     flex: 1;
+    overflow: hidden;
+}
+
+.editor-container {
+    width: 100%;
+    height: 100%;
     overflow: hidden;
     background: var(--p-surface-ground);
     border: 2px solid transparent;

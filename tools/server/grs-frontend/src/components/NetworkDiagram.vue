@@ -145,4 +145,8 @@ watch(() => store.isLoading, (isLoading) => {
     position: absolute;
     inset: 0;
 }
+
+.network-diagram-container :deep(.loading-card) {
+    margin-top: 80px;
+}
 </style>

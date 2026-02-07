@@ -25,6 +25,39 @@ const MyPreset = definePreset(Aura, {
             800: '{red.800}',
             900: '{red.900}',
             950: '{red.950}'
+        },
+        info: {
+            50:  '#f6f0f9',
+            100: '#eadcf1',
+            200: '#d4b8e3',
+            300: '#bf95d5',
+            400: '#b381cb',
+            500: '#AA79C1', // base
+            600: '#9563ac',
+            700: '#7d4e92',
+            800: '#653a78',
+            900: '#512663',
+            950: '#321942'
+        }
+    },
+    components: {
+        message: {
+        colorScheme: {
+            light: {
+                info: {
+                    background: '{info.50}',
+                    borderColor: '{info.200}',
+                    color: '{info.700}'
+                }
+            },
+            dark: {
+                info: {
+                    background: '{info.300}',
+                    borderColor: '{info.400}',
+                    color: '{info.950}'
+                }
+            }
+        }
         }
     }
 })

@@ -15,11 +15,11 @@ export const DEFAULT_VISIBLE_SPECIES_TYPES: SpeciesType[] = ['active', 'rnas', '
  * Display labels for species types
  */
 export const speciesTypeLabels: Record<SpeciesType, string> = {
-    'active': 'Promoters',
-    'elongations': 'Elongations',
-    'premrnas': 'Pre-mRNAs',
-    'rnas': 'RNAs',
-    'proteins': 'Proteins'
+    'active': 'Promoter activity',
+    'elongations': 'Elongation counts',
+    'premrnas': 'Pre-mRNA counts',
+    'rnas': 'RNA counts',
+    'proteins': 'Protein counts'
 }
 
 /**

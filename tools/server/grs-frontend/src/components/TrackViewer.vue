@@ -58,10 +58,12 @@ const trackSettingsPanel = ref()
 
 const chart = new ChartManager()
 
-// Combined loading state from both schedule and simulation
-const isLoading = computed(() => {
-    return scheduleStore.isLoading || simulationStore.isSimulationRunning || simulationStore.isLoadingResult
-})
+// Separate loading states for different UI elements
+const isScheduleLoading = computed(() => scheduleStore.isLoading)
+const isSimulationBusy = computed(() => simulationStore.isSimulationRunning || simulationStore.isLoadingResult)
+
+// Disable UI when any operation is in progress
+const isUiDisabled = computed(() => isScheduleLoading.value || isSimulationBusy.value)
 
 // Track visibility options - only show available tracks
 const trackOptions = computed(() => {
@@ -185,6 +187,8 @@ onBeforeUnmount(() => {
 
 // Load result. This also updates the schedule to the one that had been used to produce the result
 async function loadResult(event: SelectChangeEvent) {
+    // Clear simulation before loading new one
+    simulationStore.clearResult()
     const selectedResultId = event.value
     chart.clear()
 
@@ -248,8 +252,8 @@ watch(
                             v-if="!simulationStore.isSimulationRunning"
                             :model-value="simulationStore.currentResultId"
                             :options="results"
+                            :disabled="isScheduleLoading"
                             option-value="id"
-                            :disabled="isLoading"
                             size="small"
                             placeholder="Load simulation result..."
                             @change="loadResult"
@@ -281,10 +285,9 @@ watch(
 
                     <!-- Run Simulation Button -->
                     <Button
-                        :label="simulationStore.isSimulationRunning ? 'Running Simulation' : simulationStore.isLoadingResult ? 'Loading Simulation' : 'Run Simulation'"
-                        :icon="simulationStore.isSimulationRunning || simulationStore.isLoadingResult ? 'pi pi-spin pi-spinner' : 'pi pi-play-circle'"
-                        :loading="simulationStore.isSimulationRunning || simulationStore.isLoadingResult"
-                        :disabled="isLoading"
+                        :label="simulationStore.isSimulationRunning ? 'Running Simulation' : 'Run Simulation'"
+                        :icon="simulationStore.isSimulationRunning ? 'pi pi-spin pi-spinner' : 'pi pi-play-circle'"
+                        :disabled="isUiDisabled"
                         size="small"
                         severity="success"
                         @click="runSimulation"
@@ -299,6 +302,7 @@ watch(
                         v-if="simulationStore.currentResultId"
                         v-model="viewerStore.selectedGenes"
                         :options="scheduleStore.allGenes || []"
+                        :disabled="isUiDisabled"
                         size="small"
                         placeholder="Filter genes..."
                         :max-selected-labels="3"
@@ -339,6 +343,7 @@ watch(
                     <Button
                         v-if="simulationStore.currentResultId"
                         icon="pi pi-sliders-v"
+                        :disabled="isUiDisabled"
                         size="small"
                         text
                         @click="(e) => trackSettingsPanel.toggle(e)"
@@ -364,7 +369,7 @@ watch(
                     <Button
                         v-if="simulationStore.currentResultId"
                         icon="pi pi-times"
-                        :disabled="simulationStore.isSimulationRunning"
+                        :disabled="isUiDisabled"
                         size="small"
                         severity="danger"
                         text
@@ -388,17 +393,9 @@ watch(
         <div class="chart-wrapper">
             <div ref="containerRef" class="chart-container"></div>
             
-            <!-- Loading overlay -->
-            <div v-if="isLoading" class="loading-overlay">
-                <div class="loading-card">
-                    <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
-                    <div class="loading-text">{{ scheduleStore.isLoading ? 'Loading schedule...' : 'Running simulation...' }}</div>
-                </div>
-            </div>
-            
             <!-- Overlay when no schedule is loaded -->
             <div 
-                v-if="!scheduleStore.isLoaded && !isLoading"
+                v-if="!scheduleStore.isLoaded && !isScheduleLoading"
                 class="chart-overlay"
             >
                 <div class="overlay-text">No schedule is loaded</div>
@@ -411,6 +408,14 @@ watch(
             severity="error"
             :text="error"
         />
+
+        <!-- Loading Overlay -->
+        <div v-if="isScheduleLoading || simulationStore.isLoadingResult" class="loading-overlay">
+            <div v-if="simulationStore.isLoadingResult" class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+                <div class="loading-text">Loading result...</div>
+            </div>
+        </div>
         </div>
     </Teleport>
 </template>
@@ -436,6 +441,7 @@ watch(
     width: 100%;
     background: var(--p-surface-ground);
     overflow: hidden;
+    position: relative;
 }
 
 .card-header-row {
@@ -480,6 +486,7 @@ watch(
     gap: var(--spacing-md);
     align-items: center;
     flex: 1;
+    margin-right: var(--spacing-1xl);
 }
 
 /* Domain-specific overlay */
@@ -556,7 +563,6 @@ watch(
     font-size: 0.8rem;
 }
 
-/* Run Simulation Button - use thin font weight */
 :deep(.run-simulation-btn .p-button-label) {
     font-weight: 400 !important;
     font-family: inherit;

@@ -15,11 +15,21 @@
   --spacing-lg: 0.75rem;
   --spacing-xl: 1rem;
   --spacing-2xl: 2rem;
+  --spacing-12xl: 12rem;
 
   /* Border Radius */
   --border-radius-sm: 3px;
   --border-radius-md: 8px;
   --border-radius-lg: 16px;
+
+  /* Changing the Success color globally */
+  --p-success-color: #6b1262;
+  --p-success-background: #2f0642;
+  
+  /* Changing the Danger color globally */
+  --p-danger-color: #ef4444;
+  --p-danger-background: #fee2e2;
+
 }
 
 * {
@@ -167,12 +177,11 @@ html, body, #app {
 .loading-overlay {
   position: absolute;
   inset: 0;
-  background: var(--p-overlay-ground);
+  background: rgba(0, 0, 0, 0.1);
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(1px);
 }
 
 .loading-card {
@@ -190,7 +199,7 @@ html, body, #app {
 .loading-text {
   font-size: var(--font-size-md);
   color: var(--p-text-color);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* ========================================================================
