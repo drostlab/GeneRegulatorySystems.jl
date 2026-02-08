@@ -170,6 +170,7 @@ onMounted(async () => {
 
     // Setup trajectory chart
     await chart.init(containerRef)
+    chart.setVisibleTracks(['schedule'])
     
     // Register timepoint change callback
     chart.onTimepointChange((timepoint: number) => {
@@ -357,7 +358,12 @@ watch(
                                     <Checkbox
                                         :model-value="selectedTracks"
                                         :value="option.value"
-                                        @update:model-value="(val) => selectedTracks = val"
+                                        :disabled="selectedTracks.length === 1 && selectedTracks.includes(option.value)"
+                                        @update:model-value="(val) => {
+                                            if (val.length > 0) {
+                                                selectedTracks = val
+                                            }
+                                        }"
                                     />
                                     <label style="margin-left: 0.5rem">{{ option.label }}</label>
                                 </div>
