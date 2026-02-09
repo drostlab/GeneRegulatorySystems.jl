@@ -32,7 +32,7 @@ import Message from 'primevue/message'
 import OverlayPanel from 'primevue/overlaypanel'
 import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
-import { ChartManager } from '@/charts/ChartManager'
+import { ChartManager } from '@/charts/_charmanager'
 
 const simulationStore = useSimulationStore()
 const scheduleStore = useScheduleStore()

@@ -25,7 +25,6 @@ export const useViewerStore = defineStore('viewer', () => {
      * Update current timepoint
      */
     function setTimepoint(t: number): void {
-        console.debug('setTimepoint called', { t })
         currentTimepoint.value = t
     }
 

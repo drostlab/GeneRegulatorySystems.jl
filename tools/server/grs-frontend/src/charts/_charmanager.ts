@@ -12,7 +12,26 @@ import {
     NumberRange,
     EventHandler,
     EAxisAlignment,
-    RolloverModifier
+    LineAnnotation,
+    RolloverModifier,
+    ChartModifierBase2D,
+    EChart2DModifierType,
+    type ISciChartSubSurface,
+    ECoordinateMode,
+    ModifierMouseArgs,
+    translateFromCanvasToSeriesViewRect,
+    translateToNotScaled,
+    DpiHelper,
+    testIsInBounds,
+    Point,
+    TextAnnotation,
+    EVerticalAnchorPoint,
+    EHorizontalAnchorPoint,
+    Thickness,
+    EAnnotationLayer,
+    ECoord,
+    ENumericFormat,
+    CursorModifier
 } from 'scichart'
 import type { Ref } from 'vue'
 import { appTheme } from './theme'
@@ -42,6 +61,7 @@ export class ChartManager {
         this.surface = sciChartSurface
         this.wasmContext = wasmContext
         this.axisSynchroniser = new AxisSynchroniser()
+        this.axisSynchroniser.setVisibleRangeLimit(new NumberRange(0, 100))
 
         // Create all tracks on mount, we just need to set which ones are visible really.
         this.tracks = allTracks.map(track => ({...track, isVisible: true}))
@@ -50,6 +70,9 @@ export class ChartManager {
         this.updateSubChartPositions()
         this.updateXAxisVisibility()
 
+        this.surface.chartModifiers.add(
+            new SharedTimeCursorModifier(t => this.timepointChangeCallback?.(t))
+        )
         
     }
 
@@ -82,13 +105,17 @@ export class ChartManager {
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: this.xAxisLabel,
             labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"}
+            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            drawMajorBands: false
         })
         const yAxis = new NumericAxis(this.wasmContext, {
             axisTitle: label,
-            axisAlignment: EAxisAlignment.Left,
+            axisAlignment: EAxisAlignment.Right,
+            labelFormat: ENumericFormat.Decimal,
+            labelPrecision: 0,
             labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"}
+            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            drawMajorBands: false
         })
         newChart.xAxes.add(xAxis)
         newChart.yAxes.add(yAxis)
@@ -96,9 +123,6 @@ export class ChartManager {
         newChart.chartModifiers.add(new ZoomPanModifier())
         newChart.chartModifiers.add(new MouseWheelZoomModifier())
         newChart.chartModifiers.add(new ZoomExtentsModifier())
-        const rollover = new RolloverModifier({showAxisLabel: true, showTooltip: true})
-
-        newChart.chartModifiers.add(rollover)
 
         this.axisSynchroniser.addAxis(xAxis)
         this.updateXAxisVisibility()
@@ -174,6 +198,7 @@ class AxisSynchroniser {
     axes: NumericAxis[] = [];
 
     visibleRangeChanged: EventHandler<any>
+    visibleRangeLimit?: NumberRange
 
     constructor(initialRange?: NumberRange, axes?:NumericAxis[]) {
         this.visibleRange = initialRange ?? this.visibleRange
@@ -195,6 +220,8 @@ class AxisSynchroniser {
         if (!this.axes.includes(axis)) {
             this.axes.push(axis)
             axis.visibleRange = this.visibleRange
+            if (this.visibleRangeLimit)
+                axis.visibleRangeLimit = this.visibleRangeLimit
             axis.visibleRangeChanged.subscribe(this.publishChange)
         }
     }
@@ -207,6 +234,10 @@ class AxisSynchroniser {
         }
     }
 
-
+    setVisibleRangeLimit(limit: NumberRange) {
+        this.visibleRangeLimit = limit
+        this.axes.forEach(a => a.visibleRangeLimit = limit)
+    }
 
 }
+
