@@ -32,7 +32,7 @@ import Message from 'primevue/message'
 import OverlayPanel from 'primevue/overlaypanel'
 import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
-import { ChartManager } from '@/charts/_charmanager'
+import { MainChart } from '@/charts/MainChart'
 
 const simulationStore = useSimulationStore()
 const scheduleStore = useScheduleStore()
@@ -56,7 +56,7 @@ const isFullscreen = ref<boolean>(false)
 const selectedTracks = ref<string[]>([])
 const trackSettingsPanel = ref()
 
-const chart = new ChartManager()
+const chart = new MainChart()
 
 // Separate loading states for different UI elements
 const isScheduleLoading = computed(() => scheduleStore.isLoading)

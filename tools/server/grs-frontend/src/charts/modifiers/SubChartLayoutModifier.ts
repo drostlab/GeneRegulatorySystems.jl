@@ -12,6 +12,7 @@ export class SubChartLayoutModifier extends ChartModifierBase2D {
 
     onAttach(): void {
         this.updateLayout()
+
     }
 
     onAttachSubSurface(): void {
@@ -21,7 +22,7 @@ export class SubChartLayoutModifier extends ChartModifierBase2D {
         this.updateLayout()
     }
 
-    private updateLayout() {
+    updateLayout() {
         const surface = this.parentSurface
         if (!surface) return
 
