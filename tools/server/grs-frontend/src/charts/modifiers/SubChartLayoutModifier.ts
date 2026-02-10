@@ -30,15 +30,9 @@ export class SubChartLayoutModifier extends ChartModifierBase2D {
         const n = panes.length
         if (!n) return
 
-        const lastChart = panes[n-1]
-        const xAxis = lastChart?.xAxes.get(0)
-        const axisHeight = xAxis?.getAxisSize?.() ?? 0
-        const extraFraction = axisHeight / this.parentSurface.renderSurface?.viewportSize.height
-
-        const totalGap = this.spacing * (n-1)
-        const usable = 1 - totalGap - extraFraction
-        const baseHeight = usable / n
-        const lastHeight = baseHeight + extraFraction
+        const extraSpace = n > 1 ? 0.075 : 0
+        const baseHeight = (1.0 - extraSpace) / n
+        const lastHeight = baseHeight + extraSpace
 
         let y = 0 
         panes.forEach((sc, i) => {

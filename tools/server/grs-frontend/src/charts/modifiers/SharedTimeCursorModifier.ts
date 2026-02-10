@@ -20,7 +20,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
     onAttachSubSurface(subChart: ISciChartSubSurface): void {
         const line = new LineAnnotation({
-            xCoordinateMode: ECoordinateMode.Pixel,
+            xCoordinateMode: ECoordinateMode.DataValue,
             yCoordinateMode: ECoordinateMode.Pixel,
             stroke: this.color,
             strokeThickness: 1,
@@ -88,8 +88,8 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
             const line = this.xLines.get(sc.id)
             line!.isHidden = false
-            line!.x1 = xPix
-            line!.x2 = xPix
+            line!.x1 = time
+            line!.x2 = time
             line!.y1 = 0
             line!.y2 = rect.bottom / DpiHelper.PIXEL_RATIO
             
