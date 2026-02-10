@@ -3,6 +3,7 @@ module Specifications
 using Base: Fix2
 
 range_(x) = range(; x...)
+logrange_(x) = logrange(x...)
 
 """
     constructor(name::Symbol)
@@ -19,6 +20,7 @@ constructor(name::Symbol) = constructor(Val(name))
 constructor(name::AbstractString) = constructor(Symbol(name))
 constructor(::Val{Symbol("")}) = Dict{String, Any}
 constructor(::Val{:range}) = range_
+constructor(::Val{:logrange}) = logrange_
 
 """
 Abstract supertype of all syntactic elements of the scheduling language.

@@ -339,11 +339,11 @@ function model(f!::Model; bindings, branch, path)
     Primitive(into = sink(bindings); f!, path, bindings)
 end
 
-function model(at::Float64; bindings, branch, path)
+function model(at::Real; bindings, branch, path)
     branch && error("cannot branch here: not a Sequence")
     f! = get(bindings, :do, Wait())
     path = "$(bindings[Symbol("^do")].path).do"
-    Primitive(skip = at, into = sink(bindings); f!, path, bindings)
+    Primitive(skip = Float64(at), into = sink(bindings); f!, path, bindings)
 end
 
 item(x; i, inject = nothing, as = Symbol(), bindings, path) = model(
