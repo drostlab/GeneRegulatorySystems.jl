@@ -67,6 +67,19 @@ function arrange(index)
     result
 end
 
+function load_index(location)
+    result = @chain begin
+        artifact(:index; prefix = location)
+        Arrow.Table
+        DataFrame
+    end
+
+    result.branch = branch.(result.path)
+    result.track = arrange(result)
+
+    result
+end
+
 function filter(index; selection)
     template = Dict(
         :channel => channel -> :into => ByRow(contains(channel)),
@@ -228,7 +241,7 @@ function backlinks(index)
     result
 end
 
-function prepare(index; selection, location)
+function prepare(index; selection = Selection(), location)
     parent, current = let
         m = match(r"(.*)(\+|[/-]\d+)$", selection.items_prefix)
         m === nothing ? ["", ""] : m
@@ -534,13 +547,7 @@ function main(;
     kinds = Symbol.(split(kinds, ',', keepempty = false))
     size = Tuple(parse.(Int, split(size, 'x')))
 
-    index = @chain begin
-        artifact(:index; prefix = location)
-        Arrow.Table
-        DataFrame
-    end
-    index.branch = branch.(index.path)
-    index.track = arrange(index)
+    index = load_index(location)
 
     GLMakie.activate!()
     screen = GLMakie.Screen()

@@ -37,7 +37,7 @@ Base.getindex(colors::GroupColors, group::String) =
 
 kindname(kind::Symbol) = kindname(Val(kind))
 kindname(::Val{Kind}) where {Kind} = String(Kind)
-kindname(::Val{:activity}) = "promoter activity"
+kindname(::Val{:activity}) = "promoter"
 kindname(::Val{:mrnas}) = "mRNAs"
 kindname(::Val{:premrnas}) = "pre-mRNAs"
 
@@ -211,19 +211,22 @@ function attach_trajectory_components!(
         segment.from < segment.to || continue
         right = max(right, segment.to)
         s = 1 / length(catenation.series)
-        for (j, (dimension, series)) in enumerate(catenation.series)
+        sortedseries = sort(collect(catenation.series), by = x -> x.first.group)
+        for (j, (dimension, series)) in enumerate(sortedseries)
             if segment.previous > 0
                 previous_t = index[segment.previous, :to]
                 previous_y = index[segment.previous, :track]
-                scatterlines!(
+                joint = scatterlines!(
                     axis,
                     [previous_t, segment.from],
                     [previous_y, segment.track + 1.0],
-                    markersize = 5,
-                    linewidth = 2,
+                    [-1.0, -1.0],
+                    markersize = 3,
+                    linewidth = 1,
                     linestyle = :dash,
                     color = colorant"black",
                 )
+                translate!(joint, 0, 0, 1)
             end
             y = segment.track + j * s
             ts = [repeat(series.ts, inner = 2)[2 : end]; segment.to]
@@ -286,7 +289,7 @@ function attach_trajectory!(figure; index, events, kinds, group_colors)
     axes = [x for x in contents(grid[:, 2]) if x isa Axis]
     if !isempty(axes)
         bottom = last(axes)
-        bottom.xlabel = "simulation time"
+        bottom.xlabel = L"model time $t$"
         bottom.xticklabelsvisible = true
         linkxaxes!(axes...)
     end
