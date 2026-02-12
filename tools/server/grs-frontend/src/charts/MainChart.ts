@@ -44,7 +44,7 @@ export class MainChart {
             {id: 'proteins', panel: new CountsPanel(options, "Proteins")}
         ]
 
-        this.layoutModifier = new SubChartLayoutModifier()
+        this.layoutModifier = new SubChartLayoutModifier("Time")
         this.surface.chartModifiers.add(this.layoutModifier)
 
         this.axisSynchroniser = new AxisSyncModifier()

@@ -3,11 +3,11 @@ import { ChartModifierBase2D, EChart2DModifierType, Rect} from "scichart";
 
 export class SubChartLayoutModifier extends ChartModifierBase2D {
     public type = EChart2DModifierType.Custom
-    private spacing: number
+    private xAxisLabel: string
 
-    constructor(spacing = 0.02) {
+    constructor(xAxisLabel = "") {
         super()
-        this.spacing = spacing
+        this.xAxisLabel = xAxisLabel
     }
 
     onAttach(): void {
@@ -39,13 +39,14 @@ export class SubChartLayoutModifier extends ChartModifierBase2D {
             const isBottom = i === n-1
             const h = isBottom ? lastHeight : baseHeight
             sc.subPosition = new Rect(0, y, 1, h)
-            y += h + this.spacing
+            y += h
 
             // only show x axis of bottom panel
             const axis = sc.xAxes.get(0)
 
             axis.drawLabels = isBottom!
-            axis.drawMajorTickLines = isBottom!
+            axis.axisTitle = isBottom ? this.xAxisLabel : ""
+            axis.isVisible = isBottom!
 
         })
     }

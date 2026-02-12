@@ -10,17 +10,20 @@ export class CountsPanel extends BasePanel {
             axisTitle: "Time",
             labelStyle: {fontSize: 10},
             axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
-            drawMajorBands: false
+            drawMajorBands: false,
+            drawMajorGridLines: false,
+            drawMinorGridLines: false
         })
 
         const yAxis = new NumericAxis(this.wasmContext, {
             axisTitle: title,
-            axisAlignment: EAxisAlignment.Right,
+            axisAlignment: EAxisAlignment.Left,
             labelFormat: ENumericFormat.Decimal,
             labelPrecision: 0,
             labelStyle: {fontSize: 10},
             axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
-            drawMajorBands: false
+            drawMajorBands: false,
+            axisThickness: 44
         })
 
         this.surface.xAxes.add(xAxis)

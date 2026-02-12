@@ -16,15 +16,16 @@ export class TimelinePanel extends BasePanel {
         })
         
         const yAxis = new NumericAxis(this.wasmContext, {
-            axisTitle: "Schedule",
-            axisAlignment: EAxisAlignment.Right,
+            axisTitle: "Schedule Timeline",
+            axisAlignment: EAxisAlignment.Left,
             axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
             drawMajorBands: false,
             drawLabels: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false,
             drawMajorTickLines: false,
-            drawMinorTickLines: false
+            drawMinorTickLines: false,
+            axisThickness: 50
         })
 
         this.surface.xAxes.add(xAxis)

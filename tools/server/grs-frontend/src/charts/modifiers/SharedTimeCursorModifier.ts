@@ -1,4 +1,4 @@
-import { ChartModifierBase2D, DpiHelper, EChart2DModifierType, ECoordinateMode, EHorizontalAnchorPoint, EVerticalAnchorPoint, LineAnnotation, ModifierMouseArgs, Point, TextAnnotation, Thickness, translateFromCanvasToSeriesViewRect, translateToNotScaled, type ISciChartSubSurface } from "scichart"
+import { ChartModifierBase2D, DpiHelper, EChart2DModifierType, ECoordinateMode, EHorizontalAnchorPoint, EVerticalAnchorPoint, LineAnnotation, ModifierMouseArgs, Point, TextAnnotation, Thickness, translateFromCanvasToSeriesViewRect, type ISciChartSubSurface } from "scichart"
 
 
 
@@ -23,7 +23,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
             xCoordinateMode: ECoordinateMode.DataValue,
             yCoordinateMode: ECoordinateMode.Pixel,
             stroke: this.color,
-            strokeThickness: 1,
+            strokeThickness: 2,
             isHidden: true
         })
         subChart.annotations.add(line)
@@ -81,7 +81,6 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
         const lastVisibleChart = [...this.parentSurface.subCharts].reverse().find(sc => sc.isVisible)
 
-        const xPix = translateToNotScaled(translatedPt.x)
         this.parentSurface.subCharts.forEach(sc => {
             const rect = sc.seriesViewRect
             if (!rect) return

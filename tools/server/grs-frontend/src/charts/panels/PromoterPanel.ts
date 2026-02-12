@@ -17,14 +17,15 @@ export class PromoterPanel extends BasePanel {
         
         const yAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Promoter Activity",
-            axisAlignment: EAxisAlignment.Right,
+            axisAlignment: EAxisAlignment.Left,
             axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false,
             drawMajorTickLines: false,
             drawMinorTickLines: false,
-            drawLabels: false
+            drawLabels: false,
+            axisThickness: 50
         })
 
         this.surface.xAxes.add(xAxis)
