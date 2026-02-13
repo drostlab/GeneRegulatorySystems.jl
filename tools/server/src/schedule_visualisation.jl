@@ -203,10 +203,12 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
                 vis_metadata = isempty(vis_data.vis_metadata.gene_colours) ?
                     generate_default_vis_metadata(vis_data) :
                     vis_data.vis_metadata
+                species_gene_mapping = _extract_species_gene_mapping(vis_data.network)
                 visualization = ScheduleData(
                     network = vis_data.network,
                     segments = vis_data.segments,
-                    vis_metadata = vis_metadata
+                    vis_metadata = vis_metadata,
+                    species_gene_mapping = species_gene_mapping
                 )
             catch e
                 push!(validation_messages, ValidationMessage(

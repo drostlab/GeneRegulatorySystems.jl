@@ -24,7 +24,7 @@
                 "$": ["defaults", "bootstrap"],
                 "1.proteins": 100
             }},
-            {"to": 1000000.0},
+            {"to": 100000.0},
             {
                 "branch": true,
                 "each": {"length": 3},

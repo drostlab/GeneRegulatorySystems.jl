@@ -123,10 +123,10 @@ watch(
 )
 
 watch(
-    () => scheduleStore.segments,
-    (newSegments) => {
-        if (newSegments && newSegments.length > 0) {
-            chart.setScheduleData(newSegments)
+    () => ({ segments: scheduleStore.segments, metadata: scheduleStore.timeseriesMetadata }),
+    ({ segments, metadata }) => {
+        if (segments && segments.length > 0 && metadata) {
+            chart.setScheduleData(segments, metadata)
         }
     }
 )
@@ -135,7 +135,6 @@ watch(
     () => simulationStore.timeseries,
     (newTimeseries) => {
         if (newTimeseries) {
-            console.debug('[TrackViewer] timeseries changed, allGenes:', scheduleStore.allGenes)
             chart.setSimulationData(newTimeseries)
         } else {
             chart.clearSimulationData()
@@ -148,7 +147,6 @@ watch(
     () => scheduleStore.allGenes,
     (allGenes) => {
         if (simulationStore.isLoaded && allGenes && allGenes.length > 0) {
-            console.debug('[TrackViewer] allGenes available, setting selectedGenes to:', allGenes.slice(0, DEFAULT_SELECTED_GENES_COUNT))
             viewerStore.selectedGenes = allGenes.slice(0, DEFAULT_SELECTED_GENES_COUNT)
         }
     }
@@ -232,7 +230,9 @@ watch(
 watch(
     () => viewerStore.selectedGenes,
     (newGenes) => {
-        chart.setVisibleGenes(newGenes)
+        const visibleData = simulationStore.getTimeseries(newGenes)
+        if (visibleData)
+            chart.setSimulationData(visibleData)
     }
 )
 

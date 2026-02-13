@@ -1,11 +1,14 @@
-import { ChartModifierBase2D, SciChartSubSurface, type SciChartSurface, type TSciChart } from "scichart";
+import { ChartModifierBase2D, NumberRange, SciChartSubSurface, type SciChartSurface, type TSciChart } from "scichart";
 import { appTheme } from "../theme";
 
 
 export interface BasePanelOptions {
     parentSurface: SciChartSurface
     wasmContext: TSciChart
-    modifierClasses?: Array<new () => ChartModifierBase2D>
+    modifiers?: Array<{
+        modifierClass: new (args?: any) => ChartModifierBase2D
+        args?: any
+    }>
 }
 
 export abstract class BasePanel {
@@ -13,13 +16,13 @@ export abstract class BasePanel {
     wasmContext!: TSciChart
     parentSurface: SciChartSurface
 
-    constructor({parentSurface, wasmContext, modifierClasses = []}: BasePanelOptions) {
+    constructor({parentSurface, wasmContext, modifiers = []}: BasePanelOptions) {
         this.parentSurface = parentSurface
         this.wasmContext = wasmContext
         this.surface = SciChartSubSurface.createSubSurface(parentSurface, {theme: appTheme})
 
-        modifierClasses.forEach(ModifierClass => {
-            this.surface.chartModifiers.add(new ModifierClass())
+        modifiers.forEach(({modifierClass: ModifierClass, args}) => {
+            this.surface.chartModifiers.add(new ModifierClass(args))
         })
     }
 
@@ -29,5 +32,13 @@ export abstract class BasePanel {
 
     set isVisible(value: boolean) {
         this.surface.isVisible = value
+    }
+
+    setTimeExtent(minTime: number, maxTime: number): void {
+        const xAxis = this.surface.xAxes.get(0)
+        if (xAxis) {
+            xAxis.visibleRange = new NumberRange(minTime, maxTime)
+            xAxis.visibleRangeLimit = new NumberRange(minTime, maxTime)
+        }
     }
 }

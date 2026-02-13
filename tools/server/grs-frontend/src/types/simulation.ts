@@ -5,6 +5,15 @@
 export type TimeseriesData = Record<string, Record<string, Array<[number, number]>>>
 
 /**
+ * Metadata for timeseries visualization
+ */
+export interface TimeseriesMetadata {
+    species_gene_mapping: Record<string, string>
+    gene_colours: Record<string, string>
+    time_extent: { min: number; max: number }
+}
+
+/**
  * Simulation status values - discriminated union for type safety
  */
 export type SimulationStatus = 'running' | 'completed' | 'error'
@@ -59,6 +68,47 @@ export function getMaxTime(timeseries: TimeseriesData): number {
         }
     }
     return maxTime
+}
+
+/**
+ * Restructure timeseries from species→path to path→gene format
+ * Useful for rendering where you want to group genes per path
+ * 
+ * @param timeseries Original species → path → data structure
+ * @param metadata Contains species→gene and gene→colour mappings
+ * @returns path → gene → {geneId, colour, series}
+ */
+export function restructureTimeseriesByPathAndGene(
+    timeseries: TimeseriesData,
+    metadata: TimeseriesMetadata
+): Record<string, Record<string, { colour: string; series: Array<[number, number]> }>> {
+    const dataByPath = new Map<string, Map<string, { colour: string; series: Array<[number, number]> }>>()
+    
+    for (const [species, pathData] of Object.entries(timeseries)) {
+        const geneId = metadata.species_gene_mapping[species]
+        if (!geneId) continue
+        
+        const colour = metadata.gene_colours[geneId] ?? "gray"
+        
+        for (const [path, series] of Object.entries(pathData)) {
+            if (!dataByPath.has(path)) {
+                dataByPath.set(path, new Map())
+            }
+            dataByPath.get(path)!.set(geneId, { colour, series })
+        }
+    }
+    
+    // Convert to plain object
+    const result: Record<string, Record<string, { colour: string; series: Array<[number, number]> }>> = {}
+
+    dataByPath.forEach((geneMap, path) => {
+        result[path] = {}
+        geneMap.forEach((data, geneId) => {
+            result[path][geneId] = data
+        })
+    })
+    
+    return result
 }
 
 /**

@@ -3,13 +3,13 @@ import type { Network } from './network'
 /**
  * Species types in the regulatory network
  */
-export const SPECIES_TYPES = ['active', 'elongations', 'premrnas', 'rnas', 'proteins'] as const
+export const SPECIES_TYPES = ['active', 'elongations', 'premrnas', 'mrnas', 'proteins'] as const
 export type SpeciesType = typeof SPECIES_TYPES[number]
 
 /**
  * Default species types to display
  */
-export const DEFAULT_VISIBLE_SPECIES_TYPES: SpeciesType[] = ['active', 'rnas', 'proteins']
+export const DEFAULT_VISIBLE_SPECIES_TYPES: SpeciesType[] = ['active', 'mrnas', 'proteins']
 
 /**
  * Display labels for species types
@@ -18,7 +18,7 @@ export const speciesTypeLabels: Record<SpeciesType, string> = {
     'active': 'Promoter activity',
     'elongations': 'Elongation counts',
     'premrnas': 'Pre-mRNA counts',
-    'rnas': 'RNA counts',
+    'mrnas': 'mRNA counts',
     'proteins': 'Protein counts'
 }
 
@@ -75,6 +75,41 @@ export function extractAllGeneIds(data: ScheduleData): string[] {
     }
     
     return Array.from(allGenes).sort()
+}
+
+/**
+ * Get all species IDs for a given gene
+ * @param data - Schedule data with species_gene_mapping
+ * @param gene - Gene name
+ * @returns Array of species IDs belonging to the gene
+ */
+export function getSpeciesForGene(data: ScheduleData, gene: string): string[] {
+    const species: string[] = []
+    for (const [speciesId, speciesGene] of Object.entries(data.species_gene_mapping)) {
+        if (speciesGene === gene) {
+            species.push(speciesId)
+        }
+    }
+    return species
+}
+
+/**
+ * Get all species IDs for a given species type
+ * @param data - Schedule data with network
+ * @param speciesType - Species type (e.g., 'active', 'rnas', 'proteins')
+ * @returns Array of species IDs of the given type
+ */
+export function getSpeciesForType(data: ScheduleData, speciesType: SpeciesType): string[] {
+    const species: string[] = []
+    if (data.network?.nodes) {
+        for (const node of data.network.nodes) {
+            // Check if node kind contains the species type identifier
+            if (node.kind === 'species' && node.properties?.species_type === speciesType) {
+                species.push(node.name)
+            }
+        }
+    }
+    return species
 }
 
 
@@ -238,5 +273,23 @@ export function convertSegmentsToDisplayData(segments: TimelineSegment[]): Sched
             trackIndex
         }
     })
+}
+
+/**
+ * Compute time extent from segments
+ * @param segments Timeline segments
+ * @returns Object with min and max time values
+ */
+export function getTimeExtent(segments: TimelineSegment[]): { min: number; max: number } {
+    if (segments.length === 0) {
+        return { min: 0, max: 0 }
+    }
+    let min = segments[0].from
+    let max = segments[0].to
+    for (const segment of segments) {
+        min = Math.min(min, segment.from)
+        max = Math.max(max, segment.to)
+    }
+    return { min, max }
 }
 

@@ -445,10 +445,9 @@ export function useTrajectoryChart() {
             if (isFinite(minX) && isFinite(maxX)) {
                 const xAxis = sciChartSurface.xAxes.get(0)
                 if (xAxis) {
-                    // Add small padding (5% on each side)
-                    const padding = (maxX - minX) * 0.05
+                    const padding = (maxX - minX) * 0.03
                     xAxis.visibleRangeLimit = new NumberRange(
-                        Math.max(0, minX - padding),
+                        minX - padding,
                         maxX + padding
                     )
                 }

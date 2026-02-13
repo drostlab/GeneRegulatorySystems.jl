@@ -2,7 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Schedule} from '@/types/schedule'
 import * as scheduleService from '@/services/scheduleService'
-import { computeScheduleKey, extractAllGeneIds } from '@/types/schedule'
+import { computeScheduleKey, extractAllGeneIds, getSpeciesForGene, getSpeciesForType, getTimeExtent } from '@/types/schedule'
+import type { SpeciesType } from '@/types/schedule'
+import type { TimeseriesMetadata } from '@/types/simulation'
 
 export const useScheduleStore = defineStore(
     'schedule',
@@ -44,6 +46,15 @@ export const useScheduleStore = defineStore(
         const segments = computed(() => schedule.value.data?.segments || [])
 
         const isLoaded = computed(() => schedule.value.data !== null)
+
+        const timeseriesMetadata = computed(() => {
+            if (!schedule.value.data) return null
+            return {
+                species_gene_mapping: schedule.value.data.species_gene_mapping,
+                gene_colours: schedule.value.data.vis_metadata.gene_colours,
+                time_extent: getTimeExtent(schedule.value.data.segments)
+            } as TimeseriesMetadata
+        })
 
         async function loadScheduleByKey(key: string): Promise<Schedule> {
             const startTime = performance.now()
@@ -120,6 +131,24 @@ export const useScheduleStore = defineStore(
             }
         }
 
+        /**
+         * Get all species IDs for a given gene
+         */
+        function getSpeciesForGeneId(gene: string): string[] {
+            if (!schedule.value.data) return []
+            return getSpeciesForGene(schedule.value.data, gene)
+        }
+
+        /**
+         * Get all species IDs for a given species type
+         */
+        function getSpeciesForSpeciesType(speciesType: SpeciesType): string[] {
+            if (!schedule.value.data) return []
+            
+            const result = getSpeciesForType(schedule.value.data, speciesType)
+            return result
+        }
+
 
         return {
             schedule,
@@ -130,8 +159,11 @@ export const useScheduleStore = defineStore(
             geneColours,
             segments,
             isLoaded,
+            timeseriesMetadata,
             loadScheduleByKey,
-            loadScheduleBySpec
+            loadScheduleBySpec,
+            getSpeciesForGeneId,
+            getSpeciesForSpeciesType
         }
     },
     {

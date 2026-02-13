@@ -59,7 +59,53 @@ export const useSimulationStore = defineStore(
             return currentResult.value?.data.timeseries ?? null
         })
 
+        /**
+         * Get timeseries filtered by genes and paths
+         * 
+         * @param genes - Array of gene symbols to include. null/undefined includes all genes. Empty array includes none.
+         * @param paths - Array of path IDs to include. null/undefined includes all paths. Empty array includes none.
+         * @returns Filtered timeseries data, or null if no current result
+         */
+        function getTimeseries(genes?: string[] | null, paths?: string[] | null) {
+            // TODO: lazy retrieval of data from server
+            if (!timeseries.value) {
+                return null
+            }
 
+            const scheduleStore = useScheduleStore()
+            
+            // Explicit behavior: null/undefined = include all, empty array = include none
+            if (genes !== null && genes !== undefined && genes.length === 0) {
+                return {}  // Empty array means exclude all genes
+            }
+            if (paths !== null && paths !== undefined && paths.length === 0) {
+                return {}  // Empty array means exclude all paths
+            }
+            
+            // Build set of species IDs to include
+            const speciesIds = new Set(
+                genes === null || genes === undefined
+                    ? Object.keys(timeseries.value)
+                    : genes.flatMap(gene => scheduleStore.getSpeciesForGeneId(gene))
+            )
+            
+            const pathSet = paths === null || paths === undefined 
+                ? null 
+                : new Set(paths)
+
+            // Vectorized filtering: filter species, then filter paths for each species
+            return Object.fromEntries(
+                Object.entries(timeseries.value)
+                    .filter(([species]) => speciesIds.has(species))
+                    .map(([species, pathData]) => [
+                        species,
+                        Object.fromEntries(
+                            Object.entries(pathData)
+                                .filter(([path]) => pathSet === null || pathSet.has(path))
+                        )
+                    ])
+            ) as typeof timeseries.value
+        }
 
         async function loadResult(resultId: string): Promise<SimulationResult> {
             isLoadingResult.value = true
@@ -128,6 +174,9 @@ export const useSimulationStore = defineStore(
             currentResultLabel,
             isLoaded,
             timeseries,
+
+            // Methods
+            getTimeseries,
 
             // API
             runSimulation,

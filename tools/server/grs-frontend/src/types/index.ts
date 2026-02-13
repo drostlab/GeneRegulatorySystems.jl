@@ -29,6 +29,7 @@ export {
 } from './simulation'
 export type {
     TimeseriesData,
+    TimeseriesMetadata,
     SimulationStatus,
     SimulationData,
     SimulationResultMetadata,
