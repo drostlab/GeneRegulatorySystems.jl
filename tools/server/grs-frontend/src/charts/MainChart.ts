@@ -1,4 +1,4 @@
-import { EXyDirection, MouseWheelZoomModifier, SciChartSurface, ZoomExtentsModifier, ZoomPanModifier, type TSciChart } from "scichart";
+import { EXyDirection, MouseWheelZoomModifier, SciChartSurface, ZoomExtentsModifier, ZoomPanModifier, SeriesSelectionModifier, type TSciChart } from "scichart";
 import { AxisSyncModifier } from "./modifiers/AxisSyncModifier";
 import type { BasePanel, BasePanelOptions } from "./panels/BasePanel";
 import type { TimeseriesPanel } from "./panels/TimeseriesPanel";
@@ -12,6 +12,8 @@ import { SharedTimeCursorModifier } from "./modifiers/SharedTimeCursorModifier";
 import type { TimelineSegment, TimeseriesData, TimeseriesMetadata } from "@/types";
 import { type SpeciesType } from "@/types/schedule";
 import { useScheduleStore } from "@/stores/scheduleStore";
+import { SelectSyncModifier } from "./modifiers/SelectSyncModifier";
+import { HoverSyncModifier } from "./modifiers/HoverSyncModifiers";
 
 
 
@@ -23,6 +25,7 @@ export class MainChart {
     private layoutModifier!: SubChartLayoutModifier
     private tracks!: Array<{id: string; panel: BasePanel}>
     private timepointChangeCallback?: (timepoint: number) => void
+    private selectionChangeCallback?: (seriesNames: string[]) => void
 
     async init(containerRef: Ref<HTMLDivElement | undefined>) {
         const {sciChartSurface, wasmContext} = await SciChartSurface.create(containerRef.value!, {theme: appTheme})
@@ -36,7 +39,8 @@ export class MainChart {
             modifiers: [
                 { modifierClass: ZoomPanModifier, args: { xyDirection: EXyDirection.XDirection } },
                 { modifierClass: MouseWheelZoomModifier, args: { xyDirection: EXyDirection.XDirection } },
-                { modifierClass: ZoomExtentsModifier }
+                { modifierClass: ZoomExtentsModifier },
+                { modifierClass: SeriesSelectionModifier, args: { enableSelection: true, enableHover: true } }
             ]
         }
 
@@ -54,11 +58,17 @@ export class MainChart {
 
         this.axisSynchroniser = new AxisSyncModifier()
         this.surface.chartModifiers.add(this.axisSynchroniser)
+        //this.surface.chartModifiers.add(new SelectSyncModifier(seriesNames => this.selectionChangeCallback?.(seriesNames)))
+        //this.surface.chartModifiers.add(new HoverSyncModifier())
         this.surface.chartModifiers.add(new SharedTimeCursorModifier(t => this.timepointChangeCallback?.(t)))
     }
 
     onTimepointChange(callback: (timepoint: number) => void): void {
         this.timepointChangeCallback = callback
+    }
+
+    onSelectionChange(callback: (seriesNames: string[]) => void): void {
+        this.selectionChangeCallback = callback
     }
 
     private getTimeseriesPanels(): Array<{id: string; panel: TimeseriesPanel}> {

@@ -1,4 +1,4 @@
-import { EAxisAlignment, ENumericFormat,FastLineRenderableSeries,NumericAxis, XyDataSeries } from "scichart";
+import { EAxisAlignment, ENumericFormat,FastLineRenderableSeries,NumberRange,NumericAxis, XyDataSeries } from "scichart";
 import { TimeseriesPanel } from "./TimeseriesPanel";
 import type { BasePanelOptions } from "./BasePanel";
 import type { TimeseriesData } from "@/types/simulation";
@@ -11,7 +11,7 @@ export class CountsPanel extends TimeseriesPanel {
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Time",
             labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false
@@ -23,9 +23,13 @@ export class CountsPanel extends TimeseriesPanel {
             labelFormat: ENumericFormat.Decimal,
             labelPrecision: 0,
             labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
             drawMajorBands: false,
-            drawMinorGridLines: false,
+            drawMajorTickLines: false,
+            drawMinorTickLines: false,
+            growBy: new NumberRange(0.01, 0.01),
+            majorGridLineStyle: { color: "#f5f5f5"},
+            minorGridLineStyle: { color: "#f5f5f5"},
             axisThickness: 44
         })
 
@@ -49,7 +53,7 @@ export class CountsPanel extends TimeseriesPanel {
                 // create one line series per (species,segment)
                 const geneId = this.metadata!.species_gene_mapping[species] ?? ""
                 const colour = this.metadata.gene_colours[geneId] ?? "gray"
-                const key = `${species}:${path}`
+                const key = `${geneId}:${path}`
                 const xySeries = new XyDataSeries(this.wasmContext, {
                     isSorted: true, 
                     containsNaN: false,
@@ -62,7 +66,10 @@ export class CountsPanel extends TimeseriesPanel {
                      dataSeries: xySeries,
                      stroke: colour,
                      strokeThickness: 1,
-                     isDigitalLine: true
+                     isDigitalLine: true,
+                     onHoveredChanged: sourceSeries => {
+                        sourceSeries.strokeThickness = sourceSeries.isSelected ? 2 : 1
+                     }
                 })
                 this.surface.renderableSeries.add(lineSeries)
             }

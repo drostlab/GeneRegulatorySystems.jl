@@ -9,7 +9,7 @@ export class TimelinePanel extends BasePanel {
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Time",
             labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false
@@ -18,7 +18,7 @@ export class TimelinePanel extends BasePanel {
         const yAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Schedule Timeline",
             axisAlignment: EAxisAlignment.Left,
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
             drawMajorBands: false,
             drawLabels: false,
             drawMajorGridLines: false,

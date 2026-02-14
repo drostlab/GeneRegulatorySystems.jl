@@ -1,9 +1,8 @@
-import { AxisBase2D, ChartModifierBase2D, EChart2DModifierType, NumberRange} from "scichart";
+import { AxisBase2D, ChartModifierBase2D, EChart2DModifierType} from "scichart";
 
 
 export class AxisSyncModifier extends ChartModifierBase2D {
     public type = EChart2DModifierType.Custom
-    private visibleRangeLimit?: NumberRange
 
    onAttach() {
         if (!this.parentSurface) return
@@ -12,8 +11,6 @@ export class AxisSyncModifier extends ChartModifierBase2D {
         )
     }
     attachAxis(xAxis: AxisBase2D) {
-        if (this.visibleRangeLimit)
-            xAxis.visibleRangeLimit = this.visibleRangeLimit
 
         xAxis.visibleRangeChanged.subscribe(args => {
             if (!args?.visibleRange) return
@@ -31,10 +28,5 @@ export class AxisSyncModifier extends ChartModifierBase2D {
         })
         
     }
-    setVisibleRangeLimit(limit: NumberRange) {
-        this.visibleRangeLimit = limit
-        this.parentSurface?.subCharts.forEach(sc =>
-            sc.xAxes.asArray().forEach(ax => (ax.visibleRangeLimit = limit))
-        )
-    }
+
 }

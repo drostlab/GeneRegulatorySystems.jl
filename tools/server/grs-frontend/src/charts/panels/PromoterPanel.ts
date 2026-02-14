@@ -12,7 +12,7 @@ export class PromoterPanel extends TimeseriesPanel {
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Time",
             labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false
@@ -21,7 +21,7 @@ export class PromoterPanel extends TimeseriesPanel {
         const yAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Promoter Activity",
             axisAlignment: EAxisAlignment.Left,
-            axisTitleStyle: {fontSize: 12, fontFamily: "Montserrat"},
+            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false,
@@ -94,7 +94,7 @@ export class PromoterPanel extends TimeseriesPanel {
                 const bandSeries = new FastBandRenderableSeries(this.wasmContext, {
                     dataSeries: xyyDataSeries,
                     stroke: colour,
-                    strokeThickness: 0.1,
+                    strokeThickness: 0.0,
                     fillY1: colour,
                     strokeY1: colour
                 })

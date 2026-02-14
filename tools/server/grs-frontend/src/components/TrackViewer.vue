@@ -55,6 +55,7 @@ const error = ref<string>('')
 const isFullscreen = ref<boolean>(false)
 const selectedTracks = ref<string[]>([])
 const trackSettingsPanel = ref()
+const previousGeneSelection = ref<string[]>([])
 
 const chart = new MainChart()
 
@@ -173,6 +174,24 @@ onMounted(async () => {
     // Register timepoint change callback
     chart.onTimepointChange((timepoint: number) => {
         viewerStore.setTimepoint(timepoint)
+    })
+
+    // Register selection change callback
+    chart.onSelectionChange((seriesNames: string[]) => {
+        const geneIds = seriesNames
+            .map(name => name.split(':')[0])
+            .filter((id): id is string => !!id && id.length > 0)
+        
+        if (geneIds.length === 0) {
+            // Restore previous selection or default to all genes
+            viewerStore.selectedGenes = previousGeneSelection.value.length > 0
+                ? previousGeneSelection.value
+                : (scheduleStore.allGenes || [])
+        } else {
+            // Save current selection before updating
+            previousGeneSelection.value = viewerStore.selectedGenes
+            viewerStore.selectedGenes = geneIds
+        }
     })
 
     // Add ESC key listener for fullscreen exit
