@@ -46,6 +46,10 @@ export function lighten(hex: string, amount: number): string {
 /**
  * Adjust colour opacity (returns rgba string)
  */
+export function darken(hex: string, factor: number = 0.7): string {
+    return lerpColor(hex, '#000000', 1 - factor)
+}
+
 export function withOpacity(hex: string, opacity: number): string {
     const { r, g, b } = parseHex(hex)
     return `rgba(${r}, ${g}, ${b}, ${opacity})`

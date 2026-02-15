@@ -2,6 +2,7 @@ import { EAxisAlignment, ENumericFormat,FastLineRenderableSeries,NumberRange,Num
 import { TimeseriesPanel } from "./TimeseriesPanel";
 import type { BasePanelOptions } from "./BasePanel";
 import type { TimeseriesData } from "@/types/simulation";
+import { CHART_FONT_FAMILY, CHART_FONT_SIZES, AXIS_THICKNESS_NARROW } from "../chartConstants";
 
 
 export class CountsPanel extends TimeseriesPanel {
@@ -10,8 +11,8 @@ export class CountsPanel extends TimeseriesPanel {
 
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Time",
-            labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
+            labelStyle: {fontSize: CHART_FONT_SIZES.label},
+            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false
@@ -22,15 +23,15 @@ export class CountsPanel extends TimeseriesPanel {
             axisAlignment: EAxisAlignment.Left,
             labelFormat: ENumericFormat.Decimal,
             labelPrecision: 0,
-            labelStyle: {fontSize: 10},
-            axisTitleStyle: {fontSize: 12, fontFamily: "Arial"},
+            labelStyle: {fontSize: CHART_FONT_SIZES.label},
+            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY},
             drawMajorBands: false,
             drawMajorTickLines: false,
             drawMinorTickLines: false,
             growBy: new NumberRange(0.01, 0.01),
             majorGridLineStyle: { color: "#f5f5f5"},
             minorGridLineStyle: { color: "#f5f5f5"},
-            axisThickness: 44
+            axisThickness: AXIS_THICKNESS_NARROW
         })
 
         this.surface.xAxes.add(xAxis)
@@ -40,17 +41,17 @@ export class CountsPanel extends TimeseriesPanel {
     setData(timeseries: TimeseriesData): void {
         this.clearData()
         if (!timeseries) {
-            console.warn("no timeseries supplied")
+            console.warn("[CountsPanel] no timeseries supplied")
             return
         }
         if (!this.metadata) {
-            console.warn("trying to add timeseries when no metadata is available")
+            console.warn("[CountsPanel] trying to add timeseries when no metadata is available")
             return
         }
         
+        let seriesCount = 0
         for (const [species, pathData] of Object.entries(timeseries)) {
             for (const [path, series] of Object.entries(pathData)) {
-                // create one line series per (species,segment)
                 const geneId = this.metadata!.species_gene_mapping[species] ?? ""
                 const colour = this.metadata.gene_colours[geneId] ?? "gray"
                 const key = `${geneId}:${path}`
@@ -62,17 +63,20 @@ export class CountsPanel extends TimeseriesPanel {
                 const time = series.map(pair => pair[0]); 
                 const counts = series.map(pair => pair[1]); 
                 xySeries.appendRange(time, counts)
+                const coordinator = this.coordinator
                 const lineSeries = new FastLineRenderableSeries(this.wasmContext, {
                      dataSeries: xySeries,
                      stroke: colour,
                      strokeThickness: 1,
                      isDigitalLine: true,
                      onHoveredChanged: sourceSeries => {
-                        sourceSeries.strokeThickness = sourceSeries.isSelected ? 2 : 1
+                        coordinator.syncHover(sourceSeries)
                      }
                 })
                 this.surface.renderableSeries.add(lineSeries)
+                seriesCount++
             }
         }
+        console.debug(`[CountsPanel] setData: created ${seriesCount} line series`)
     }
 }

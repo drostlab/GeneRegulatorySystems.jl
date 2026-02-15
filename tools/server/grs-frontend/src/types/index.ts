@@ -1,31 +1,19 @@
-/**
- * Type definitions for GRS Frontend
- * Re-exports all types from their respective modules
- */
+export type { Node, Link, Network } from './network'
 
-// Network types
-export type {
-    Node,
-    Link,
-    Network
-} from './network'
-
-// Schedule types
-export {
-    SPECIES_TYPES,
-} from './schedule'
+export { SPECIES_TYPES } from './schedule'
 export type {
     Schedule,
     ScheduleData,
+    StructureNode,
     SpeciesType,
     TimelineSegment
 } from './schedule'
 
-// Simulation types and functions
 export {
     isResultLoaded,
     getMaxTime,
-    formatResultLabel
+    formatResultLabel,
+    restructureTimeseriesByPathAndGene
 } from './simulation'
 export type {
     TimeseriesData,
@@ -35,6 +23,3 @@ export type {
     SimulationResultMetadata,
     SimulationResult
 } from './simulation'
-
-
-

@@ -1,28 +1,12 @@
 <script setup lang="ts">
-/**
- * TrackViewer Component
- *
- * Responsibilities:
- * - UI to run simulations (with active schedule)
- * - Results browser (list + select stored results)
- * - Synchronizes simulationStore ↔ viewerStore for time axis alignment
- * - SciChart trajectory plot integration (placeholder)
- * - Error display
- *
- * Integrates with:
- * - simulationStore: run simulation, load results, WebSocket state
- * - viewerStore: time extent synchronization
- * - No direct API calls (all via store)
- */
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useSimulationStore } from '@/stores/simulationStore'
 import { useScheduleStore } from '@/stores/scheduleStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import type { SimulationResultMetadata } from '@/types/simulation'
 import { formatResultLabel } from '@/types/simulation'
-import { speciesTypeLabels, DEFAULT_VISIBLE_SPECIES_TYPES } from '@/types/schedule'
+import { speciesTypeLabels, DEFAULT_VISIBLE_SPECIES_TYPES, SPECIES_TYPES, getUniqueModelPaths } from '@/types/schedule'
 import type { SpeciesType } from '@/types/schedule'
-import { SPECIES_TYPES } from '@/types/schedule'
 import Button from 'primevue/button'
 import Select, { type SelectChangeEvent } from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
@@ -38,16 +22,7 @@ const simulationStore = useSimulationStore()
 const scheduleStore = useScheduleStore()
 const viewerStore = useViewerStore()
 
-// =====================================================================
-// CONSTANTS
-// =====================================================================
-
 const DEFAULT_SELECTED_GENES_COUNT = 5
-
-// =====================================================================
-// STATE
-// =====================================================================
-
 
 const containerRef = ref<HTMLDivElement>()
 const results = ref<SimulationResultMetadata[]>([])
@@ -55,27 +30,24 @@ const error = ref<string>('')
 const isFullscreen = ref<boolean>(false)
 const selectedTracks = ref<string[]>([])
 const trackSettingsPanel = ref()
-const previousGeneSelection = ref<string[]>([])
+const previousGeneSelection = ref<string[] | null>(null)
 
 const chart = new MainChart()
 
-// Separate loading states for different UI elements
 const isScheduleLoading = computed(() => scheduleStore.isLoading)
 const isSimulationBusy = computed(() => simulationStore.isSimulationRunning || simulationStore.isLoadingResult)
 
-// Disable UI when any operation is in progress
 const isUiDisabled = computed(() => isScheduleLoading.value || isSimulationBusy.value)
 
-// Track visibility options - only show available tracks
 const trackOptions = computed(() => {
     const options: Array<{ label: string; value: string }> = []
     
-    // Only include schedule if schedule is loaded
+    // Only include schedule if loaded
     if (scheduleStore.isLoaded) {
         options.push({ label: 'Schedule Timeline', value: 'schedule' })
     }
     
-    // Only include species types if simulation is loaded
+    // Only include species types if simulation loaded
     if (simulationStore.isLoaded) {
         SPECIES_TYPES.forEach(type => {
             options.push({ label: speciesTypeLabels[type], value: type })
@@ -85,7 +57,6 @@ const trackOptions = computed(() => {
     return options
 })
 
-// Auto-cleanup tracks when schedule or simulation unload
 watch(
     () => ({
         scheduleLoaded: scheduleStore.isLoaded,
@@ -102,7 +73,6 @@ watch(
             SPECIES_TYPES.forEach(type => validTracks.push(type))
         }
         
-        // Initialize with defaults on first load
         if (state.simulationLoaded && selectedTracks.value.length === 0) {
             const defaults: string[] = []
             if (state.scheduleLoaded) {
@@ -113,7 +83,6 @@ watch(
             return
         }
         
-        // Remove any selected tracks that are no longer valid
         const filtered = selectedTracks.value.filter(t => validTracks.includes(t))
         
         if (filtered.length !== selectedTracks.value.length) {
@@ -124,10 +93,21 @@ watch(
 )
 
 watch(
-    () => ({ segments: scheduleStore.segments, metadata: scheduleStore.timeseriesMetadata }),
-    ({ segments, metadata }) => {
-        if (segments && segments.length > 0 && metadata) {
-            chart.setScheduleData(segments, metadata)
+    () => ({ structure: scheduleStore.schedule.data?.structure, segments: scheduleStore.segments, metadata: scheduleStore.timeseriesMetadata }),
+    async ({ structure, segments, metadata }) => {
+        if (structure && segments && segments.length > 0 && metadata) {
+            console.debug(`[TrackViewer] Schedule data ready: ${segments.length} segments`)
+            chart.setScheduleData(structure, segments, metadata)
+
+            // Auto-load network for the first executable model
+            const modelPaths = getUniqueModelPaths(segments)
+            if (modelPaths.length > 0) {
+                console.debug(`[TrackViewer] Auto-loading first network: ${modelPaths[0]}`)
+                await scheduleStore.fetchNetwork(modelPaths[0]!)
+            }
+
+            // Re-push simulation data now that metadata is fresh
+            refreshSimulationData()
         }
     }
 )
@@ -135,15 +115,14 @@ watch(
 watch(
     () => simulationStore.timeseries,
     (newTimeseries) => {
-        if (newTimeseries) {
-            chart.setSimulationData(newTimeseries)
-        } else {
+        if (newTimeseries && scheduleStore.timeseriesMetadata) {
+            refreshSimulationData()
+        } else if (!newTimeseries) {
             chart.clearSimulationData()
         }
     }
 )
 
-// Auto-select genes when schedule genes become available after simulation load
 watch(
     () => scheduleStore.allGenes,
     (allGenes) => {
@@ -153,7 +132,17 @@ watch(
     }
 )
 
-// Update viewerStore when tracks change
+/** Push current simulation data to chart, filtered by selected genes/paths. */
+function refreshSimulationData(): void {
+    const genes = viewerStore.selectedGenes
+    const paths = viewerStore.selectedPaths
+    const pathArray = paths ? [...paths] : null
+    const visibleData = simulationStore.getTimeseries(genes, pathArray)
+    if (visibleData) {
+        chart.setSimulationData(visibleData)
+    }
+}
+
 function updateViewerStore() {
     viewerStore.selectedSpeciesTypes = selectedTracks.value.filter(t => t !== 'schedule') as SpeciesType[]
 }
@@ -164,37 +153,34 @@ async function loadResults() {
 
 
 onMounted(async () => {
-    // Load available results
     loadResults()
-
-    // Setup trajectory chart
     await chart.init(containerRef)
     chart.setVisibleTracks(['schedule'])
-    
-    // Register timepoint change callback
+
     chart.onTimepointChange((timepoint: number) => {
         viewerStore.setTimepoint(timepoint)
     })
 
-    // Register selection change callback
-    chart.onSelectionChange((seriesNames: string[]) => {
-        const geneIds = seriesNames
-            .map(name => name.split(':')[0])
-            .filter((id): id is string => !!id && id.length > 0)
-        
-        if (geneIds.length === 0) {
-            // Restore previous selection or default to all genes
-            viewerStore.selectedGenes = previousGeneSelection.value.length > 0
-                ? previousGeneSelection.value
-                : (scheduleStore.allGenes || [])
-        } else {
-            // Save current selection before updating
-            previousGeneSelection.value = viewerStore.selectedGenes
-            viewerStore.selectedGenes = geneIds
+    chart.onSelectionChange((selectedGenes: string[]) => {
+        console.debug(`[TrackViewer] Selection callback: [${selectedGenes}], previous: [${viewerStore.selectedGenes}]`)
+        if (selectedGenes.length === 1) {
+            previousGeneSelection.value = [...viewerStore.selectedGenes]
+            viewerStore.selectedGenes = [selectedGenes[0]!]
+        } else if (selectedGenes.length === 0 && previousGeneSelection.value) {
+            // Restore previous selection when user clicks empty space
+            console.debug(`[TrackViewer] Restoring previous selection: [${previousGeneSelection.value}]`)
+            viewerStore.selectedGenes = previousGeneSelection.value
+            previousGeneSelection.value = null
         }
     })
 
-    // Add ESC key listener for fullscreen exit
+    chart.onSegmentClick(async (segmentId: number, modelPath: string) => {
+        console.debug(`[TrackViewer] Segment click: id=${segmentId} modelPath=${modelPath}`)
+        viewerStore.selectSegments(new Set([segmentId]))
+        await scheduleStore.fetchNetwork(modelPath)
+        console.debug(`[TrackViewer] Network loaded for: ${modelPath}, activeNetwork: ${scheduleStore.activeNetwork ? 'yes' : 'no'}`)
+    })
+
     window.addEventListener('keydown', handleEscapeKey)
 })
 
@@ -203,9 +189,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEscapeKey)
 })
 
-// Load result. This also updates the schedule to the one that had been used to produce the result
 async function loadResult(event: SelectChangeEvent) {
-    // Clear simulation before loading new one
     simulationStore.clearResult()
     const selectedResultId = event.value
     chart.clear()
@@ -216,7 +200,6 @@ async function loadResult(event: SelectChangeEvent) {
 async function runSimulation() {
     chart.clear()
     await simulationStore.runSimulation()
-    // Now the simulation is loaded. the timeseries watcher will handle the update of the chart
     await loadResults()
 }
 
@@ -231,8 +214,15 @@ function toggleFullscreen() {
 }
 
 function handleEscapeKey(event: KeyboardEvent) {
-    if (event.key === 'Escape' && isFullscreen.value) {
-        isFullscreen.value = false
+    if (event.key === 'Escape') {
+        if (previousGeneSelection.value) {
+            viewerStore.selectedGenes = previousGeneSelection.value
+            previousGeneSelection.value = null
+            return
+        }
+        if (isFullscreen.value) {
+            isFullscreen.value = false
+        }
     }
 }
 
@@ -247,11 +237,9 @@ watch(
 
 
 watch(
-    () => viewerStore.selectedGenes,
-    (newGenes) => {
-        const visibleData = simulationStore.getTimeseries(newGenes)
-        if (visibleData)
-            chart.setSimulationData(visibleData)
+    () => ({ genes: viewerStore.selectedGenes, paths: viewerStore.selectedPaths }),
+    () => {
+        refreshSimulationData()
     }
 )
 
@@ -264,9 +252,7 @@ watch(
         <div class="simulation-viewer" :class="{ 'fullscreen-mode': isFullscreen }">
         <div class="card-header">
             <div class="card-header-row">
-                <!-- Left Section: Results & Run Button -->
                 <div class="header-left">
-                    <!-- Results Selector / Running Status -->
                     <div class="results-control">
                         <Select
                             v-if="!simulationStore.isSimulationRunning"
@@ -303,7 +289,6 @@ watch(
                         />
                     </div>
 
-                    <!-- Run Simulation Button -->
                     <Button
                         :label="simulationStore.isSimulationRunning ? 'Running Simulation' : 'Run Simulation'"
                         :icon="simulationStore.isSimulationRunning ? 'pi pi-spin pi-spinner' : 'pi pi-play-circle'"
@@ -315,9 +300,7 @@ watch(
                     />
                 </div>
 
-                <!-- Right Section: Simulation Controls & Fullscreen -->
                 <div class="header-right">
-                    <!-- Gene Filter Selector -->
                     <MultiSelect
                         v-if="simulationStore.currentResultId"
                         v-model="viewerStore.selectedGenes"
@@ -359,7 +342,6 @@ watch(
                         </template>
                     </MultiSelect>
 
-                    <!-- Track Settings Button -->
                     <Button
                         v-if="simulationStore.currentResultId"
                         icon="pi pi-sliders-v"
@@ -390,7 +372,6 @@ watch(
                         </div>
                     </OverlayPanel>
 
-                    <!-- Clear Simulation Button -->
                     <Button
                         v-if="simulationStore.currentResultId"
                         icon="pi pi-times"
@@ -402,7 +383,6 @@ watch(
                         title="Clear loaded simulation"
                     />
 
-                    <!-- Fullscreen Toggle Button -->
                     <Button
                         :icon="isFullscreen ? 'pi pi-window-minimize' : 'pi pi-window-maximize'"
                         :title="isFullscreen ? 'Exit fullscreen (ESC)' : 'Enter fullscreen'"
@@ -414,11 +394,9 @@ watch(
             </div>
         </div>
 
-        <!-- SciChart Canvas Container -->
         <div class="chart-wrapper">
             <div ref="containerRef" class="chart-container"></div>
             
-            <!-- Overlay when no schedule is loaded -->
             <div 
                 v-if="!scheduleStore.isLoaded && !isScheduleLoading"
                 class="chart-overlay"
@@ -427,14 +405,12 @@ watch(
             </div>
         </div>
 
-        <!-- Status Messages -->
         <Message
             v-if="error"
             severity="error"
             :text="error"
         />
 
-        <!-- Loading Overlay -->
         <div v-if="isScheduleLoading || simulationStore.isLoadingResult" class="loading-overlay">
             <div v-if="simulationStore.isLoadingResult" class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />

@@ -1,10 +1,9 @@
 """
     ScheduleVisualization
 
-Module for schedule visualization schema generation and validation.
-
-Converts GRS.jl Schedule objects into frontend-compatible visualization schemas
-and validates schedule specifications before execution.
+Converts GRS.jl Schedule objects into frontend-compatible visualisation schemas.
+Handles schedule reification, validation, structure tree generation, and
+on-demand network extraction.
 """
 module ScheduleVisualization
 
@@ -12,8 +11,10 @@ using GeneRegulatorySystems
 using GeneRegulatorySystems.Models
 using GeneRegulatorySystems.Models: Wrapped, Instant, Label, Descriptions
 using GeneRegulatorySystems.Models.Scheduling
+using GeneRegulatorySystems.Models.Scheduling: Primitive, Schedule as GRSSchedule
 using GeneRegulatorySystems.Models.NetworkRepresentation
 using GeneRegulatorySystems.Specifications
+using GeneRegulatorySystems.Specifications: Scope, List, Each, Load, Template, Slice, Sequence
 using JSON
 using Colors
 
@@ -21,43 +22,14 @@ using Colors
 # Exports
 # ============================================================================
 
-# Schema types (frontend contract)
-export Network
-export TimelineSegment, ScheduleData, ScheduleVisMetadata
-
-# API types
+export Network, TimelineSegment, ScheduleData, StructureNode
 export ReifiedSchedule, ValidationMessage
-
-# Public API
-export reify_schedule, extract_network, is_valid, get_error_messages
+export reify_schedule, extract_network_for_model_path, is_valid, get_error_messages
 
 # ============================================================================
 # Schema Types
 # ============================================================================
 
-"""
-    ScheduleVisMetadata
-
-Visualization metadata for schedule rendering.
-
-# Fields
-- `gene_colours::Dict{String, String}`: Maps gene name to hex colour string
-"""
-@kwdef struct ScheduleVisMetadata
-    gene_colours::Dict{String, String} = Dict{String, String}()
-end
-
-"""
-    Network
-
-Flat network representation for visualization.
-
-Uses NetworkRepresentation.Node and NetworkRepresentation.Link directly.
-
-# Fields
-- `nodes::Vector{NetworkRepresentation.Node}`: Flat list of all nodes
-- `links::Vector{NetworkRepresentation.Link}`: Flat list of all links
-"""
 @kwdef struct Network
     nodes::Vector{NetworkRepresentation.Node}
     links::Vector{NetworkRepresentation.Link}
@@ -66,84 +38,77 @@ end
 """
     TimelineSegment
 
-Execution segment within a schedule's timeline.
+Single execution segment from a dryrun pass.
 
-# Fields
-- `path::String`: Unique execution path identifier
-- `from::Float64`: Start time
-- `to::Float64`: End time
-- `label::String`: Label of the executed model
+- `id`: auto-increment unique identifier
+- `execution_path`: dryrun `path` kwarg (not unique for repeating scopes)
+- `model_path`: `primitive!.path` (spec location, used for network loading)
+- `from`/`to`: time range (from == to for instant models)
+- `label`: human-readable model label
 """
 @kwdef struct TimelineSegment
-    path::String
+    id::Int
+    execution_path::String
+    model_path::String
     from::Float64
     to::Float64
     label::String
 end
 
 """
+    StructureNode
+
+Recursive tree mirroring the schedule specification structure.
+Used by the frontend to compute rectangle layout for timeline/promoter charts.
+
+- `type`: `:scope`, `:sequence`, `:branch`, `:leaf`
+- `execution_path`: the execution path prefix for this node
+- `label`: human-readable label (from spec)
+- `children`: child nodes (empty for leaves)
+"""
+@kwdef struct StructureNode
+    type::Symbol
+    execution_path::String = ""
+    label::String = ""
+    children::Vector{StructureNode} = StructureNode[]
+end
+
+"""
     ScheduleData
 
-Complete visualization schema for schedule execution.
+Complete visualisation schema. No network included -- networks are loaded on demand.
 
-Contains network shared across all segments, execution timeline, visualization metadata,
-and species-to-gene mapping. Maps one-to-one to TypeScript ScheduleData for frontend visualization.
-
-# Fields
-- `network::Network`: Shared network (nodes and links) across all segments
-- `segments::Vector{TimelineSegment}`: Execution timeline (one per execution path)
-- `vis_metadata::ScheduleVisMetadata`: Visualization configuration (gene colours, etc.)
-- `species_gene_mapping::Dict{Symbol, Symbol}`: Maps species ID to gene name
+- `segments`: all timeline segments (with contiguous same-path merging)
+- `structure`: recursive tree from spec for rectangle layout
+- `species_gene_mapping`: union across all model paths
+- `gene_colours`: gene name to hex colour string
 """
 @kwdef struct ScheduleData
-    network::Network
     segments::Vector{TimelineSegment}
-    vis_metadata::ScheduleVisMetadata = ScheduleVisMetadata()
+    structure::StructureNode
     species_gene_mapping::Dict{Symbol, Symbol} = Dict{Symbol, Symbol}()
+    gene_colours::Dict{String, String} = Dict{String, String}()
 end
 
 # ============================================================================
 # API Types
 # ============================================================================
 
-"""
-    ValidationMessage
-
-Single validation message for schedule (error, warning, or info).
-
-# Fields
-- `type::String`: Message type - \"error\", \"warning\", or \"info\"
-- `content::String`: Message text
-"""
 @kwdef struct ValidationMessage
-    type::String  # \"error\", \"warning\", or \"info\"
+    type::String
     content::String
 end
 
 """
     ReifiedSchedule
 
-Complete schedule representation with metadata and visualization data.
-
-Represents a loaded schedule from storage (examples, user, or snapshot sources).
-Combines schedule metadata with optional visualization data. "Reified" indicates
-the schedule has been materialized from abstract specification into concrete
-visualization-ready form with validation.
-
-# Fields
-- `name::String`: Schedule name/identifier
-- `source::String`: Source location - \"examples\", \"user\", or \"snapshot\"
-- `spec::String`: Original schedule specification as JSON string
-- `data::Union{ScheduleData, Nothing}`: Parsed visualization data (null if parsing failed)
-- `species_gene_mapping::Dict{Symbol, Union{Symbol, Nothing}}`: Maps species ID (as Symbol) to gene name (as Symbol), or null if not found
-- `validationMessages::Vector{ValidationMessage}`: Validation errors, warnings, and info messages
+Loaded schedule with metadata and visualisation data.
 """
 @kwdef struct ReifiedSchedule
     name::String
-    source::String  # \"examples\", \"user\", or \"snapshot\"
+    source::String
     spec::String
     data::Union{ScheduleData, Nothing} = nothing
-    species_gene_mapping::Dict{Symbol, Symbol} = Dict{Symbol, Symbol}()
     validationMessages::Vector{ValidationMessage} = ValidationMessage[]
 end
 
@@ -152,148 +117,99 @@ end
 # ============================================================================
 
 """
-    reify_schedule(spec_string::String; name::String="", source::String="snapshot")::ReifiedSchedule
+    reify_schedule(spec_string; name, source) -> ReifiedSchedule
 
-Parse, validate, and build visualization data for a schedule spec string.
-
-Encapsulates the full pipeline: parse JSON → validate → generate visualization → return ReifiedSchedule object.
-Validation is performed implicitly during construction.
-
-# Arguments
-- `spec_string::String`: Schedule specification as JSON string
-- `name::String`: Schedule name/identifier (default: empty)
-- `source::String`: Source location (default: "snapshot")
-
-# Returns
-- `ReifiedSchedule`: Complete schedule object with validation messages and visualization data
+Parse, validate, and build visualisation data for a schedule spec string.
 """
 function reify_schedule(spec_string::String; name::String="", source::String="snapshot")::ReifiedSchedule
     start_time = time()
     validation_messages = ValidationMessage[]
-    visualization = nothing
+    visualisation = nothing
 
     try
-        # Parse spec
-        parse_start = time()
         spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
-        parse_time = time() - parse_start
-        @info "Schedule parsed" name source parse_time
 
-        # Validate by attempting construction
         validation_msgs = _validate_spec(spec)
         append!(validation_messages, validation_msgs)
 
-        # Only generate visualization if no errors
         has_errors = any(m -> m.type == "error", validation_messages)
         if !has_errors
-            try
-                @info "Starting schedule visualization generation" name source
-                vis_start = time()
-                bindings = Dict(
-                    :seed => get(spec, :seed, "default"),
-                    :into => "",
-                    :channel => "",
-                    :defaults => Models.load_defaults(),
-                )
-                specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
-                grs_schedule = Models.Scheduling.Schedule(; specification, bindings)
-                vis_data = generate_vis_data(grs_schedule, name)
-                vis_time = time() - vis_start
-                @info "Schedule visualization generated" name source vis_time segments=length(vis_data.segments)
-                vis_metadata = isempty(vis_data.vis_metadata.gene_colours) ?
-                    generate_default_vis_metadata(vis_data) :
-                    vis_data.vis_metadata
-                species_gene_mapping = _extract_species_gene_mapping(vis_data.network)
-                visualization = ScheduleData(
-                    network = vis_data.network,
-                    segments = vis_data.segments,
-                    vis_metadata = vis_metadata,
-                    species_gene_mapping = species_gene_mapping
-                )
-            catch e
-                push!(validation_messages, ValidationMessage(
-                    type = "error",
-                    content = "Failed to generate visualization: $(string(e))"
-                ))
-                @error "Failed to generate visualisation", e
-            end
+            @info "Generating schedule visualisation" name source
+            vis_start = time()
+
+            bindings = Dict(
+                :seed => get(spec, :seed, "default"),
+                :into => "",
+                :channel => "",
+                :defaults => Models.load_defaults(),
+            )
+            specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
+            grs_schedule = GRSSchedule(; specification, bindings)
+
+            segments = _collect_segments(grs_schedule)
+            merged = _merge_contiguous_segments(segments)
+            structure = _build_structure_tree(grs_schedule)
+            species_gene_mapping = _extract_species_gene_mapping_union(grs_schedule, merged)
+            gene_colours = _generate_gene_colours(species_gene_mapping)
+
+            @info "Schedule visualisation generated" name segments=length(merged) elapsed=(time() - vis_start)
+
+            visualisation = ScheduleData(;
+                segments = merged,
+                structure,
+                species_gene_mapping,
+                gene_colours,
+            )
         end
     catch e
-        # Parse error
         push!(validation_messages, ValidationMessage(
             type = "error",
-            content = "Invalid JSON: $(string(e))"
+            content = "Failed to process schedule: $(string(e))"
         ))
+        @error "Schedule processing failed" exception=e
     end
 
-    total_time = time() - start_time
-    @info "Schedule load completed" name source valid=is_valid(ReifiedSchedule(name=name, source=source, spec=spec_string, validationMessages=validation_messages)) total_time
+    @info "Schedule load completed" name source valid=!any(m -> m.type == "error", validation_messages) elapsed=(time() - start_time)
 
-    return ReifiedSchedule(
-        name = name,
-        source = source,
-        spec = spec_string,
-        data = visualization,
-        validationMessages = validation_messages
+    return ReifiedSchedule(; name, source, spec = spec_string, data = visualisation, validationMessages = validation_messages)
+end
+
+"""
+    extract_network_for_model_path(grs_schedule, model_path) -> Network
+
+Extract the network for a specific model path using `Scheduling.reify`.
+"""
+function extract_network_for_model_path(grs_schedule::GRSSchedule, model_path::String)::Network
+    @debug "Extracting network for model_path" model_path
+    primitive = Scheduling.reify(grs_schedule, model_path)
+    entity = NetworkRepresentation.entity(primitive)
+    nodes, links = NetworkRepresentation.flatten(entity)
+    return Network(; nodes, links)
+end
+
+"""
+    extract_network_for_model_path(spec_string, model_path) -> Network
+
+Convenience: parse spec string and extract network.
+"""
+function extract_network_for_model_path(spec_string::String, model_path::String)::Network
+    spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
+    bindings = Dict(
+        :seed => get(spec, :seed, "default"),
+        :into => "",
+        :channel => "",
+        :defaults => Models.load_defaults(),
     )
+    specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
+    grs_schedule = GRSSchedule(; specification, bindings)
+    return extract_network_for_model_path(grs_schedule, model_path)
 end
 
-"""
-    is_valid(reified::ReifiedSchedule)::Bool
+is_valid(reified::ReifiedSchedule)::Bool = !any(msg -> msg.type == "error", reified.validationMessages)
 
-Check if a reified schedule is valid (has no error messages).
-
-# Arguments
-- `reified::ReifiedSchedule`: The reified schedule to check
-
-# Returns
-- `Bool`: True if valid (no error messages), false otherwise
-"""
-function is_valid(reified::ReifiedSchedule)::Bool
-    return !any(msg -> msg.type == "error", reified.validationMessages)
-end
-
-"""
-    get_error_messages(reified::ReifiedSchedule)::String
-
-Get concatenated error messages from a reified schedule.
-
-# Arguments
-- `reified::ReifiedSchedule`: The reified schedule to extract errors from
-
-# Returns
-- `String`: Concatenated error messages separated by "; ", or empty string if no errors
-"""
 function get_error_messages(reified::ReifiedSchedule)::String
     error_msgs = filter(msg -> msg.type == "error", reified.validationMessages)
     return join([msg.content for msg in error_msgs], "; ")
-end
-
-"""
-    extract_network(schedule::Scheduling.Schedule)::NetworkRepresentation.Entity
-
-Extract network entity tree from schedule via dryrun.
-
-Uses the NetworkCreation.entity() dispatch to handle all model types polymorphically.
-Extracts the network from the first dynamic primitive encountered during dryrun.
-
-# Returns
-- `NetworkRepresentation.Entity`: Hierarchical entity tree with nodes and links
-"""
-function extract_network(schedule::Scheduling.Schedule)
-    network = nothing
-
-    function dryrun_collector(primitive!, x, Δt; path, _...)
-        if !(isfinite(Δt) && Δt > 0.0)
-            return
-        end
-        if network === nothing
-            network = NetworkRepresentation.entity(primitive!)
-        end
-    end
-
-    schedule(Models.FlatState(); dryrun=dryrun_collector)
-    return network
 end
 
 # ============================================================================
@@ -301,98 +217,269 @@ end
 # ============================================================================
 
 _label(wrapped::Models.Wrapped) = _label(Models.describe(wrapped.definition))
-
 _label(label::Models.Label) = label.label
-
 _label(model::Models.Instant) = repr(model)
 
 function _label(desc::Descriptions)
     i = findfirst(d -> d isa Label, desc.descriptions)
-    if i !== nothing
-        _label(desc.descriptions[i])
-    else
-        ""
-    end
+    i !== nothing ? _label(desc.descriptions[i]) : ""
 end
 
 # ============================================================================
-# Internal: Visualization Generation
+# Internal: Segment Collection
 # ============================================================================
 
 """
-    generate_vis_data(grs_schedule, label::String="")::ScheduleData
-
-Convert a GRS Schedule object to ScheduleData for visualization.
-
-Returns a complete visualization schema with shared network and timeline segments.
-Internal function used by reify_schedule.
-
-# Arguments
-- `grs_schedule`: GRS.Models.Scheduling.Schedule object
-- `label::String`: Optional schedule name/identifier
+Collect all raw segments from a dryrun pass with auto-increment IDs.
 """
-function generate_vis_data(grs_schedule, label::String="")::ScheduleData
-    # Build timeline segments and extract shared network
-    network, segments = _build_timeline_segments(grs_schedule)
+function _collect_segments(grs_schedule)::Vector{TimelineSegment}
+    segments = TimelineSegment[]
+    next_id = Ref(1)
 
-    # Validate timeline continuity (strict check to prevent bugs)
-    valid, errors = _validate_timeline_continuity(segments)
-    if !valid
-        @warn "Timeline continuity issues detected: $(join(errors, "; "))"
+    function dryrun_collector(primitive!, x, Δt; path, _...)
+        label = _label(primitive!.f!.model)
+        push!(segments, TimelineSegment(
+            id = next_id[],
+            execution_path = path,
+            model_path = primitive!.path,
+            from = x.t,
+            to = x.t + (isfinite(Δt) ? Δt : 0.0),
+            label = label,
+        ))
+        next_id[] += 1
     end
 
-    # Extract species → gene mapping from network
-    species_gene_mapping = _extract_species_gene_mapping(network)
-
-    return ScheduleData(
-        network = network,
-        segments = segments,
-        vis_metadata = ScheduleVisMetadata(),
-        species_gene_mapping = species_gene_mapping
-    )
+    grs_schedule(Models.FlatState(); dryrun = dryrun_collector)
+    return segments
 end
 
 """
-    generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetadata
-
-Generate default visualization metadata (gene colours) from schedule data.
-
-Assigns unique colours to each gene found in the shared network.
+Merge contiguous segments with the same execution_path, label, and model_path.
+Non-contiguous segments with the same path (e.g., entrained model) stay separate.
+IDs are reassigned after merging.
 """
-function generate_default_vis_metadata(vis_data::ScheduleData)::ScheduleVisMetadata
-    gene_colours = Dict{String, String}()
+function _merge_contiguous_segments(segments::Vector{TimelineSegment})::Vector{TimelineSegment}
+    isempty(segments) && return TimelineSegment[]
 
-    # Extract genes from shared network
-    network = vis_data.network
-    genes = filter(n -> n.kind == :gene, network.nodes)
+    merged = TimelineSegment[]
+    current = segments[1]
 
-    # Generate distinguishable colour palette
-    if !isempty(genes)
-        seed = [colorant"white", colorant"black", colorant"crimson"]
-        colors = distinguishable_colors(length(genes), seed, dropseed = true)
-        colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.7, hsv.v * 1.3) end for c in colors]
-        colors = convert.(RGB, colors)
-        for (idx, gene) in enumerate(genes)
-            color_hex = hex(colors[idx])
-            gene_colours[string(gene.name)] = "#$color_hex"
+    for i in 2:length(segments)
+        seg = segments[i]
+        if seg.execution_path == current.execution_path &&
+           seg.label == current.label &&
+           seg.model_path == current.model_path &&
+           seg.from == current.to
+            current = TimelineSegment(
+                id = current.id,
+                execution_path = current.execution_path,
+                model_path = current.model_path,
+                from = current.from,
+                to = seg.to,
+                label = current.label,
+            )
+        else
+            push!(merged, current)
+            current = seg
+        end
+    end
+    push!(merged, current)
+
+    return [TimelineSegment(
+        id = i,
+        execution_path = seg.execution_path,
+        model_path = seg.model_path,
+        from = seg.from,
+        to = seg.to,
+        label = seg.label
+    ) for (i, seg) in enumerate(merged)]
+end
+
+# ============================================================================
+# Internal: Structure Tree
+# ============================================================================
+
+"""
+Walk the Schedule specification tree to produce a StructureNode hierarchy.
+"""
+function _build_structure_tree(grs_schedule::GRSSchedule)::StructureNode
+    return _structure_node(grs_schedule.specification, grs_schedule.bindings, grs_schedule.path, grs_schedule.branch)
+end
+
+function _structure_node(spec::Scope, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    child_path = "$path$(spec.branch ? '/' : '+')"
+    merged_bindings = _safe_evaluate_bindings(spec, bindings, path)
+    child = _structure_node_from_step(spec.step, merged_bindings, child_path, spec.branch)
+
+    if haskey(merged_bindings, :to)
+        return StructureNode(type = :scope, execution_path = child_path, label = "repeat", children = [child])
+    end
+
+    return StructureNode(type = :scope, execution_path = child_path, children = [child])
+end
+
+function _structure_node(spec::List, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    child_prefix = branch ? path : "$path-"
+    children = StructureNode[]
+
+    for (i, item_spec) in enumerate(spec.items)
+        item_bindings = Scheduling.descended(bindings, i)
+        child = _structure_node_from_step(item_spec, item_bindings, "$child_prefix$i", false)
+        push!(children, child)
+    end
+
+    node_type = branch ? :branch : :sequence
+    return StructureNode(type = node_type, execution_path = path, children = children)
+end
+
+function _structure_node(spec::Each, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    child_prefix = branch ? path : "$path-"
+
+    items = try
+        Scheduling.evaluate(spec.items; bindings, path)
+    catch
+        []
+    end
+
+    children = StructureNode[]
+    for (i, item) in enumerate(items)
+        item_bindings = Scheduling.descended(bindings, i)
+        if spec.as != Symbol("")
+            item_bindings = merge(item_bindings, Dict{Symbol, Any}(spec.as => item))
+        end
+        child = _structure_node_from_step(spec.step, item_bindings, "$child_prefix$i", false)
+        push!(children, child)
+    end
+
+    node_type = branch ? :branch : :sequence
+    return StructureNode(type = node_type, execution_path = path, children = children)
+end
+
+function _structure_node(spec::Template, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    expanded = try
+        Scheduling.evaluate(spec; bindings, path)
+    catch
+        nothing
+    end
+
+    if expanded isa Specifications.Specification
+        return _structure_node(expanded, bindings, path, branch)
+    end
+
+    return StructureNode(type = :leaf, execution_path = path, label = _safe_label(expanded))
+end
+
+function _structure_node(spec::Slice, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    return StructureNode(type = :leaf, execution_path = path, label = "slice")
+end
+
+function _structure_node(spec::Load, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    return StructureNode(type = :leaf, execution_path = path, label = "load: $(spec.path)")
+end
+
+function _structure_node(spec, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    return StructureNode(type = :leaf, execution_path = path)
+end
+
+function _structure_node_from_step(step, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode
+    if step isa Specifications.Specification
+        return _structure_node(step, bindings, path, branch)
+    end
+    return StructureNode(type = :leaf, execution_path = path, label = _safe_label(step))
+end
+
+function _safe_evaluate_bindings(spec::Scope, bindings::Dict{Symbol, Any}, path::String)::Dict{Symbol, Any}
+    try
+        merged = if spec.barrier
+            Dict{Symbol, Any}(
+                keep => bindings[keep]
+                for keep in (:seed, :into, :channel, :defaults)
+                if haskey(bindings, keep)
+            )
+        else
+            copy(bindings)
+        end
+
+        for (name, definition) in spec.definitions
+            try
+                merged[name] = Scheduling.evaluate(definition, path = "$path.$name"; bindings)
+                merged[Symbol("^$name")] = Scheduling.Locator(path)
+            catch
+                @debug "Could not evaluate binding" name path
+            end
+        end
+        return merged
+    catch
+        return bindings
+    end
+end
+
+_safe_label(x::Models.Model) = _label(x)
+_safe_label(x::Models.Wrapped) = _label(x)
+_safe_label(x::Number) = "step=$x"
+_safe_label(::Nothing) = ""
+_safe_label(x) = string(typeof(x))
+
+# ============================================================================
+# Internal: Species/Gene Mapping
+# ============================================================================
+
+"""
+Extract species-gene mapping from all unique model_paths in segments.
+"""
+function _extract_species_gene_mapping_union(grs_schedule, segments::Vector{TimelineSegment})::Dict{Symbol, Symbol}
+    mapping = Dict{Symbol, Symbol}()
+    seen_model_paths = Set{String}()
+
+    for seg in segments
+        seg.from == seg.to && continue
+        seg.model_path in seen_model_paths && continue
+        push!(seen_model_paths, seg.model_path)
+
+        try
+            network = extract_network_for_model_path(grs_schedule, seg.model_path)
+            merge!(mapping, _extract_species_gene_mapping(network))
+        catch e
+            @debug "Could not extract network for model_path" model_path=seg.model_path exception=e
         end
     end
 
-    return ScheduleVisMetadata(gene_colours = gene_colours)
+    return mapping
+end
+
+function _extract_species_gene_mapping(network::Network)::Dict{Symbol, Symbol}
+    mapping = Dict{Symbol, Symbol}()
+    gene_names = Set(n.name for n in filter(n -> n.kind == :gene, network.nodes))
+
+    for node in filter(n -> n.kind == :species, network.nodes)
+        if node.parent !== nothing && node.parent in gene_names
+            mapping[node.name] = node.parent
+        end
+    end
+
+    return mapping
 end
 
 # ============================================================================
-# Internal: Validation Helpers
+# Internal: Gene Colours
 # ============================================================================
 
-"""
-    _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
+function _generate_gene_colours(species_gene_mapping::Dict{Symbol, Symbol})::Dict{String, String}
+    gene_names = sort(unique(collect(values(species_gene_mapping))))
+    isempty(gene_names) && return Dict{String, String}()
 
-Validate a schedule specification dictionary.
+    seed = [colorant"white", colorant"black", colorant"crimson"]
+    colors = distinguishable_colors(length(gene_names), seed, dropseed = true)
+    colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.7, hsv.v * 1.3) end for c in colors]
+    colors = convert.(RGB, colors)
 
-# Returns
-- `Vector{ValidationMessage}`: Validation messages
-"""
+    return Dict(string(gene) => "#$(hex(colors[i]))" for (i, gene) in enumerate(gene_names))
+end
+
+# ============================================================================
+# Internal: Validation
+# ============================================================================
+
 function _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
     messages = ValidationMessage[]
 
@@ -402,9 +489,8 @@ function _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
     end
 
     if haskey(spec, :seed)
-        seed = spec[:seed]
-        if !isa(seed, String)
-            push!(messages, ValidationMessage(type="warning", content="Seed should be a string (got $(typeof(seed)))"))
+        if !isa(spec[:seed], String)
+            push!(messages, ValidationMessage(type="warning", content="Seed should be a string (got $(typeof(spec[:seed])))"))
         end
     else
         push!(messages, ValidationMessage(type="info", content="No seed specified (will use default)"))
@@ -421,212 +507,10 @@ function _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
             ),
         )
     catch e
-        error_msg = string(e)
-        push!(messages, ValidationMessage(type="error", content="Schedule validation failed: $error_msg"))
+        push!(messages, ValidationMessage(type="error", content="Schedule validation failed: $(string(e))"))
     end
 
     return messages
-end
-
-"""
-    _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple{Bool, Vector{String}}
-
-Validate timeline segments form a continuous progression.
-
-# Returns
-- `Bool`: true if valid
-- `Vector{String}`: error messages
-"""
-function _validate_timeline_continuity(segments::Vector{TimelineSegment})::Tuple{Bool, Vector{String}}
-    errors = String[]
-
-    if isempty(segments)
-        return (true, errors)
-    end
-
-    if segments[1].from != 0.0
-        push!(errors, "First timeline segment must start at time 0.0, got $(segments[1].from)")
-    end
-
-    for (idx, segment) in enumerate(segments)
-        if segment.from > segment.to
-            push!(errors, "Segment $idx: invalid time range from=$(segment.from) to=$(segment.to) (from cannot be greater than to)")
-        end
-    end
-
-    path_segments = Dict{String, Vector{TimelineSegment}}()
-    for seg in segments
-        if !haskey(path_segments, seg.path)
-            path_segments[seg.path] = TimelineSegment[]
-        end
-        push!(path_segments[seg.path], seg)
-    end
-
-    for (path, segs) in path_segments
-        if length(segs) > 1
-            sorted_segs = sort(segs, by = s -> s.from)
-            for i in 1:length(sorted_segs)-1
-                curr = sorted_segs[i]
-                next_seg = sorted_segs[i+1]
-                if curr.to > next_seg.from
-                    push!(errors, "Segments on path '$path' overlap: [$(curr.from), $(curr.to)] and [$(next_seg.from), $(next_seg.to)]")
-                end
-            end
-        end
-    end
-
-    return (isempty(errors), errors)
-end
-
-"""
-    _build_timeline_segments(grs_schedule)::Tuple{Network, Vector{TimelineSegment}}
-
-Create timeline segments and extract shared network from schedule via dryrun.
-
-Combines network extraction with segment collection in single dryrun pass.
-Extracts network entity from first dynamic primitive, flattens it once, and creates
-timeline segments for all execution intervals (including instant ones).
-Merges consecutive segments with the same path and label.
-
-# Returns
-- `Tuple{Network, Vector{TimelineSegment}}`: Shared network and merged timeline segments
-"""
-function _build_timeline_segments(grs_schedule)::Tuple{Network, Vector{TimelineSegment}}
-    network_entity = nothing
-    segments_data = []
-
-    # Combined dryrun callback for network extraction and segment collection
-    function collect_data(primitive!, x, Δt; path, _...)
-        # Extract network from first finite-duration primitive
-        if network_entity === nothing && isfinite(Δt) && Δt > 0.0
-            network_entity = NetworkRepresentation.entity(primitive!)
-        end
-
-        # Collect all segments (including instant ones)
-        label = _label(primitive!.f!.model)
-        push!(segments_data, (path = path, from = x.t, to = x.t + Δt, label = label))
-    end
-
-    # Run dryrun to traverse schedule
-    @debug "build_timeline_segments: Starting dryrun"
-    try
-        state = Models.FlatState()
-        grs_schedule(state; dryrun = collect_data)
-    catch e
-        @debug "build_timeline_segments: Dryrun caught error: $(typeof(e)) - $(e)"
-    end
-
-    @debug "build_timeline_segments: Collected $(length(segments_data)) raw segments"
-
-    if isempty(segments_data) || network_entity === nothing
-        if network_entity === nothing
-            @debug "build_timeline_segments: Could not extract network entity from schedule"
-        end
-        return (Network(nodes=NetworkRepresentation.Node[], links=NetworkRepresentation.Link[]), TimelineSegment[])
-    end
-
-    @debug "build_timeline_segments: Extracted network entity with $(length(network_entity.nodes)) child nodes"
-
-    # Flatten the network entity tree
-    nodes_flat, links_flat = NetworkRepresentation.flatten(network_entity)
-    flat_network = Network(nodes=nodes_flat, links=links_flat)
-    @debug "build_timeline_segments: Flattened network has $(length(flat_network.nodes)) nodes and $(length(flat_network.links)) links"
-
-    # Create TimelineSegments from collected data
-    segments = [
-        TimelineSegment(
-            path = data.path,
-            from = data.from,
-            to = data.to,
-            label = data.label
-        )
-        for data in segments_data
-    ]
-
-    # Merge consecutive segments with same path and label
-    merged_segments = _merge_timeline_segments(segments)
-    @debug "build_timeline_segments: Merged $(length(segments)) segments into $(length(merged_segments)) segments"
-
-    return (flat_network, merged_segments)
-end
-
-"""
-    _extract_species_gene_mapping(network::Network)::Dict{Symbol, Union{Symbol, Nothing}}
-
-Extract mapping from species IDs to gene names from the network.
-
-For each species node, looks up its parent and checks if it's a gene.
-Returns a dict where key is the species ID (as Symbol) and value is the gene name (as Symbol) or nothing if parent is not a gene.
-"""
-function _extract_species_gene_mapping(network::Network)::Dict{Symbol, Symbol}
-    mapping = Dict{Symbol, Symbol}()
-
-    gene_names = Set(n.name for n in filter(n -> n.kind == :gene, network.nodes))
-
-    # For each species, check if parent is a gene
-    species_nodes = filter(n -> n.kind == :species, network.nodes)
-    for node in species_nodes
-        species_id = node.name
-
-        if node.parent !== nothing && node.parent in gene_names
-            mapping[species_id] = node.parent
-        end
-    end
-
-    return mapping
-end
-
-"""
-    _merge_timeline_segments(segments::Vector{TimelineSegment})::Vector{TimelineSegment}
-
-Merge all segments with the same path into a single segment per path.
-
-Groups segments by path, then for each path creates a single merged segment with:
-- `from`: minimum time across all segments on that path
-- `to`: maximum time across all segments on that path
-- `label`: the common label (asserts all labels in a path group are identical)
-
-Returns merged segments in order of appearance by path.
-"""
-function _merge_timeline_segments(segments::Vector{TimelineSegment})::Vector{TimelineSegment}
-    if isempty(segments)
-        return TimelineSegment[]
-    end
-
-    # Group segments by path
-    path_groups = Dict{String, Vector{TimelineSegment}}()
-    path_order = String[]
-
-    for seg in segments
-        if !haskey(path_groups, seg.path)
-            path_groups[seg.path] = TimelineSegment[]
-            push!(path_order, seg.path)
-        end
-        push!(path_groups[seg.path], seg)
-    end
-
-    # Merge each path group
-    merged = TimelineSegment[]
-    for path in path_order
-        group = path_groups[path]
-
-        # Assert all labels are the same within the group
-        labels = unique(seg.label for seg in group)
-        @assert length(labels) == 1 "Path '$path' has multiple labels: $(labels)"
-
-        label = labels[1]
-        from = minimum(seg.from for seg in group)
-        to = maximum(seg.to for seg in group)
-
-        push!(merged, TimelineSegment(
-            path = path,
-            from = from,
-            to = to,
-            label = label
-        ))
-    end
-
-    return merged
 end
 
 end # module ScheduleVisualization

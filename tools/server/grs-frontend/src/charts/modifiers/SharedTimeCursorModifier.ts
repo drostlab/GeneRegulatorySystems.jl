@@ -19,6 +19,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
 
     onAttachSubSurface(subChart: ISciChartSubSurface): void {
+        console.debug(`[TimeCursor] onAttachSubSurface: id=${subChart.id}, isVisible=${subChart.isVisible}`)
         const line = new LineAnnotation({
             xCoordinateMode: ECoordinateMode.DataValue,
             yCoordinateMode: ECoordinateMode.Pixel,

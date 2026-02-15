@@ -65,6 +65,23 @@ end
     return ScheduleVisualization.reify_schedule(data.payload.schedule_spec, name=data.payload.schedule_name, source="user")::ScheduleVisualization.ReifiedSchedule
 end
 
+# extract network for a stored schedule by model_path
+@get "/schedules/{source}/{name}/network" function(req, source::String, name::String)
+    model_path = HTTP.queryparams(HTTP.URI(req.target))["model_path"]
+    spec_str = ScheduleStorage.get_schedule_spec(name, source)
+    isnothing(spec_str) && throw("Schedule not found")
+    return ScheduleVisualization.extract_network_for_model_path(spec_str, model_path)::ScheduleVisualization.Network
+end
+
+@kwdef struct NetworkFromSpecRequest
+    schedule_spec::String
+    model_path::String
+end
+# extract network from spec + model_path
+@post "/schedules/network" function(req, data::Json{NetworkFromSpecRequest})
+    return ScheduleVisualization.extract_network_for_model_path(data.payload.schedule_spec, data.payload.model_path)::ScheduleVisualization.Network
+end
+
 
 ### Simulation service
 

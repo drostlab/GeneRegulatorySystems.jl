@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * NetworkDiagram
- * Displays gene regulatory network with dynamic expression-driven styling
- */
 import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { useScheduleStore } from '@/stores/scheduleStore'
 import { convertToElements, getDefaultStyles, getDefaultLayout } from '@/composables/useCytoscapeRenderer'
@@ -18,29 +14,18 @@ const containerRef = ref<HTMLDivElement>()
 const cy = ref<cytoscape.Core | null>(null)
 const store = useScheduleStore()
 
-
 let cleanupAdaptiveZoom: (() => void) | null = null
-
 let fitZoomTimeout: ReturnType<typeof setTimeout> | null = null
 
 function renderNetwork() {
-    const startTime = performance.now()
-    console.debug('Starting network render')
-    
-    if (!store.schedule.data) return
-
-    const network = store.schedule.data.network
+    const network = store.activeNetwork
     if (!network) return
 
-    console.debug(`Network has ${network.nodes.length} nodes, ${network.links.length} links`)
-    
-    const elementsStart = performance.now()
-    const elements = convertToElements(network, store.geneColours || {})
-    console.debug(`Element conversion took ${(performance.now() - elementsStart).toFixed(2)}ms`)
+    console.debug(`[NetworkDiagram] Rendering network: ${network.nodes.length} nodes, ${network.links.length} links`)
 
+    const elements = convertToElements(network, store.geneColours || {})
     if (!containerRef.value) return
 
-    const cyStart = performance.now()
     cy.value = cytoscape({
         container: containerRef.value,
         elements,
@@ -62,31 +47,19 @@ function renderNetwork() {
         boxSelectionEnabled: false,
         selectionType: 'single'
     } as any)
-    console.debug(`Cytoscape init took ${(performance.now() - cyStart).toFixed(2)}ms`)
 
-    // Grid background
     if (containerRef.value) {
-        containerRef.value.style.backgroundImage = 
+        containerRef.value.style.backgroundImage =
             'radial-gradient(circle, #d0d0d0 1px, transparent 1px)'
         containerRef.value.style.backgroundSize = '30px 30px'
     }
 
-    console.debug('Layout will complete in 1000ms, then applying fit/zoom')
-    
-    // Fit viewport after layout
     fitZoomTimeout = setTimeout(() => {
-        console.debug('Layout complete, applying fit and zoom')
-        
         if (cy.value && cy.value.nodes().length > 0) {
             cy.value.fit(undefined, 100)
             cy.value.zoom(0.5)
-            
-            const adaptiveStart = performance.now()
             cleanupAdaptiveZoom = useAdaptiveZoom(cy.value)
-            console.debug(`Adaptive zoom setup took ${(performance.now() - adaptiveStart).toFixed(2)}ms`)
         }
-        
-        console.debug(`Total render time: ${(performance.now() - startTime).toFixed(2)}ms`)
     }, 1000)
 }
 
@@ -108,14 +81,9 @@ function destroyNetwork() {
 onMounted(renderNetwork)
 onBeforeUnmount(destroyNetwork)
 
-// Trigger render only when loading finishes, not during loading
-watch(() => store.isLoading, (isLoading) => {
-    if (!isLoading) {
-        destroyNetwork()
-        renderNetwork()
-    } else {
-        destroyNetwork()
-    }
+watch(() => store.activeNetwork, () => {
+    destroyNetwork()
+    renderNetwork()
 })
 </script>
 
