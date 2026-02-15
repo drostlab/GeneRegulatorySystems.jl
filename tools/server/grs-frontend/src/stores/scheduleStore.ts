@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Schedule } from '@/types/schedule'
-import type { Network } from '@/types/network'
+import type { UnionNetwork } from '@/types/network'
 import * as scheduleService from '@/services/scheduleService'
 import {
     computeScheduleKey, extractAllGeneIds, getSpeciesForGene,
-    getSpeciesForType, getTimeExtent
+    getSpeciesForType, getTimeExtent, getUniqueModelPaths
 } from '@/types/schedule'
 import type { SpeciesType } from '@/types/schedule'
 import type { TimeseriesMetadata } from '@/types/simulation'
@@ -40,45 +40,43 @@ export const useScheduleStore = defineStore(
             }
         })
 
-        const networks = ref<Map<string, Network>>(new Map())
+        const unionNetwork = ref<UnionNetwork | null>(null)
 
-        const activeNetwork = computed((): Network | null => {
-            const viewerStore = useViewerStore()
-            if (!viewerStore.activeModelPath) return null
-            return networks.value.get(viewerStore.activeModelPath) ?? null
+        /** All model paths available in the union network. */
+        const modelPaths = computed((): string[] => {
+            if (!unionNetwork.value) return []
+            return Object.keys(unionNetwork.value.model_exclusions)
         })
 
-        function clearNetworks(): void {
-            networks.value = new Map()
+        function clearNetwork(): void {
+            unionNetwork.value = null
             const viewerStore = useViewerStore()
             viewerStore.setActiveModelPath(null)
             viewerStore.selectSegments(null)
         }
 
-        async function fetchNetwork(modelPath: string): Promise<Network> {
-            const cached = networks.value.get(modelPath)
-            if (cached) {
-                const viewerStore = useViewerStore()
-                viewerStore.setActiveModelPath(modelPath)
-                return cached
-            }
+        async function fetchUnionNetwork(): Promise<UnionNetwork | null> {
+            if (!schedule.value.data) return null
+            if (unionNetwork.value) return unionNetwork.value
 
-            let network: Network
-            if (schedule.value.source === 'user' || schedule.value.source === 'snapshot') {
-                network = await scheduleService.fetchNetworkFromSpec(schedule.value.spec, modelPath)
-            } else {
-                network = await scheduleService.fetchNetwork(schedule.value.source, schedule.value.name, modelPath)
-            }
+            const segs = schedule.value.data.segments
+            const result = await scheduleService.fetchUnionNetwork(schedule.value.spec, segs)
+            unionNetwork.value = result
 
-            networks.value.set(modelPath, network)
+            // Auto-select first model path
             const viewerStore = useViewerStore()
-            viewerStore.setActiveModelPath(modelPath)
-            return network
+            const paths = getUniqueModelPaths(segs)
+            if (paths.length > 0 && !viewerStore.activeModelPath) {
+                viewerStore.setActiveModelPath(paths[0]!)
+            }
+
+            console.debug(`[ScheduleStore] Union network loaded: ${result.nodes.length} nodes, ${result.links.length} links, ${Object.keys(result.model_exclusions).length} models`)
+            return result
         }
 
         async function loadScheduleByKey(key: string): Promise<Schedule> {
             isLoading.value = true
-            clearNetworks()
+            clearNetwork()
             schedule.value.data = null
 
             try {
@@ -93,7 +91,7 @@ export const useScheduleStore = defineStore(
 
         async function loadScheduleBySpec(spec: string, name: string): Promise<Schedule> {
             isLoading.value = true
-            clearNetworks()
+            clearNetwork()
             schedule.value.data = null
 
             try {
@@ -126,11 +124,11 @@ export const useScheduleStore = defineStore(
             segments,
             isLoaded,
             timeseriesMetadata,
-            networks,
-            activeNetwork,
+            unionNetwork,
+            modelPaths,
             loadScheduleByKey,
             loadScheduleBySpec,
-            fetchNetwork,
+            fetchUnionNetwork,
             getSpeciesForGeneId,
             getSpeciesForSpeciesType
         }

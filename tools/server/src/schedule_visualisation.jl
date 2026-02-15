@@ -22,9 +22,9 @@ using Colors
 # Exports
 # ============================================================================
 
-export Network, TimelineSegment, ScheduleData, StructureNode
+export Network, UnionNetwork, ModelExclusions, TimelineSegment, ScheduleData, StructureNode
 export ReifiedSchedule, ValidationMessage
-export reify_schedule, extract_network_for_model_path, is_valid, get_error_messages
+export reify_schedule, extract_network_for_model_path, extract_union_network, is_valid, get_error_messages
 
 # ============================================================================
 # Schema Types
@@ -33,6 +33,28 @@ export reify_schedule, extract_network_for_model_path, is_valid, get_error_messa
 @kwdef struct Network
     nodes::Vector{NetworkRepresentation.Node}
     links::Vector{NetworkRepresentation.Link}
+end
+
+"""
+    ModelExclusions
+
+Nodes and links absent from a specific model (relative to the union).
+"""
+@kwdef struct ModelExclusions
+    nodes::Vector{String}
+    links::Vector{String}
+end
+
+"""
+    UnionNetwork
+
+Union of all model networks. `model_exclusions` maps each model_path to the
+nodes/links that are NOT present in that model.
+"""
+@kwdef struct UnionNetwork
+    nodes::Vector{NetworkRepresentation.Node}
+    links::Vector{NetworkRepresentation.Link}
+    model_exclusions::Dict{String, ModelExclusions}
 end
 
 """
@@ -203,6 +225,85 @@ function extract_network_for_model_path(spec_string::String, model_path::String)
     specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
     grs_schedule = GRSSchedule(; specification, bindings)
     return extract_network_for_model_path(grs_schedule, model_path)
+end
+
+"""
+    extract_union_network(spec_string, segments) -> UnionNetwork
+
+Build the union network across all model paths in the schedule segments.
+Each model's exclusions (nodes/links absent from that model) are recorded.
+"""
+function extract_union_network(spec_string::String, segments::Vector{TimelineSegment})::UnionNetwork
+    spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
+    bindings = Dict(
+        :seed => get(spec, :seed, "default"),
+        :into => "",
+        :channel => "",
+        :defaults => Models.load_defaults(),
+    )
+    specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
+    grs_schedule = GRSSchedule(; specification, bindings)
+
+    # Collect per-model networks
+    model_paths = _unique_model_paths(segments)
+    per_model = Dict{String, Network}()
+    for mp in model_paths
+        try
+            per_model[mp] = extract_network_for_model_path(grs_schedule, mp)
+        catch e
+            @warn "Could not extract network for model_path" model_path=mp exception=e
+        end
+    end
+
+    # Build union
+    all_nodes = Dict{String, NetworkRepresentation.Node}()
+    all_links = Dict{String, NetworkRepresentation.Link}()
+    for (_, net) in per_model
+        for n in net.nodes
+            all_nodes[string(n.name)] = n
+        end
+        for l in net.links
+            all_links[_link_id(l)] = l
+        end
+    end
+
+    union_node_names = Set(keys(all_nodes))
+    union_link_ids = Set(keys(all_links))
+
+    # Build exclusions per model
+    model_exclusions = Dict{String, ModelExclusions}()
+    for (mp, net) in per_model
+        model_node_names = Set(string(n.name) for n in net.nodes)
+        model_link_ids = Set(_link_id(l) for l in net.links)
+        model_exclusions[mp] = ModelExclusions(
+            nodes = collect(setdiff(union_node_names, model_node_names)),
+            links = collect(setdiff(union_link_ids, model_link_ids)),
+        )
+    end
+
+    @info "Union network built" nodes=length(all_nodes) links=length(all_links) models=length(per_model)
+    return UnionNetwork(
+        nodes = collect(values(all_nodes)),
+        links = collect(values(all_links)),
+        model_exclusions = model_exclusions,
+    )
+end
+
+function _unique_model_paths(segments::Vector{TimelineSegment})::Vector{String}
+    seen = Set{String}()
+    paths = String[]
+    for seg in segments
+        seg.from == seg.to && continue
+        if seg.model_path ∉ seen
+            push!(seen, seg.model_path)
+            push!(paths, seg.model_path)
+        end
+    end
+    return paths
+end
+
+function _link_id(l::NetworkRepresentation.Link)::String
+    return "$(l.from)-$(l.kind)-$(l.to)"
 end
 
 is_valid(reified::ReifiedSchedule)::Bool = !any(msg -> msg.type == "error", reified.validationMessages)

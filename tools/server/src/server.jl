@@ -82,6 +82,15 @@ end
     return ScheduleVisualization.extract_network_for_model_path(data.payload.schedule_spec, data.payload.model_path)::ScheduleVisualization.Network
 end
 
+@kwdef struct UnionNetworkRequest
+    schedule_spec::String
+    segments::Vector{ScheduleVisualization.TimelineSegment}
+end
+# extract union network across all model paths
+@post "/schedules/union-network" function(req, data::Json{UnionNetworkRequest})
+    return ScheduleVisualization.extract_union_network(data.payload.schedule_spec, data.payload.segments)::ScheduleVisualization.UnionNetwork
+end
+
 
 ### Simulation service
 
