@@ -122,10 +122,26 @@ watch(
 watch(
     () => scheduleStore.allGenes,
     (allGenes) => {
-        if (simulationStore.isLoaded && allGenes && allGenes.length > 0) {
-            viewerStore.selectedGenes = allGenes.slice(0, DEFAULT_SELECTED_GENES_COUNT)
+        if (allGenes && allGenes.length > 0) {
+            if (simulationStore.isLoaded) {
+                viewerStore.selectedGenes = allGenes.slice(0, DEFAULT_SELECTED_GENES_COUNT)
+            } else {
+                // No simulation: select all genes so the network looks complete
+                viewerStore.selectedGenes = [...allGenes]
+            }
         }
     }
+)
+
+// Lazy-fetch timeseries when selected genes change
+watch(
+    () => viewerStore.selectedGenes,
+    async (genes) => {
+        if (!simulationStore.isLoaded || genes.length === 0) return
+        await simulationStore.fetchGeneTimeseries(genes)
+        refreshSimulationData()
+    },
+    { deep: true }
 )
 
 /** Push current simulation data to chart, filtered by selected genes/paths. */
@@ -170,11 +186,9 @@ onMounted(async () => {
         }
     })
 
-    chart.onSegmentClick(async (segmentId: number, modelPath: string) => {
-        console.debug(`[TrackViewer] Segment click: id=${segmentId} modelPath=${modelPath}`)
+    chart.onSegmentClick(async (segmentId: number, _modelPath: string) => {
+        console.debug(`[TrackViewer] Segment click: id=${segmentId}`)
         viewerStore.selectSegments(new Set([segmentId]))
-        viewerStore.setActiveModelPath(modelPath)
-        console.debug(`[TrackViewer] Active model set to: ${modelPath}`)
     })
 
     window.addEventListener('keydown', handleEscapeKey)

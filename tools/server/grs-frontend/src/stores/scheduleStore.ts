@@ -5,7 +5,7 @@ import type { UnionNetwork } from '@/types/network'
 import * as scheduleService from '@/services/scheduleService'
 import {
     computeScheduleKey, extractAllGeneIds, getSpeciesForGene,
-    getSpeciesForType, getTimeExtent, getUniqueModelPaths
+    getSpeciesForType, getTimeExtent
 } from '@/types/schedule'
 import type { SpeciesType } from '@/types/schedule'
 import type { TimeseriesMetadata } from '@/types/simulation'
@@ -34,13 +34,14 @@ export const useScheduleStore = defineStore(
         const timeseriesMetadata = computed((): TimeseriesMetadata | null => {
             if (!schedule.value.data) return null
             return {
-                species_gene_mapping: schedule.value.data.species_gene_mapping,
+                genes: schedule.value.data.genes,
                 gene_colours: schedule.value.data.gene_colours,
                 time_extent: getTimeExtent(schedule.value.data.segments)
             }
         })
 
         const unionNetwork = ref<UnionNetwork | null>(null)
+        const isNetworkLoading = ref<boolean>(false)
 
         /** All model paths available in the union network. */
         const modelPaths = computed((): string[] => {
@@ -51,7 +52,6 @@ export const useScheduleStore = defineStore(
         function clearNetwork(): void {
             unionNetwork.value = null
             const viewerStore = useViewerStore()
-            viewerStore.setActiveModelPath(null)
             viewerStore.selectSegments(null)
         }
 
@@ -59,16 +59,11 @@ export const useScheduleStore = defineStore(
             if (!schedule.value.data) return null
             if (unionNetwork.value) return unionNetwork.value
 
+            isNetworkLoading.value = true
             const segs = schedule.value.data.segments
             const result = await scheduleService.fetchUnionNetwork(schedule.value.spec, segs)
             unionNetwork.value = result
-
-            // Auto-select first model path
-            const viewerStore = useViewerStore()
-            const paths = getUniqueModelPaths(segs)
-            if (paths.length > 0 && !viewerStore.activeModelPath) {
-                viewerStore.setActiveModelPath(paths[0]!)
-            }
+            isNetworkLoading.value = false
 
             console.debug(`[ScheduleStore] Union network loaded: ${result.nodes.length} nodes, ${result.links.length} links, ${Object.keys(result.model_exclusions).length} models`)
             return result
@@ -119,6 +114,7 @@ export const useScheduleStore = defineStore(
             scheduleKey,
             scheduleMessages,
             isLoading,
+            isNetworkLoading,
             allGenes,
             geneColours,
             segments,

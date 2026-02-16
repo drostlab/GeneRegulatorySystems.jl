@@ -2,6 +2,7 @@ import { EAxisAlignment, ENumericFormat,FastLineRenderableSeries,NumberRange,Num
 import { TimeseriesPanel } from "./TimeseriesPanel";
 import type { BasePanelOptions } from "./BasePanel";
 import type { TimeseriesData } from "@/types/simulation";
+import { getGeneFromSpeciesName } from "@/types/schedule";
 import { CHART_FONT_FAMILY, CHART_FONT_SIZES, AXIS_THICKNESS_NARROW } from "../chartConstants";
 
 
@@ -52,7 +53,7 @@ export class CountsPanel extends TimeseriesPanel {
         let seriesCount = 0
         for (const [species, pathData] of Object.entries(timeseries)) {
             for (const [path, series] of Object.entries(pathData)) {
-                const geneId = this.metadata!.species_gene_mapping[species] ?? ""
+                const geneId = getGeneFromSpeciesName(species) ?? ""
                 const colour = this.metadata.gene_colours[geneId] ?? "gray"
                 const key = `${geneId}:${path}`
                 const xySeries = new XyDataSeries(this.wasmContext, {

@@ -114,6 +114,18 @@ end
     return result::Simulation.SimulationResult
 end
 
+@kwdef struct TimeseriesRequest
+    species::Vector{String}
+end
+# get filtered timeseries for specific species
+@post "/simulations/{id}/timeseries" function(req, id::String, data::Json{TimeseriesRequest})
+    metadata = Simulation.load_result_metadata(id)
+    isnothing(metadata) && throw("Result not found")
+    species_filter = Set(Symbol.(data.payload.species))
+    timeseries = Simulation.load_timeseries_for_species(metadata.path, species_filter)
+    return Simulation.SimulationData(; timeseries)
+end
+
 const ws_client = Ref{Union{Nothing, HTTP.WebSocket}}()
 const WS_LOCK = ReentrantLock()
 const simulation_task = Ref{Union{Nothing, Task}}()

@@ -10,7 +10,7 @@
  */
 
 import { apiFetchJson } from '@/utils/api'
-import type { SimulationResultMetadata, SimulationResult } from '@/types'
+import type { SimulationResultMetadata, SimulationResult, TimeseriesData } from '@/types'
 
 /**
  * Fetch all stored simulation results metadata, without frames data
@@ -71,4 +71,23 @@ export async function runSimulation(scheduleName: string, scheduleJson: string):
     }
 
     return response
+}
+
+/**
+ * Fetch timeseries data for specific species from a simulation result.
+ * Used for lazy per-gene loading.
+ */
+export async function fetchTimeseriesForSpecies(
+    resultId: string,
+    species: string[],
+): Promise<TimeseriesData> {
+    const response = await apiFetchJson<{ timeseries: TimeseriesData }>(
+        `/simulations/${resultId}/timeseries`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ species }),
+        },
+    )
+    return response.timeseries
 }

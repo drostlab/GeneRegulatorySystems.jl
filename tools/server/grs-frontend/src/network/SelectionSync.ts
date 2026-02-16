@@ -57,12 +57,15 @@ export class SelectionSync {
             ? node.id()
             : node.data('geneParent') ?? node.id()
 
-        const currentSelection = viewerStore.selectedGenes
-        if (currentSelection.length === 1 && currentSelection[0] === geneId) {
-            // Deselect: restore all genes
-            viewerStore.selectedGenes = []
+        // Multi-select: toggle gene in/out of selection
+        const current = viewerStore.selectedGenes
+        const idx = current.indexOf(geneId)
+        if (idx >= 0) {
+            // Remove from selection
+            viewerStore.selectedGenes = current.filter(g => g !== geneId)
         } else {
-            viewerStore.selectedGenes = [geneId]
+            // Add to selection
+            viewerStore.selectedGenes = [...current, geneId]
         }
 
         this.updating = false

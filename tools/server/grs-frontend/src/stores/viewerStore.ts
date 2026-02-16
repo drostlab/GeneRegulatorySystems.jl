@@ -8,7 +8,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { type SpeciesType } from '@/types'
-import { getPathsForSegmentIds } from '@/types/schedule'
+import { getPathsForSegmentIds, getModelPathAtTime, getGeneFromSpeciesName } from '@/types/schedule'
 import { useScheduleStore } from './scheduleStore'
 import { useSimulationStore } from './simulationStore'
 
@@ -17,7 +17,14 @@ export const useViewerStore = defineStore('viewer', () => {
     const selectedGenes = ref<string[]>([])
     const selectedSpeciesTypes = ref<SpeciesType[]>([])
     const selectedSegmentIds = ref<Set<number> | null>(null)
-    const activeModelPath = ref<string | null>(null)
+
+    /** Active model path derived from current timepoint and schedule segments. */
+    const activeModelPath = computed((): string | null => {
+        const scheduleStore = useScheduleStore()
+        const segments = scheduleStore.segments
+        if (!segments.length) return null
+        return getModelPathAtTime(segments, currentTimepoint.value)
+    })
 
     const selectedPaths = computed((): Set<string> | null => {
         if (!selectedSegmentIds.value) return null
@@ -33,12 +40,8 @@ export const useViewerStore = defineStore('viewer', () => {
      */
     const proteinCountsAtTimepoint = computed((): Record<string, number> => {
         const simulationStore = useSimulationStore()
-        const scheduleStore = useScheduleStore()
         const ts = simulationStore.timeseries
         if (!ts) return {}
-
-        const mapping = scheduleStore.schedule.data?.species_gene_mapping
-        if (!mapping) return {}
 
         const t = currentTimepoint.value
         const geneSums: Record<string, number> = {}
@@ -46,7 +49,7 @@ export const useViewerStore = defineStore('viewer', () => {
 
         for (const [species, pathData] of Object.entries(ts)) {
             if (!species.endsWith('.proteins')) continue
-            const gene = mapping[species]
+            const gene = getGeneFromSpeciesName(species)
             if (!gene) continue
 
             for (const series of Object.values(pathData)) {
@@ -68,18 +71,14 @@ export const useViewerStore = defineStore('viewer', () => {
      */
     const maxProteinCounts = computed((): Record<string, number> => {
         const simulationStore = useSimulationStore()
-        const scheduleStore = useScheduleStore()
         const ts = simulationStore.timeseries
         if (!ts) return {}
-
-        const mapping = scheduleStore.schedule.data?.species_gene_mapping
-        if (!mapping) return {}
 
         const result: Record<string, number> = {}
 
         for (const [species, pathData] of Object.entries(ts)) {
             if (!species.endsWith('.proteins')) continue
-            const gene = mapping[species]
+            const gene = getGeneFromSpeciesName(species)
             if (!gene) continue
 
             for (const series of Object.values(pathData)) {
@@ -99,14 +98,9 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSegmentIds.value = ids
     }
 
-    function setActiveModelPath(path: string | null): void {
-        activeModelPath.value = path
-    }
-
     function reset(): void {
         currentTimepoint.value = 0
         selectedSegmentIds.value = null
-        activeModelPath.value = null
     }
 
     return {
@@ -120,7 +114,6 @@ export const useViewerStore = defineStore('viewer', () => {
         maxProteinCounts,
         setTimepoint,
         selectSegments,
-        setActiveModelPath,
         reset
     }
 })

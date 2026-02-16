@@ -3,28 +3,27 @@
  *
  * Watches viewerStore.activeModelPath and hides/shows nodes+edges
  * based on the union network's model_exclusions.
- * Elements not present in the active model are removed from the graph
- * and stashed. On model switch, stashed elements are restored and new
- * exclusions are applied. Since positions come from the union layout,
- * nothing moves on model switch.
+ *
+ * Uses CSS class toggling (`.excluded { display: none }`) instead of
+ * element removal, avoiding conflicts with AdaptiveZoom's add/remove.
  */
-import type { Core, Collection } from 'cytoscape'
+import type { Core } from 'cytoscape'
 import { watch, type WatchStopHandle } from 'vue'
 import { useViewerStore } from '@/stores/viewerStore'
 import { useScheduleStore } from '@/stores/scheduleStore'
 
 export class ModelFilter {
     private cy: Core | null = null
-    private stashed: Collection | null = null
     private stopWatch: WatchStopHandle | null = null
+    private excludedNodes = new Set<string>()
+    private excludedLinks = new Set<string>()
 
     attach(cy: Core): void {
         this.cy = cy
-        this.stashed = cy.collection()
 
         this.stopWatch = watch(
             () => useViewerStore().activeModelPath,
-            () => this.applyFilter(),
+            () => this.updateExclusions(),
             { immediate: true },
         )
     }
@@ -32,58 +31,53 @@ export class ModelFilter {
     destroy(): void {
         this.stopWatch?.()
         this.stopWatch = null
-        this.stashed = null
+        this.excludedNodes.clear()
+        this.excludedLinks.clear()
         this.cy = null
     }
 
-    /** Re-apply the current model's exclusions. Call after elements are added/removed externally. */
+    /** Re-apply current exclusions to all in-graph elements. Call after elements are added externally. */
     refresh(): void {
-        this.applyFilter()
+        this.applyExclusions()
     }
 
-    private applyFilter(): void {
-        const cy = this.cy
-        if (!cy) return
-
+    private updateExclusions(): void {
         const viewerStore = useViewerStore()
         const scheduleStore = useScheduleStore()
         const union = scheduleStore.unionNetwork
         if (!union) return
 
         const modelPath = viewerStore.activeModelPath
-        if (!modelPath) return
+        if (!modelPath) {
+            this.excludedNodes.clear()
+            this.excludedLinks.clear()
+            this.applyExclusions()
+            return
+        }
 
         const exclusions = union.model_exclusions[modelPath]
-        if (!exclusions) return
+        this.excludedNodes = new Set(exclusions?.nodes ?? [])
+        this.excludedLinks = new Set(exclusions?.links ?? [])
+
+        this.applyExclusions()
+        console.debug(`[ModelFilter] Model ${modelPath}: ${this.excludedNodes.size} excluded nodes, ${this.excludedLinks.size} excluded links`)
+    }
+
+    private applyExclusions(): void {
+        const cy = this.cy
+        if (!cy) return
 
         cy.startBatch()
 
-        // Restore previously stashed elements
-        if (this.stashed && this.stashed.length > 0) {
-            this.stashed.restore()
-            this.stashed = cy.collection()
-        }
+        cy.nodes().forEach((node: any) => {
+            node.toggleClass('excluded', this.excludedNodes.has(node.id()))
+        })
 
-        // Build exclusion sets
-        const excludedNodes = new Set(exclusions.nodes)
-        const excludedLinks = new Set(exclusions.links)
-
-        // Remove excluded nodes
-        const nodesToRemove = cy.nodes().filter(
-            (n: any) => excludedNodes.has(n.id()),
-        )
-        // Remove excluded edges
-        const edgesToRemove = cy.edges().filter(
-            (e: any) => excludedLinks.has(`${e.data('source')}-${e.data('kind')}-${e.data('target')}`),
-        )
-        // Also remove edges connected to excluded nodes
-        const connectedEdges = nodesToRemove.connectedEdges()
-
-        const toRemove = nodesToRemove.union(edgesToRemove).union(connectedEdges)
-        this.stashed = toRemove.remove()
+        cy.edges().forEach((edge: any) => {
+            const edgeKey = `${edge.data('source')}-${edge.data('kind')}-${edge.data('target')}`
+            edge.toggleClass('excluded', this.excludedLinks.has(edgeKey))
+        })
 
         cy.endBatch()
-
-        console.debug(`[ModelFilter] Model ${modelPath}: excluded ${nodesToRemove.length} nodes, ${edgesToRemove.length} edges`)
     }
 }

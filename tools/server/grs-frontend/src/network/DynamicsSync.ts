@@ -20,8 +20,9 @@ export class DynamicsSync {
     attach(cy: Core): void {
         this.cy = cy
 
+        const viewerStore = useViewerStore()
         this.stopWatch = watch(
-            () => useViewerStore().proteinCountsAtTimepoint,
+            () => [viewerStore.proteinCountsAtTimepoint, viewerStore.selectedGenes],
             () => this.scheduleUpdate(),
             { deep: true },
         )
@@ -59,12 +60,20 @@ export class DynamicsSync {
         const viewerStore = useViewerStore()
         const counts = viewerStore.proteinCountsAtTimepoint
         const maxCounts = viewerStore.maxProteinCounts
+        const selectedSet = new Set(viewerStore.selectedGenes)
 
         if (Object.keys(counts).length === 0) return
 
         cy.startBatch()
         cy.nodes('.gene').forEach((node: any) => {
             const gene = node.id()
+
+            // Only dynamically size selected genes; reset unselected to base
+            if (selectedSet.size > 0 && !selectedSet.has(gene)) {
+                node.style({ width: GENE_BASE.width, height: GENE_BASE.height })
+                return
+            }
+
             const value = counts[gene] ?? 0
             const maxValue = maxCounts[gene] ?? 1
             const normalised = maxValue > 0 ? Math.min(1, value / maxValue) : 0

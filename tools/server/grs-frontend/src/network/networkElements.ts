@@ -1,11 +1,11 @@
 /**
  * Converts a UnionNetwork into Cytoscape element definitions.
  *
- * Filters out model-level container nodes.
- * Supports gene-only mode (hides species/reactions) and full mode.
+ * Filters out model-level container nodes and machinery species.
+ * Species with a gene parent get cytoscape `parent` set for compound nodes.
  */
 import type { UnionNetwork, Node, Link } from '@/types/network'
-import { MODEL_NODE_KINDS, linkId } from '@/types/network'
+import { MODEL_NODE_KINDS, MACHINERY_SPECIES, linkId } from '@/types/network'
 import { lighten } from '@/utils/colorUtils'
 import { getEdgeColour, shouldShowEdgeLabel } from './networkStyles'
 
@@ -13,28 +13,22 @@ import { getEdgeColour, shouldShowEdgeLabel } from './networkStyles'
 const DETAIL_KINDS = new Set(['species', 'reaction'])
 
 /**
- * Convert union network to Cytoscape element definitions.
- *
- * @param network  - The union network data.
- * @param geneColours - Gene name -> hex colour mapping.
- * @param geneOnly - When true, only emit gene-level nodes + inter-gene edges.
- * @returns Array of Cytoscape element definitions (for cy.add / cy constructor).
+ * Gene-level elements: gene nodes, orphan species, and inter-gene edges.
+ * Used for the default (zoomed-out) view.
  */
-export function convertToElements(
+export function convertGeneElements(
     network: UnionNetwork,
     geneColours: Record<string, string>,
-    geneOnly: boolean,
 ): cytoscape.ElementDefinition[] {
     const elements: cytoscape.ElementDefinition[] = []
-    const geneNames = new Set(
-        network.nodes.filter(n => n.kind === 'gene').map(n => n.name),
-    )
+    const geneNames = buildGeneNameSet(network)
 
     for (const node of network.nodes) {
         if (MODEL_NODE_KINDS.has(node.kind)) continue
-        if (geneOnly && DETAIL_KINDS.has(node.kind)) continue
+        if (DETAIL_KINDS.has(node.kind)) continue
+        if (isMachinery(node)) continue
 
-        const el = nodeElement(node, geneColours, geneNames)
+        const el = nodeElement(node, geneColours, geneNames, false)
         if (el) elements.push(el)
     }
 
@@ -42,7 +36,6 @@ export function convertToElements(
 
     for (const link of network.links) {
         if (!emittedNodeIds.has(link.from) || !emittedNodeIds.has(link.to)) continue
-
         elements.push(linkElement(link))
     }
 
@@ -50,39 +43,39 @@ export function convertToElements(
 }
 
 /**
- * Get only the detail-level elements (species + reactions + their edges).
- * Used by AdaptiveZoom to add/remove on zoom threshold crossing.
+ * Detail-level elements: species (with compound parent), reactions, and their edges.
+ * Used by AdaptiveZoom when zooming in past threshold.
  */
 export function getDetailElements(
     network: UnionNetwork,
     geneColours: Record<string, string>,
 ): cytoscape.ElementDefinition[] {
     const elements: cytoscape.ElementDefinition[] = []
-    const geneNames = new Set(
-        network.nodes.filter(n => n.kind === 'gene').map(n => n.name),
-    )
+    const geneNames = buildGeneNameSet(network)
 
     for (const node of network.nodes) {
         if (MODEL_NODE_KINDS.has(node.kind)) continue
         if (!DETAIL_KINDS.has(node.kind)) continue
+        if (isMachinery(node)) continue
+        // Skip orphan species/reactions (already in gene-level view or unparented)
+        if (!hasGeneParent(node, geneNames)) continue
 
-        const el = nodeElement(node, geneColours, geneNames)
+        const el = nodeElement(node, geneColours, geneNames, true)
         if (el) elements.push(el)
     }
 
-    // All node IDs including genes (for edge connectivity)
+    // All non-excluded node IDs (for edge connectivity)
     const allNodeIds = new Set(
         network.nodes
-            .filter(n => !MODEL_NODE_KINDS.has(n.kind))
+            .filter(n => !MODEL_NODE_KINDS.has(n.kind) && !isMachinery(n))
             .map(n => n.name),
     )
     const detailNodeIds = new Set(elements.map(e => e.data.id as string))
 
     for (const link of network.links) {
         if (!allNodeIds.has(link.from) || !allNodeIds.has(link.to)) continue
-        // Include edge if at least one endpoint is a detail node
+        // Include edge only if at least one endpoint is a detail node
         if (!detailNodeIds.has(link.from) && !detailNodeIds.has(link.to)) continue
-
         elements.push(linkElement(link))
     }
 
@@ -93,21 +86,42 @@ export function getDetailElements(
 // Internal helpers
 // ============================================================================
 
+function buildGeneNameSet(network: UnionNetwork): Set<string> {
+    return new Set(
+        network.nodes.filter(n => n.kind === 'gene').map(n => n.name),
+    )
+}
+
+function hasGeneParent(node: Node, geneNames: Set<string>): boolean {
+    return node.parent !== null && geneNames.has(node.parent)
+}
+
+function isMachinery(node: Node): boolean {
+    return MACHINERY_SPECIES.has(node.name)
+}
+
 function nodeElement(
     node: Node,
     geneColours: Record<string, string>,
     geneNames: Set<string>,
+    asCompoundChild: boolean,
 ): cytoscape.ElementDefinition | null {
     const colour = getNodeColour(node, geneColours)
-    const isOrphanSpecies = node.kind === 'species' && (node.parent === null || !geneNames.has(node.parent))
+    const isOrphanSpecies = node.kind === 'species' && !hasGeneParent(node, geneNames)
     const cssClass = isOrphanSpecies ? 'orphan-species' : node.kind
+
+    // Set cytoscape compound parent for species/reactions with a gene parent
+    const isCompoundChild = asCompoundChild
+        && (node.kind === 'species' || node.kind === 'reaction')
+        && hasGeneParent(node, geneNames)
+    const cytoscapeParent = isCompoundChild ? node.parent! : undefined
 
     return {
         data: {
             id: node.name,
             label: node.name,
             kind: node.kind,
-            parent: undefined, // no compound nesting in cytoscape
+            parent: cytoscapeParent,
             geneParent: node.parent,
             colour,
             ...node.properties,
@@ -119,6 +133,7 @@ function nodeElement(
 function linkElement(link: Link): cytoscape.ElementDefinition {
     const edgeColour = getEdgeColour(link.kind)
     const label = shouldShowEdgeLabel(link.kind) ? formatLinkLabel(link) : ''
+    const isSelfLoop = link.from === link.to
 
     return {
         data: {
@@ -130,7 +145,7 @@ function linkElement(link: Link): cytoscape.ElementDefinition {
             label,
             ...link.properties,
         },
-        classes: link.kind,
+        classes: `${link.kind}${isSelfLoop ? ' loop' : ''}`,
     }
 }
 
@@ -146,9 +161,13 @@ function getNodeColour(node: Node, geneColours: Record<string, string>): string 
 }
 
 function formatLinkLabel(link: Link): string {
-    const affinity = link.properties?.at ?? link.properties?.affinity
-    if (affinity !== undefined) {
-        return `K=${Number(affinity).toFixed(2)}`
+    const parts: string[] = []
+    for (const [key, value] of Object.entries(link.properties ?? {})) {
+        if (typeof value === 'number') {
+            parts.push(`${key}=${value.toFixed(2)}`)
+        } else if (value !== null && value !== undefined) {
+            parts.push(`${key}=${String(value)}`)
+        }
     }
-    return ''
+    return parts.join(' ')
 }

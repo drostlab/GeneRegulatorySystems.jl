@@ -2,20 +2,20 @@
  * Adaptive zoom: shows/hides species and reaction nodes based on zoom level.
  *
  * Below the threshold, only gene nodes (and orphan species) are visible.
- * Above, species + reactions are added with a secondary layout that pins
- * existing gene positions.
+ * Above, species + reactions are added as compound children of gene nodes,
+ * positioned in a circle inside their parent gene.
  *
- * Uses cy.add/remove instead of opacity for performance on large networks.
+ * Saves and restores gene positions to prevent layout shifts on toggle.
  */
 import type { Core, EventHandler } from 'cytoscape'
 import type { UnionNetwork } from '@/types/network'
 import { getDetailElements } from './networkElements'
-import { buildStylesheet } from './networkStyles'
 
 /** Zoom level above which species/reactions become visible. */
-const ZOOM_THRESHOLD = 0.6
+const ZOOM_THRESHOLD = 3.0
 
-const DEBOUNCE_MS = 150
+/** Reduced debounce for responsive zoom interaction. */
+const DEBOUNCE_MS = 50
 
 export class AdaptiveZoom {
     private cy: Core | null = null
@@ -25,7 +25,7 @@ export class AdaptiveZoom {
     private timeout: ReturnType<typeof setTimeout> | null = null
     private handler: EventHandler | null = null
 
-    /** Callbacks fired when detail visibility changes (for external modules to refresh). */
+    /** Callback fired when detail visibility changes (for external modules to refresh). */
     onDetailChange: ((visible: boolean) => void) | null = null
 
     attach(cy: Core, network: UnionNetwork, geneColours: Record<string, string>): void {
@@ -64,81 +64,107 @@ export class AdaptiveZoom {
         const cy = this.cy
         if (!cy || !this.network) return
 
-        const zoom = cy.zoom()
-        const shouldShow = zoom > ZOOM_THRESHOLD
-
+        const shouldShow = cy.zoom() > ZOOM_THRESHOLD
         if (shouldShow === this.detailVisible) return
 
         if (shouldShow) {
-            this.showDetailNodes()
+            this.showDetail()
         } else {
-            this.hideDetailNodes()
+            this.hideDetail()
         }
     }
 
-    private showDetailNodes(): void {
+    private showDetail(): void {
         const cy = this.cy!
-        const network = this.network!
-
-        const elements = getDetailElements(network, this.geneColours)
+        const elements = getDetailElements(this.network!, this.geneColours)
         if (elements.length === 0) return
 
+        // Save gene positions before adding children (which changes compound layout)
+        const genePositions = this.saveGenePositions()
+
+        // Filter out elements already present in graph
+        const existing = new Set(cy.elements().map((e: any) => e.id()))
+        const newElements = elements.filter(e => !existing.has(e.data.id as string))
+        if (newElements.length === 0) return
+
         cy.startBatch()
+        cy.add(newElements)
 
-        // Update stylesheet for species-visible mode (gene labels above)
-        cy.style().fromJson(buildStylesheet(true)).update()
+        // Restore gene positions (compound parent auto-sizing may have shifted them)
+        this.restoreGenePositions(genePositions)
 
-        // Add detail elements
-        cy.add(elements)
+        // Position children inside their gene parents
+        this.positionCompoundChildren()
 
         cy.endBatch()
 
-        // Run secondary layout with gene nodes pinned
-        const geneNodes = cy.nodes('.gene, .orphan-species')
-        const fixedConstraints = geneNodes.map((n: any) => ({
-            nodeId: n.id(),
-            position: n.position(),
-        }))
-
-        const detailNodes = cy.nodes('.species, .reaction')
-        if (detailNodes.length > 0) {
-            cy.layout({
-                name: 'fcose',
-                quality: 'default',
-                randomize: false,
-                animate: true,
-                animationDuration: 500,
-                fit: false,
-                fixedNodeConstraint: fixedConstraints,
-                nodeRepulsion: 3000,
-                idealEdgeLength: 60,
-                edgeElasticity: 0.3,
-                numIter: 1000,
-            } as any).run()
-        }
-
         this.detailVisible = true
         this.onDetailChange?.(true)
-        console.debug(`[AdaptiveZoom] Detail nodes shown: ${elements.length} elements`)
+        console.debug(`[AdaptiveZoom] Detail shown: ${newElements.length} elements added`)
     }
 
-    private hideDetailNodes(): void {
+    private hideDetail(): void {
         const cy = this.cy!
 
+        // Save gene positions before removing children
+        const genePositions = this.saveGenePositions()
+
         cy.startBatch()
+        cy.nodes('.species, .reaction').remove()
 
-        // Update stylesheet for gene-only mode (labels inside)
-        cy.style().fromJson(buildStylesheet(false)).update()
-
-        // Remove species + reaction nodes (and their connected edges)
-        const detailNodes = cy.nodes('.species, .reaction')
-        detailNodes.connectedEdges().remove()
-        detailNodes.remove()
-
+        // Restore gene positions
+        this.restoreGenePositions(genePositions)
         cy.endBatch()
 
         this.detailVisible = false
         this.onDetailChange?.(false)
-        console.debug('[AdaptiveZoom] Detail nodes hidden')
+        console.debug('[AdaptiveZoom] Detail hidden')
+    }
+
+    /** Save all gene/orphan-species positions. */
+    private saveGenePositions(): Map<string, { x: number; y: number }> {
+        const positions = new Map<string, { x: number; y: number }>()
+        this.cy!.nodes('.gene, .orphan-species').forEach((n: any) => {
+            const pos = n.position()
+            positions.set(n.id(), { x: pos.x, y: pos.y })
+        })
+        return positions
+    }
+
+    /** Restore saved gene/orphan-species positions. */
+    private restoreGenePositions(positions: Map<string, { x: number; y: number }>): void {
+        positions.forEach((pos, id) => {
+            const node = this.cy!.getElementById(id)
+            if (!node.empty()) {
+                node.position(pos)
+            }
+        })
+    }
+
+    /** Arrange species/reactions in a tight grid inside their parent gene node. */
+    private positionCompoundChildren(): void {
+        const cy = this.cy!
+
+        cy.nodes('.gene').forEach((gene: any) => {
+            const children = gene.children()
+            if (children.empty()) return
+
+            const center = gene.position()
+            const n = children.length
+            const cols = Math.ceil(Math.sqrt(n))
+            const rows = Math.ceil(n / cols)
+            const spacing = 12
+            const startX = center.x - ((cols - 1) * spacing) / 2
+            const startY = center.y - ((rows - 1) * spacing) / 2
+
+            children.forEach((child: any, i: number) => {
+                const col = i % cols
+                const row = Math.floor(i / cols)
+                child.position({
+                    x: startX + col * spacing,
+                    y: startY + row * spacing,
+                })
+            })
+        })
     }
 }

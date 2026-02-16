@@ -18,12 +18,13 @@ import cytoscape from 'cytoscape'
 // @ts-ignore
 import fcose from 'cytoscape-fcose'
 
-import { convertToElements } from './networkElements'
+import { convertGeneElements } from './networkElements'
 import { buildStylesheet } from './networkStyles'
 import { AdaptiveZoom } from './AdaptiveZoom'
 import { ModelFilter } from './ModelFilter'
 import { SelectionSync } from './SelectionSync'
 import { DynamicsSync } from './DynamicsSync'
+import { EdgeTooltip } from './EdgeTooltip'
 
 cytoscape.use(fcose)
 
@@ -35,8 +36,7 @@ export class NetworkView {
     private modelFilter = new ModelFilter()
     private selectionSync = new SelectionSync()
     private dynamicsSync = new DynamicsSync()
-
-    private layoutTimeout: ReturnType<typeof setTimeout> | null = null
+    private edgeTooltip = new EdgeTooltip()
 
     /**
      * Initialise the cytoscape container.
@@ -56,46 +56,27 @@ export class NetworkView {
 
         if (!this.container) return
 
-        const elements = convertToElements(network, geneColours, true)
+        const elements = convertGeneElements(network, geneColours)
         console.debug(`[NetworkView] Rendering: ${elements.length} gene-level elements`)
 
         this.cy = cytoscape({
             container: this.container,
             elements,
             wheelSensitivity: 0.1,
-            style: buildStylesheet(false),
-            layout: { name: 'preset' }, // manual layout below
+            style: buildStylesheet(),
+            layout: { name: 'preset' },
             userPanningEnabled: true,
             userZoomingEnabled: true,
             boxSelectionEnabled: false,
             selectionType: 'single',
         })
 
-        // Run animated fcose layout
-        this.runLayout()
-
-        // Attach sub-modules after layout settles
-        this.layoutTimeout = setTimeout(() => {
-            if (!this.cy) return
-            this.adaptiveZoom.attach(this.cy, network, geneColours)
-            this.modelFilter.attach(this.cy)
-            this.selectionSync.attach(this.cy)
-            this.dynamicsSync.attach(this.cy)
-
-            // When detail visibility changes, refresh model filter + selection
-            this.adaptiveZoom.onDetailChange = (_visible: boolean) => {
-                this.modelFilter.refresh()
-                this.selectionSync.refresh()
-            }
-        }, 1200)
+        // Run animated fcose layout; attach modules on completion
+        this.runLayout(network, geneColours)
     }
 
     /** Destroy everything. */
     destroy(): void {
-        if (this.layoutTimeout) {
-            clearTimeout(this.layoutTimeout)
-            this.layoutTimeout = null
-        }
         this.destroyModules()
         this.destroyCytoscape()
         this.container = null
@@ -105,34 +86,57 @@ export class NetworkView {
     // Internal
     // ========================================================================
 
-    private runLayout(): void {
+    private runLayout(network: UnionNetwork, geneColours: Record<string, string>): void {
         if (!this.cy) return
 
-        this.cy.layout({
+        const layout = this.cy.layout({
             name: 'fcose',
             quality: 'proof',
             randomize: true,
             animate: true,
-            animationDuration: 1000,
+            animationDuration: 1200,
             fit: true,
             padding: 50,
             nodeDimensionsIncludeLabels: true,
             uniformNodeDimensions: false,
             packComponents: true,
-            nodeRepulsion: 4500,
+            // Strong repulsion to avoid overlap
+            nodeRepulsion: 50000,
+            // Shorter ideal edges so connected nodes stay close
             idealEdgeLength: 100,
-            edgeElasticity: 0.45,
+            // Higher elasticity pulls connected nodes together
+            edgeElasticity: 0.8,
             nestingFactor: 0.1,
-            gravity: 0.25,
-            numIter: 2500,
+            gravity: 0.4,
+            // More iterations for convergence
+            numIter: 5000,
             tile: true,
-            tilingPaddingVertical: 10,
-            tilingPaddingHorizontal: 10,
+            tilingPaddingVertical: 30,
+            tilingPaddingHorizontal: 30,
             gravityRangeCompound: 1.5,
             gravityCompound: 1.0,
             gravityRange: 3.8,
             initialEnergyOnIncremental: 0.3,
-        } as any).run()
+        } as any)
+
+        layout.one('layoutstop', () => {
+            if (!this.cy) return
+            console.debug('[NetworkView] Layout complete, attaching modules')
+
+            this.adaptiveZoom.attach(this.cy, network, geneColours)
+            this.modelFilter.attach(this.cy)
+            this.selectionSync.attach(this.cy)
+            this.dynamicsSync.attach(this.cy)
+            this.edgeTooltip.attach(this.cy)
+
+            // When detail visibility changes, refresh model filter + selection
+            this.adaptiveZoom.onDetailChange = (_visible: boolean) => {
+                this.modelFilter.refresh()
+                this.selectionSync.refresh()
+            }
+        })
+
+        layout.run()
     }
 
     private destroyModules(): void {
@@ -140,6 +144,7 @@ export class NetworkView {
         this.modelFilter.destroy()
         this.selectionSync.destroy()
         this.dynamicsSync.destroy()
+        this.edgeTooltip.destroy()
     }
 
     private destroyCytoscape(): void {

@@ -102,13 +102,13 @@ Complete visualisation schema. No network included -- networks are loaded on dem
 
 - `segments`: all timeline segments (with contiguous same-path merging)
 - `structure`: recursive tree from spec for rectangle layout
-- `species_gene_mapping`: union across all model paths
+- `genes`: sorted gene names from all models
 - `gene_colours`: gene name to hex colour string
 """
 @kwdef struct ScheduleData
     segments::Vector{TimelineSegment}
     structure::StructureNode
-    species_gene_mapping::Dict{Symbol, Symbol} = Dict{Symbol, Symbol}()
+    genes::Vector{String} = String[]
     gene_colours::Dict{String, String} = Dict{String, String}()
 end
 
@@ -171,15 +171,15 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
             segments = _collect_segments(grs_schedule)
             merged = _merge_contiguous_segments(segments)
             structure = _build_structure_tree(grs_schedule)
-            species_gene_mapping = _extract_species_gene_mapping_union(grs_schedule, merged)
-            gene_colours = _generate_gene_colours(species_gene_mapping)
+            genes = _extract_gene_names_union(grs_schedule, merged)
+            gene_colours = _generate_gene_colours(genes)
 
-            @info "Schedule visualisation generated" name segments=length(merged) elapsed=(time() - vis_start)
+            @info "Schedule visualisation generated" name segments=length(merged) genes=length(genes) elapsed=(time() - vis_start)
 
             visualisation = ScheduleData(;
                 segments = merged,
                 structure,
-                species_gene_mapping,
+                genes,
                 gene_colours,
             )
         end
@@ -201,10 +201,10 @@ end
 
 Extract the network for a specific model path using `Scheduling.reify`.
 """
-function extract_network_for_model_path(grs_schedule::GRSSchedule, model_path::String)::Network
-    @debug "Extracting network for model_path" model_path
+function extract_network_for_model_path(grs_schedule::GRSSchedule, model_path::String; include_reactions::Bool=true)::Network
+    @debug "Extracting network for model_path" model_path include_reactions
     primitive = Scheduling.reify(grs_schedule, model_path)
-    entity = NetworkRepresentation.entity(primitive)
+    entity = NetworkRepresentation.entity(primitive; include_reactions)
     nodes, links = NetworkRepresentation.flatten(entity)
     return Network(; nodes, links)
 end
@@ -233,7 +233,7 @@ end
 Build the union network across all model paths in the schedule segments.
 Each model's exclusions (nodes/links absent from that model) are recorded.
 """
-function extract_union_network(spec_string::String, segments::Vector{TimelineSegment})::UnionNetwork
+function extract_union_network(spec_string::String, segments::Vector{TimelineSegment}; include_reactions::Bool=true)::UnionNetwork
     spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
     bindings = Dict(
         :seed => get(spec, :seed, "default"),
@@ -249,7 +249,7 @@ function extract_union_network(spec_string::String, segments::Vector{TimelineSeg
     per_model = Dict{String, Network}()
     for mp in model_paths
         try
-            per_model[mp] = extract_network_for_model_path(grs_schedule, mp)
+            per_model[mp] = extract_network_for_model_path(grs_schedule, mp; include_reactions)
         catch e
             @warn "Could not extract network for model_path" model_path=mp exception=e
         end
@@ -522,14 +522,14 @@ _safe_label(::Nothing) = ""
 _safe_label(x) = string(typeof(x))
 
 # ============================================================================
-# Internal: Species/Gene Mapping
+# Internal: Gene Name Extraction
 # ============================================================================
 
 """
-Extract species-gene mapping from all unique model_paths in segments.
+Extract sorted gene names from all unique model_paths in segments.
 """
-function _extract_species_gene_mapping_union(grs_schedule, segments::Vector{TimelineSegment})::Dict{Symbol, Symbol}
-    mapping = Dict{Symbol, Symbol}()
+function _extract_gene_names_union(grs_schedule, segments::Vector{TimelineSegment})::Vector{String}
+    gene_names = Set{String}()
     seen_model_paths = Set{String}()
 
     for seg in segments
@@ -539,34 +539,22 @@ function _extract_species_gene_mapping_union(grs_schedule, segments::Vector{Time
 
         try
             network = extract_network_for_model_path(grs_schedule, seg.model_path)
-            merge!(mapping, _extract_species_gene_mapping(network))
+            for node in network.nodes
+                node.kind == :gene && push!(gene_names, string(node.name))
+            end
         catch e
             @debug "Could not extract network for model_path" model_path=seg.model_path exception=e
         end
     end
 
-    return mapping
-end
-
-function _extract_species_gene_mapping(network::Network)::Dict{Symbol, Symbol}
-    mapping = Dict{Symbol, Symbol}()
-    gene_names = Set(n.name for n in filter(n -> n.kind == :gene, network.nodes))
-
-    for node in filter(n -> n.kind == :species, network.nodes)
-        if node.parent !== nothing && node.parent in gene_names
-            mapping[node.name] = node.parent
-        end
-    end
-
-    return mapping
+    return sort(collect(gene_names))
 end
 
 # ============================================================================
 # Internal: Gene Colours
 # ============================================================================
 
-function _generate_gene_colours(species_gene_mapping::Dict{Symbol, Symbol})::Dict{String, String}
-    gene_names = sort(unique(collect(values(species_gene_mapping))))
+function _generate_gene_colours(gene_names::Vector{String})::Dict{String, String}
     isempty(gene_names) && return Dict{String, String}()
 
     seed = [colorant"white", colorant"black", colorant"crimson"]

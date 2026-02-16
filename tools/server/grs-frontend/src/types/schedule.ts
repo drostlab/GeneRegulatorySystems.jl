@@ -30,7 +30,7 @@ export interface StructureNode {
 export interface ScheduleData {
     segments: TimelineSegment[]
     structure: StructureNode
-    species_gene_mapping: Record<string, string>
+    genes: string[]
     gene_colours: Record<string, string>
 }
 
@@ -51,20 +51,29 @@ export type Schedule = ReifiedSchedule
 // Utility functions
 // ============================================================================
 
+/**
+ * Extract gene name from a species name (e.g. "geneA.proteins" -> "geneA").
+ * Returns null if the species suffix is not a known SPECIES_TYPE.
+ */
+export function getGeneFromSpeciesName(species: string): string | null {
+    for (const t of SPECIES_TYPES) {
+        if (species.endsWith(`.${t}`)) {
+            return species.slice(0, -(t.length + 1))
+        }
+    }
+    return null
+}
+
 export function extractAllGeneIds(data: ScheduleData): string[] {
-    return Array.from(new Set(Object.values(data.species_gene_mapping))).sort()
+    return [...data.genes].sort()
 }
 
-export function getSpeciesForGene(data: ScheduleData, gene: string): string[] {
-    return Object.entries(data.species_gene_mapping)
-        .filter(([_, g]) => g === gene)
-        .map(([speciesId]) => speciesId)
+export function getSpeciesForGene(_data: ScheduleData, gene: string): string[] {
+    return SPECIES_TYPES.map(t => `${gene}.${t}`)
 }
 
-export function getSpeciesForType(data: ScheduleData, _speciesType: SpeciesType): string[] {
-    return Object.entries(data.species_gene_mapping)
-        .filter(([speciesId]) => speciesId.endsWith(`.${_speciesType}`))
-        .map(([speciesId]) => speciesId)
+export function getSpeciesForType(data: ScheduleData, speciesType: SpeciesType): string[] {
+    return data.genes.map(g => `${g}.${speciesType}`)
 }
 
 export function computeScheduleKey(schedule: ReifiedSchedule): string
@@ -131,4 +140,18 @@ export function getUniqueModelPaths(segments: TimelineSegment[]): string[] {
         }
     }
     return Array.from(paths)
+}
+
+/**
+ * Find the model_path of the segment containing a given timepoint.
+ * Skips instant segments (from === to). Returns first model_path if none match.
+ */
+export function getModelPathAtTime(segments: TimelineSegment[], t: number): string | null {
+    let fallback: string | null = null
+    for (const seg of segments) {
+        if (seg.from === seg.to) continue
+        if (fallback === null) fallback = seg.model_path
+        if (t >= seg.from && t <= seg.to) return seg.model_path
+    }
+    return fallback
 }

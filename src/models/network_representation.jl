@@ -154,10 +154,13 @@ function entity(definition::V1.Definition, f!::Wrapped; include_reactions::Bool=
         nodes = vcat(gene_nodes, aux_nodes)
         links = vcat(reg_links, aux_links)
     else
-        # genes only: no reactions or species nodes
-        genes_from_v1 = [Entity(kind=:gene, name=g.name) for g in definition.cascade.genes]
-        nodes = genes_from_v1
-        links = reg_links
+        # genes only: extract reaction system for auxiliary links but strip species/reaction children
+        rs = f!.model.definition
+        rs_network = entity(rs)
+        _, aux_nodes, aux_links = _genes_from_reaction_network(rs_network)
+        genes_from_v1 = [Entity(kind=:gene, name=g.name) for g in definition.genes]
+        nodes = vcat(genes_from_v1, aux_nodes)
+        links = vcat(reg_links, aux_links)
     end
 
     Entity(
@@ -218,6 +221,18 @@ entity(f!::Wrapped; kw...) = entity(f!.definition, f!; kw...)
 
 # TODO include more info here?
 entity(f!::Instant; kw...) = Entity(kind=:instant, name=:instant)
+
+# Kronecker networks: always skip species/reaction detail (too large)
+function entity(definition::KroneckerNetworks.Definition, f!::Wrapped; include_reactions=true, kw...)
+    v1_entity = entity(f!.model; include_reactions=false, kw...)
+    Entity(
+        kind=:kronecker_network,
+        name=:kronecker_network,
+        properties=v1_entity.properties,
+        nodes=v1_entity.nodes,
+        links=v1_entity.links
+    )
+end
 
 # simply descend if custom entity not implemented for the definition
 # ? maybe we should create nested entities here to tag with information from higher level models?

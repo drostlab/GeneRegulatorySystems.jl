@@ -45,3 +45,8 @@ export const MODEL_NODE_KINDS = new Set([
     'differentiation_core', 'kronecker_network', 'instant'
 ])
 
+/** Species names representing cellular machinery (filtered out of visualisation). */
+export const MACHINERY_SPECIES = new Set([
+    'ribosomes', 'proteasomes', 'polymerases'
+])
+

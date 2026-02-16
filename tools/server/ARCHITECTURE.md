@@ -4,10 +4,10 @@
 
 | File | Purpose | Key Exports |
 | ------ | --------- | ------------- |
-| `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `POST /schedules/union-network`, `POST /schedules/network`, simulation run/results |
+| `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `POST /schedules/union-network`, `POST /schedules/network`, `POST /simulations/{id}/timeseries` (filtered), simulation run/results |
 | `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network` |
 | `src/schedule_storage.jl` | Schedule file persistence (examples/user/snapshot) | `list_schedules`, `load_schedule`, `save_schedule` |
-| `src/simulation.jl` | Simulation execution and result management | `run_simulation`, `load_result`, `list_results` |
+| `src/simulation.jl` | Simulation execution and result management | `run_simulation`, `load_result`, `list_results`, `load_timeseries_for_species` |
 | `src/streaming_sink.jl` | Arrow IPC streaming for simulation events | `StreamingSink` |
 
 ## Frontend (Vue 3 + Pinia + SciChart + Cytoscape)
@@ -16,9 +16,9 @@
 
 | File | Purpose | Key State/Actions |
 | ------ | --------- | ------------------- |
-| `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork` |
-| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`, `activeModelPath`. Computed: `selectedPaths`, `proteinCountsAtTimepoint`, `maxProteinCounts`. Actions: `selectSegments`, `setActiveModelPath` |
-| `simulationStore.ts` | Simulation results | State: `currentResult`, `isSimulationRunning`. Computed: `timeseries`. Actions: `runSimulation`, `loadResult`, `getTimeseries(genes?, paths?)` |
+| `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`, `isNetworkLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork`, `clearNetwork` |
+| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`. Computed: `activeModelPath` (derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint`, `maxProteinCounts`. Actions: `selectSegments` |
+| `simulationStore.ts` | Simulation results with lazy loading | State: `currentResult`, `isSimulationRunning`, `timeseriesCache`, `fetchedGenes`. Computed: `timeseries`. Actions: `runSimulation`, `loadResult` (metadata only), `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)` |
 
 ### Charts (SciChart)
 
@@ -42,23 +42,24 @@
 
 | File | Purpose |
 | ------ | --------- |
-| `network/NetworkView.ts` | Orchestrator. Owns Cytoscape instance, lifecycle. Creates and coordinates sub-modules: `AdaptiveZoom`, `ModelFilter`, `SelectionSync`, `DynamicsSync`. `init(containerRef)` + `setNetwork(unionNetwork, geneColours)`. |
-| `network/networkElements.ts` | `convertToElements(union, geneColours, geneOnly)` pure function. Filters model container nodes. `getDetailElements()` for species/reaction nodes added on zoom. |
-| `network/networkStyles.ts` | `buildStylesheet(speciesVisible)` returns Cytoscape style array. Gene=round-rectangle, species=ellipse, reaction=tiny dot, orphan-species=70% gene size. Edge colours, dim/highlight classes. |
-| `network/AdaptiveZoom.ts` | Single zoom threshold. Below: genes only. Above: adds species+reaction nodes via `cy.add()` with secondary fcose layout (gene positions pinned). Fires `onDetailChange` callback. |
-| `network/ModelFilter.ts` | Watches `viewerStore.activeModelPath`. Hides nodes/edges not in the active model via `cy.remove()` + stash. Restores stashed on model switch. No re-layout needed (union positions stable). |
-| `network/SelectionSync.ts` | Two-way sync: `viewerStore.selectedGenes` <-> Cytoscape node tap. Highlights selected gene nodes, dims others (opacity). Reentrancy-guarded. |
-| `network/DynamicsSync.ts` | Watches `viewerStore.proteinCountsAtTimepoint`. Scales gene node width/height proportionally within min/max range. Debounced at 16ms. |
+| `network/NetworkView.ts` | Orchestrator. Owns Cytoscape instance, lifecycle. Creates and coordinates sub-modules. Uses `layoutstop` event (not timeout). Layout: fcose with nodeRepulsion=50000, idealEdgeLength=100, edgeElasticity=0.8, numIter=5000. |
+| `network/networkElements.ts` | `convertGeneElements(union, geneColours)` for gene-level view. `getDetailElements()` for species (with compound parent) + reactions. Filters `MODEL_NODE_KINDS` and `MACHINERY_SPECIES`. |
+| `network/networkStyles.ts` | `buildStylesheet()` returns Cytoscape style array. `.excluded { display: none }` for ModelFilter. Compound parent selector `$node > node` for gene label positioning. Self-loop edge style. |
+| `network/AdaptiveZoom.ts` | Zoom threshold (1.2). Below: genes only. Above: adds species as compound children of genes (positioned in tight grid), reactions near neighbours. 50ms debounce. Fires `onDetailChange` callback. |
+| `network/ModelFilter.ts` | Watches `viewerStore.activeModelPath`. Toggles `.excluded` CSS class on nodes/edges (no add/remove, avoids conflicts with AdaptiveZoom). |
+| `network/SelectionSync.ts` | Two-way sync: `viewerStore.selectedGenes` <-> Cytoscape node tap. Multi-select: click toggles gene in/out of selection. Highlights selected, dims others. |
+| `network/DynamicsSync.ts` | Watches `viewerStore.proteinCountsAtTimepoint` + `selectedGenes`. Only resizes selected genes (80-250 x 40-100); unselected stay at base size. Debounced at 16ms. |
+| `network/EdgeTooltip.ts` | Edge hover tooltip showing link kind. Lightweight DOM element positioned at cursor. |
 
 ### Data Flow
 
-1. Schedule loaded -> `scheduleStore.loadScheduleByKey/Spec` -> server returns `ScheduleData` (segments, structure, gene_colours, species_gene_mapping, no network)
+1. Schedule loaded -> `scheduleStore.loadScheduleByKey/Spec` -> server returns `ScheduleData` (segments, structure, genes, gene_colours, no network)
 2. `TrackViewer` watches schedule data -> `MainChart.setScheduleData` -> `TimelinePanel` computes layout rectangles -> `collectPathYRanges` passed to `PromoterPanel`. Then calls `scheduleStore.fetchUnionNetwork()` which eagerly fetches union of all models.
 3. `NetworkDiagram` watches `scheduleStore.unionNetwork` -> `NetworkView.setNetwork()` -> renders gene-level graph -> fcose layout runs once -> sub-modules attach: `ModelFilter` hides excluded nodes for first model, `SelectionSync` + `DynamicsSync` start watching.
-4. Simulation loaded -> `simulationStore.loadResult/runSimulation` -> timeseries watcher -> `refreshSimulationData()` -> `MainChart.setSimulationData` -> `viewerStore.proteinCountsAtTimepoint` updates -> `DynamicsSync` rescales gene nodes.
-5. Gene selection: click on series (chart) -> `viewerStore.selectedGenes` updates -> `SelectionSync` highlights matching genes in network. Click on gene node (network) -> `viewerStore.selectedGenes` updates -> chart re-filters timeseries.
-6. Segment click: `TimelinePanel` fires callback -> `viewerStore.setActiveModelPath` -> `ModelFilter` shows/hides elements for new model (no re-layout).
-7. Zoom in past threshold -> `AdaptiveZoom` adds species/reaction nodes with secondary layout (gene positions pinned) -> `ModelFilter.refresh()` + `SelectionSync.refresh()`.
+4. Simulation loaded -> `simulationStore.loadResult` loads metadata only. `selectedGenes` watcher triggers `fetchGeneTimeseries(genes)` which lazily loads per-gene timeseries via `POST /simulations/{id}/timeseries`. After fetch -> `refreshSimulationData()` pushes to chart.
+5. Gene selection: click on series (chart) -> `viewerStore.selectedGenes` updates -> lazy fetch for new genes -> `SelectionSync` highlights in network. Click on gene node (network) -> same flow.
+6. `activeModelPath` is a computed derived from `currentTimepoint` + segments. As time cursor moves, model filter updates automatically.
+7. Zoom in past threshold -> `AdaptiveZoom` adds species/reaction nodes (gene positions pinned) -> `ModelFilter.refresh()` + `SelectionSync.refresh()`.
 
 ### Key Naming Convention
 

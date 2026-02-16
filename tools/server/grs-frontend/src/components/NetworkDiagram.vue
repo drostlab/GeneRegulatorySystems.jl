@@ -39,6 +39,12 @@ onBeforeUnmount(() => {
 watch(() => scheduleStore.unionNetwork, (network) => {
     if (network) {
         networkView.setNetwork(network, scheduleStore.geneColours ?? {})
+    } else {
+        // Network cleared (new schedule loading) - destroy old graph
+        networkView.destroy()
+        if (containerRef.value) {
+            networkView.init(containerRef)
+        }
     }
 })
 </script>
@@ -53,8 +59,12 @@ watch(() => scheduleStore.unionNetwork, (network) => {
             <div class="model-label-path">{{ activeModelLabel.path }}</div>
         </div>
 
-        <div v-if="scheduleStore.isLoading" class="loading-overlay">
-            <div class="loading-card">
+        <div v-if="scheduleStore.isLoading || scheduleStore.isNetworkLoading" class="loading-overlay">
+            <div v-if="scheduleStore.isLoading" class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+                <div class="loading-text">Loading schedule...</div>
+            </div>
+            <div v-else-if="scheduleStore.isNetworkLoading" class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading network...</div>
             </div>
@@ -106,7 +116,5 @@ watch(() => scheduleStore.unionNetwork, (network) => {
     text-overflow: ellipsis;
 }
 
-.network-diagram-container :deep(.loading-card) {
-    margin-top: 80px;
-}
+
 </style>
