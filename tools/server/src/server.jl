@@ -82,6 +82,15 @@ end
     return ScheduleVisualization.extract_network_for_model_path(data.payload.schedule_spec, data.payload.model_path)::ScheduleVisualization.Network
 end
 
+@kwdef struct UnionNetworkRequest
+    schedule_spec::String
+    segments::Vector{ScheduleVisualization.TimelineSegment}
+end
+# extract union network across all model paths
+@post "/schedules/union-network" function(req, data::Json{UnionNetworkRequest})
+    return ScheduleVisualization.extract_union_network(data.payload.schedule_spec, data.payload.segments)::ScheduleVisualization.UnionNetwork
+end
+
 
 ### Simulation service
 
@@ -103,6 +112,18 @@ end
     result = Simulation.load_result(id)
     isnothing(result) && throw("Result not found")
     return result::Simulation.SimulationResult
+end
+
+@kwdef struct TimeseriesRequest
+    species::Vector{String}
+end
+# get filtered timeseries for specific species
+@post "/simulations/{id}/timeseries" function(req, id::String, data::Json{TimeseriesRequest})
+    metadata = Simulation.load_result_metadata(id)
+    isnothing(metadata) && throw("Result not found")
+    species_filter = Set(Symbol.(data.payload.species))
+    timeseries = Simulation.load_timeseries_for_species(metadata.path, species_filter)
+    return Simulation.SimulationData(; timeseries)
 end
 
 const ws_client = Ref{Union{Nothing, HTTP.WebSocket}}()

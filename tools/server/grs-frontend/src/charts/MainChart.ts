@@ -126,6 +126,9 @@ export class MainChart {
 
     clear() {
         this.selectSyncModifier?.clearSelection()
+        this.tracks.forEach(({ panel }) => {
+            panel.clearData()
+        })
     }
 
     dispose() {

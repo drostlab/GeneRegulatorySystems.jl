@@ -19,7 +19,7 @@ export interface FetchOptions extends RequestInit {
  */
 export async function apiFetch(endpoint: string, options: FetchOptions = {}): Promise<Response> {
     const url = `${config.API_BASE}${endpoint}`
-    const { maxRetries = 3, retryDelay = 100000, timeout = 30000, ...fetchOptions } = options
+    const { maxRetries = 3, retryDelay = 1000000, timeout = 3000000, ...fetchOptions } = options
 
     let lastError: Error = new Error('Unknown error')
 

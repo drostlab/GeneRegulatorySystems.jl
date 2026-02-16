@@ -1,7 +1,9 @@
+import { getGeneFromSpeciesName } from './schedule'
+
 export type TimeseriesData = Record<string, Record<string, Array<[number, number]>>>
 
 export interface TimeseriesMetadata {
-    species_gene_mapping: Record<string, string>
+    genes: string[]
     gene_colours: Record<string, string>
     time_extent: { min: number; max: number }
 }
@@ -50,7 +52,7 @@ export function restructureTimeseriesByPathAndGene(
     const dataByPath = new Map<string, Map<string, { colour: string; series: Array<[number, number]> }>>()
 
     for (const [species, pathData] of Object.entries(timeseries)) {
-        const geneId = metadata.species_gene_mapping[species]
+        const geneId = getGeneFromSpeciesName(species)
         if (!geneId) continue
 
         const colour = metadata.gene_colours[geneId] ?? 'gray'

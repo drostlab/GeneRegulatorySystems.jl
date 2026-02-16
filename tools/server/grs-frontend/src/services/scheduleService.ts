@@ -1,6 +1,6 @@
 import { apiFetchJson, apiFetchText } from '@/utils/api'
-import { parseScheduleKey, type Schedule } from '@/types/schedule'
-import type { Network } from '@/types/network'
+import { parseScheduleKey, type Schedule, type TimelineSegment } from '@/types/schedule'
+import type { Network, UnionNetwork } from '@/types/network'
 
 export async function fetchAvailableSchedules(): Promise<string[]> {
     return apiFetchJson<string[]>('/schedules')
@@ -60,6 +60,18 @@ export async function fetchNetworkFromSpec(spec: string, modelPath: string): Pro
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ schedule_spec: spec, model_path: modelPath })
+        }
+    )
+}
+
+export async function fetchUnionNetwork(spec: string, segments: TimelineSegment[]): Promise<UnionNetwork> {
+    console.debug(`[ScheduleService] fetchUnionNetwork: ${segments.length} segments`)
+    return apiFetchJson<UnionNetwork>(
+        '/schedules/union-network',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ schedule_spec: spec, segments })
         }
     )
 }

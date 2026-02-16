@@ -1,35 +1,21 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useScheduleStore } from './scheduleStore'
-import type { SimulationResult } from '@/types/simulation'
+import type { SimulationResult, SimulationResultMetadata, TimeseriesData } from '@/types/simulation'
 import { formatResultLabel } from '@/types/simulation'
 import * as simulationService from '@/services/simulationService'
 
 /**
- * Simulation Store – Manages simulation results and active result state
- *
- * Responsibilities:
- * - API calls: run simulation (synchronous), load stored results
- * - Maintain single active result (either running or loaded for playback)
- * - Track simulation running state via status field
+ * Simulation Store -- manages simulation results with lazy per-gene timeseries loading.
  *
  * Architecture:
- * - No WebSocket needed (simulations run synchronously)
- * - Results are returned fully loaded with all frames
- * - currentResult: fully loaded with frames (for visualization)
+ * - `loadResult(id)` loads metadata only (no timeseries data)
+ * - `fetchGeneTimeseries(genes)` fetches species for those genes from the server
+ *   and merges into `timeseriesCache`
+ * - `timeseries` computed exposes the accumulated cache
+ * - `runSimulation` loads everything eagerly (result includes full data)
  *
- * Does NOT manage:
- * - Schedule data (that's scheduleStore)
- * - Results list for dropdown (that's component state in SimulationViewer)
- * - UI visualization state like time cursor or zoom (that's viewerStore)
- * - Schedule editing or persistence (that's scheduleStore)
- *
- * Data Flow:
- * 1. User clicks "Run Simulation" → POST /api/simulations/run
- * 2. Server runs simulation synchronously, returns full result with frames
- * 3. currentResult is set with all data
- * 4. computeTimeseries from currentResult.data.frames for visualization
- * 5. loadResult(id) → loads stored result and sets as currentResult
+ * Consumers call `getTimeseries(genes, paths)` which filters the cache.
  */
 export const useSimulationStore = defineStore(
     'simulation',
@@ -38,10 +24,18 @@ export const useSimulationStore = defineStore(
         // STATE
         // =====================================================================
 
-        // Currently active result (either running or loaded for playback) - fully loaded with frames
-        const currentResult = ref<SimulationResult | null>(null)
+        const currentResult = ref<SimulationResultMetadata | SimulationResult | null>(null)
         const isSimulationRunning = ref(false)
         const isLoadingResult = ref(false)
+
+        /** Accumulated timeseries data, merged across per-gene fetches. */
+        const timeseriesCache = ref<TimeseriesData>({})
+
+        /** Set of genes already fetched (avoids duplicate requests). */
+        const fetchedGenes = ref<Set<string>>(new Set())
+
+        /** Currently in-flight gene fetch (prevents concurrent fetches). */
+        const isFetchingTimeseries = ref(false)
 
         const currentResultId = computed(() => {
             return currentResult.value?.id ?? null
@@ -55,45 +49,70 @@ export const useSimulationStore = defineStore(
             return currentResult.value !== null
         })
 
-        const timeseries = computed(() => {
-            return currentResult.value?.data.timeseries ?? null
+        const timeseries = computed((): TimeseriesData | null => {
+            if (!currentResult.value) return null
+            return Object.keys(timeseriesCache.value).length > 0 ? timeseriesCache.value : null
         })
 
         /**
-         * Get timeseries filtered by genes and paths
-         * 
-         * @param genes - Array of gene symbols to include. null/undefined includes all genes. Empty array includes none.
-         * @param paths - Array of path IDs to include. null/undefined includes all paths. Empty array includes none.
-         * @returns Filtered timeseries data, or null if no current result
+         * Lazily fetch timeseries for the given genes.
+         * Only fetches genes not already in cache. Merges results into timeseriesCache.
          */
-        function getTimeseries(genes?: string[] | null, paths?: string[] | null) {
-            // TODO: lazy retrieval of data from server
-            if (!timeseries.value) {
-                return null
-            }
+        async function fetchGeneTimeseries(genes: string[]): Promise<void> {
+            const resultId = currentResultId.value
+            if (!resultId) return
 
             const scheduleStore = useScheduleStore()
-            
-            // Explicit behavior: null/undefined = include all, empty array = include none
-            if (genes !== null && genes !== undefined && genes.length === 0) {
-                return {}  // Empty array means exclude all genes
+            const newGenes = genes.filter(g => !fetchedGenes.value.has(g))
+            if (newGenes.length === 0) return
+
+            // Collect all species for the new genes
+            const species = newGenes.flatMap(gene => scheduleStore.getSpeciesForGeneId(gene))
+            if (species.length === 0) {
+                newGenes.forEach(g => fetchedGenes.value.add(g))
+                return
             }
-            if (paths !== null && paths !== undefined && paths.length === 0) {
-                return {}  // Empty array means exclude all paths
+
+            isFetchingTimeseries.value = true
+            console.debug(`[SimulationStore] Fetching timeseries for genes: [${newGenes.join(', ')}] (${species.length} species)`)
+
+            const data = await simulationService.fetchTimeseriesForSpecies(resultId, species)
+
+            // Merge into cache
+            const merged = { ...timeseriesCache.value }
+            for (const [speciesName, pathData] of Object.entries(data)) {
+                merged[speciesName] = pathData
             }
-            
-            // Build set of species IDs to include
+            timeseriesCache.value = merged
+
+            newGenes.forEach(g => fetchedGenes.value.add(g))
+            isFetchingTimeseries.value = false
+
+            console.debug(`[SimulationStore] Cache now has ${Object.keys(timeseriesCache.value).length} species`)
+        }
+
+        /**
+         * Get timeseries filtered by genes and paths.
+         * Returns data from cache only -- call fetchGeneTimeseries first.
+         */
+        function getTimeseries(genes?: string[] | null, paths?: string[] | null) {
+            if (!timeseries.value) return null
+
+            const scheduleStore = useScheduleStore()
+
+            if (genes !== null && genes !== undefined && genes.length === 0) return {}
+            if (paths !== null && paths !== undefined && paths.length === 0) return {}
+
             const speciesIds = new Set(
                 genes === null || genes === undefined
                     ? Object.keys(timeseries.value)
                     : genes.flatMap(gene => scheduleStore.getSpeciesForGeneId(gene))
             )
-            
-            const pathSet = paths === null || paths === undefined 
-                ? null 
+
+            const pathSet = paths === null || paths === undefined
+                ? null
                 : new Set(paths)
 
-            // Vectorized filtering: filter species, then filter paths for each species
             return Object.fromEntries(
                 Object.entries(timeseries.value)
                     .filter(([species]) => speciesIds.has(species))
@@ -104,87 +123,76 @@ export const useSimulationStore = defineStore(
                                 .filter(([path]) => pathSet === null || pathSet.has(path))
                         )
                     ])
-            ) as typeof timeseries.value
+            ) as TimeseriesData
         }
 
-        async function loadResult(resultId: string): Promise<SimulationResult> {
+        async function loadResult(resultId: string): Promise<void> {
             isLoadingResult.value = true
-            try {
-                const result = await simulationService.loadSimulationResult(resultId)
-                currentResult.value = result
-                const scheduleStore = useScheduleStore()
-                await scheduleStore.loadScheduleBySpec(result.schedule_spec, result.schedule_name)
+            clearTimeseriesCache()
+            const metadata = await simulationService.pollResult(resultId)
+            if (!metadata) throw new Error('Result not found')
+            currentResult.value = metadata
 
-                return result
-            } finally {
-                isLoadingResult.value = false
-            }
+            const scheduleStore = useScheduleStore()
+            await scheduleStore.loadScheduleBySpec(metadata.schedule_spec, metadata.schedule_name)
+            isLoadingResult.value = false
         }
 
-        /**
-         * Run simulation for the active schedule
-         */
         async function runSimulation(): Promise<SimulationResult> {
             const scheduleStore = useScheduleStore()
+            if (!scheduleStore.schedule) throw new Error('No running schedule selected')
+            if (isSimulationRunning.value) throw new Error('Simulation already running')
 
-            if (!scheduleStore.schedule) {
-                throw new Error('No running schedule selected')
-            }
-
-            if (isSimulationRunning.value) {
-                throw new Error('Simulation already running')
-            }
-
+            clearTimeseriesCache()
             currentResult.value = null
             isSimulationRunning.value = true
 
-            try {
-                const result = await simulationService.runSimulation(scheduleStore.schedule.name, scheduleStore.schedule.spec)
-                currentResult.value = result
-                return currentResult.value
-            } finally {
-                isSimulationRunning.value = false
+            const result = await simulationService.runSimulation(scheduleStore.schedule.name, scheduleStore.schedule.spec)
+            currentResult.value = result
+
+            // Eagerly populate cache from full result
+            if (result.data?.timeseries) {
+                timeseriesCache.value = result.data.timeseries
+                // Mark all genes as fetched
+                const allGenes = scheduleStore.allGenes ?? []
+                allGenes.forEach(g => fetchedGenes.value.add(g))
             }
+
+            isSimulationRunning.value = false
+            return result
         }
 
+        function clearTimeseriesCache(): void {
+            timeseriesCache.value = {}
+            fetchedGenes.value = new Set()
+        }
 
-        /**
-         * Reset all state
-         */
-        function reset() {
+        function reset(): void {
             currentResult.value = null
+            clearTimeseriesCache()
         }
 
-        /**
-         * Clear the currently loaded result
-         */
-        function clearResult() {
+        function clearResult(): void {
             currentResult.value = null
+            clearTimeseriesCache()
         }
-
 
         return {
-            // State
             currentResult,
             isSimulationRunning,
             isLoadingResult,
+            isFetchingTimeseries,
             currentResultId,
-
-            // Computed
             currentResultLabel,
             isLoaded,
             timeseries,
-
-            // Methods
+            fetchedGenes,
             getTimeseries,
-
-            // API
+            fetchGeneTimeseries,
             runSimulation,
             loadResult,
-
-            // Cleanup
             reset,
-            clearResult
+            clearResult,
         }
     }
 )

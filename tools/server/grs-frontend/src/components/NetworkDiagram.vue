@@ -1,99 +1,72 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, onMounted, watch, onBeforeUnmount, computed } from 'vue'
 import { useScheduleStore } from '@/stores/scheduleStore'
-import { convertToElements, getDefaultStyles, getDefaultLayout } from '@/composables/useCytoscapeRenderer'
-import { useAdaptiveZoom } from '@/composables/useAdaptiveZoom'
+import { useViewerStore } from '@/stores/viewerStore'
+import { NetworkView } from '@/network/NetworkView'
 import ProgressSpinner from 'primevue/progressspinner'
-import cytoscape from 'cytoscape'
-// @ts-ignore
-import fcose from 'cytoscape-fcose'
-
-cytoscape.use(fcose)
 
 const containerRef = ref<HTMLDivElement>()
-const cy = ref<cytoscape.Core | null>(null)
-const store = useScheduleStore()
+const scheduleStore = useScheduleStore()
+const viewerStore = useViewerStore()
+const networkView = new NetworkView()
 
-let cleanupAdaptiveZoom: (() => void) | null = null
-let fitZoomTimeout: ReturnType<typeof setTimeout> | null = null
+/** Label for the active model shown in the bottom-left overlay. */
+const activeModelLabel = computed(() => {
+    const modelPath = viewerStore.activeModelPath
+    if (!modelPath) return null
 
-function renderNetwork() {
-    const network = store.activeNetwork
-    if (!network) return
-
-    console.debug(`[NetworkDiagram] Rendering network: ${network.nodes.length} nodes, ${network.links.length} links`)
-
-    const elements = convertToElements(network, store.geneColours || {})
-    if (!containerRef.value) return
-
-    cy.value = cytoscape({
-        container: containerRef.value,
-        elements,
-        wheelSensitivity: 0.1,
-        style: getDefaultStyles(),
-        layout: getDefaultLayout(),
-        renderer: {
-            name: 'canvas',
-            webgl: true,
-            showFps: false,
-            webglDebug: false,
-            webglTexSize: 4096,
-            webglTexRows: 24,
-            webglBatchSize: 2048,
-            webglTexPerBatch: 16
-        },
-        userPanningEnabled: true,
-        userZoomingEnabled: true,
-        boxSelectionEnabled: false,
-        selectionType: 'single'
-    } as any)
-
-    if (containerRef.value) {
-        containerRef.value.style.backgroundImage =
-            'radial-gradient(circle, #d0d0d0 1px, transparent 1px)'
-        containerRef.value.style.backgroundSize = '30px 30px'
+    const segments = scheduleStore.segments
+    const seg = segments.find(s => s.model_path === modelPath && s.from !== s.to)
+    return {
+        label: seg?.label ?? modelPath,
+        path: modelPath,
     }
+})
 
-    fitZoomTimeout = setTimeout(() => {
-        if (cy.value && cy.value.nodes().length > 0) {
-            cy.value.fit(undefined, 100)
-            cy.value.zoom(0.5)
-            cleanupAdaptiveZoom = useAdaptiveZoom(cy.value)
+onMounted(() => {
+    networkView.init(containerRef)
+
+    // Render when union network arrives
+    if (scheduleStore.unionNetwork) {
+        networkView.setNetwork(scheduleStore.unionNetwork, scheduleStore.geneColours ?? {})
+    }
+})
+
+onBeforeUnmount(() => {
+    networkView.destroy()
+})
+
+watch(() => scheduleStore.unionNetwork, (network) => {
+    if (network) {
+        networkView.setNetwork(network, scheduleStore.geneColours ?? {})
+    } else {
+        // Network cleared (new schedule loading) - destroy old graph
+        networkView.destroy()
+        if (containerRef.value) {
+            networkView.init(containerRef)
         }
-    }, 1000)
-}
-
-function destroyNetwork() {
-    if (fitZoomTimeout) {
-        clearTimeout(fitZoomTimeout)
-        fitZoomTimeout = null
     }
-    if (cleanupAdaptiveZoom) {
-        cleanupAdaptiveZoom()
-        cleanupAdaptiveZoom = null
-    }
-    if (cy.value) {
-        cy.value.destroy()
-        cy.value = null
-    }
-}
-
-onMounted(renderNetwork)
-onBeforeUnmount(destroyNetwork)
-
-watch(() => store.activeNetwork, () => {
-    destroyNetwork()
-    renderNetwork()
 })
 </script>
 
 <template>
     <div class="network-diagram-container">
         <div ref="containerRef" class="cytoscape-container" />
-        <div v-if="store.isLoading" class="loading-overlay">
-            <div class="loading-card">
+
+        <!-- Model info overlay -->
+        <div v-if="activeModelLabel" class="model-label-overlay">
+            <div class="model-label-name">{{ activeModelLabel.label }}</div>
+            <div class="model-label-path">{{ activeModelLabel.path }}</div>
+        </div>
+
+        <div v-if="scheduleStore.isLoading || scheduleStore.isNetworkLoading" class="loading-overlay">
+            <div v-if="scheduleStore.isLoading" class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading schedule...</div>
+            </div>
+            <div v-else-if="scheduleStore.isNetworkLoading" class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+                <div class="loading-text">Loading network...</div>
             </div>
         </div>
     </div>
@@ -114,7 +87,34 @@ watch(() => store.activeNetwork, () => {
     inset: 0;
 }
 
-.network-diagram-container :deep(.loading-card) {
-    margin-top: 80px;
+.model-label-overlay {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: Montserrat, sans-serif;
+    pointer-events: none;
+    max-width: 60%;
 }
+
+.model-label-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.model-label-path {
+    font-size: 10px;
+    color: #777;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
 </style>

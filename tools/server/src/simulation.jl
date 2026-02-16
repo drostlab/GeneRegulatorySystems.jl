@@ -23,7 +23,7 @@ import HTTP: send
 # Re-export SimulationFrame from StreamingSink
 export SimulationFrame, SimulationData, SimulationResultMetadata, SimulationResult
 export update_result_metadata, load_result_metadata, load_result, list_results, delete_result,
-       get_result_path, load_timeseries_from_result, results_dir
+       get_result_path, load_timeseries_from_result, load_timeseries_for_species, results_dir
 
 # ============================================================================
 # Types
@@ -567,6 +567,67 @@ function load_timeseries_from_result(result_path::String)::Dict{Symbol, Dict{Str
     end
 
     @info "Converted to timeseries" result_path series_count=length(timeseries)
+    return timeseries
+end
+
+# ============================================================================
+# Per-species filtered timeseries loading (lazy)
+# ============================================================================
+
+"""
+    load_timeseries_for_species(result_path, species_filter) -> Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
+
+Load timeseries for only the specified species names.
+Uses the same Arrow parsing as `load_timeseries_from_result` but skips unmatched species.
+"""
+function load_timeseries_for_species(
+    result_path::String,
+    species_filter::Set{Symbol}
+)::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
+    timeseries = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
+
+    if !isdir(result_path)
+        @warn "Result directory not found" result_path
+        return timeseries
+    end
+
+    (i_to_path, path_time_bounds) = _load_index_mapping(result_path)
+
+    for file in readdir(result_path)
+        if startswith(file, "events") && endswith(file, ".stream.arrow")
+            events_table = Arrow.Table(joinpath(result_path, file))
+            for (i, t, name, value) in zip(events_table.i, events_table.t, events_table.name, events_table.value)
+                name in species_filter || continue
+                path = get(i_to_path, i, string(i))
+                species_dict = get!(timeseries, name) do
+                    Dict{String, Vector{Tuple{Float64, Int}}}()
+                end
+                push!(get!(species_dict, path) do; Tuple{Float64, Int}[] end, (t, value))
+            end
+        end
+    end
+
+    for species in values(timeseries)
+        for path_data in values(species)
+            sort!(path_data; by = first)
+        end
+    end
+
+    for species_symbol in keys(timeseries)
+        for path in keys(timeseries[species_symbol])
+            if !isempty(timeseries[species_symbol][path])
+                _, max_time = get(path_time_bounds, path, (0.0, 0.0))
+                if max_time > 0.0
+                    last_time, last_count = timeseries[species_symbol][path][end]
+                    if last_time < max_time
+                        push!(timeseries[species_symbol][path], (max_time, last_count))
+                    end
+                end
+            end
+        end
+    end
+
+    @debug "Loaded filtered timeseries" result_path species_count=length(species_filter) series_count=length(timeseries)
     return timeseries
 end
 

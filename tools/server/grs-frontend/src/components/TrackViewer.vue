@@ -5,7 +5,7 @@ import { useScheduleStore } from '@/stores/scheduleStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import type { SimulationResultMetadata } from '@/types/simulation'
 import { formatResultLabel } from '@/types/simulation'
-import { speciesTypeLabels, DEFAULT_VISIBLE_SPECIES_TYPES, SPECIES_TYPES, getUniqueModelPaths } from '@/types/schedule'
+import { speciesTypeLabels, DEFAULT_VISIBLE_SPECIES_TYPES, SPECIES_TYPES } from '@/types/schedule'
 import type { SpeciesType } from '@/types/schedule'
 import Button from 'primevue/button'
 import Select, { type SelectChangeEvent } from 'primevue/select'
@@ -99,12 +99,8 @@ watch(
             console.debug(`[TrackViewer] Schedule data ready: ${segments.length} segments`)
             chart.setScheduleData(structure, segments, metadata)
 
-            // Auto-load network for the first executable model
-            const modelPaths = getUniqueModelPaths(segments)
-            if (modelPaths.length > 0) {
-                console.debug(`[TrackViewer] Auto-loading first network: ${modelPaths[0]}`)
-                await scheduleStore.fetchNetwork(modelPaths[0]!)
-            }
+            // Load union network (eagerly fetches all models)
+            await scheduleStore.fetchUnionNetwork()
 
             // Re-push simulation data now that metadata is fresh
             refreshSimulationData()
@@ -126,10 +122,26 @@ watch(
 watch(
     () => scheduleStore.allGenes,
     (allGenes) => {
-        if (simulationStore.isLoaded && allGenes && allGenes.length > 0) {
-            viewerStore.selectedGenes = allGenes.slice(0, DEFAULT_SELECTED_GENES_COUNT)
+        if (allGenes && allGenes.length > 0) {
+            if (simulationStore.isLoaded) {
+                viewerStore.selectedGenes = allGenes.slice(0, DEFAULT_SELECTED_GENES_COUNT)
+            } else {
+                // No simulation: select all genes so the network looks complete
+                viewerStore.selectedGenes = [...allGenes]
+            }
         }
     }
+)
+
+// Lazy-fetch timeseries when selected genes change
+watch(
+    () => viewerStore.selectedGenes,
+    async (genes) => {
+        if (!simulationStore.isLoaded || genes.length === 0) return
+        await simulationStore.fetchGeneTimeseries(genes)
+        refreshSimulationData()
+    },
+    { deep: true }
 )
 
 /** Push current simulation data to chart, filtered by selected genes/paths. */
@@ -174,11 +186,9 @@ onMounted(async () => {
         }
     })
 
-    chart.onSegmentClick(async (segmentId: number, modelPath: string) => {
-        console.debug(`[TrackViewer] Segment click: id=${segmentId} modelPath=${modelPath}`)
+    chart.onSegmentClick(async (segmentId: number, _modelPath: string) => {
+        console.debug(`[TrackViewer] Segment click: id=${segmentId}`)
         viewerStore.selectSegments(new Set([segmentId]))
-        await scheduleStore.fetchNetwork(modelPath)
-        console.debug(`[TrackViewer] Network loaded for: ${modelPath}, activeNetwork: ${scheduleStore.activeNetwork ? 'yes' : 'no'}`)
     })
 
     window.addEventListener('keydown', handleEscapeKey)
@@ -412,7 +422,11 @@ watch(
         />
 
         <div v-if="isScheduleLoading || simulationStore.isLoadingResult" class="loading-overlay">
-            <div v-if="simulationStore.isLoadingResult" class="loading-card">
+            <div v-if="isScheduleLoading" class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+                <div class="loading-text">Loading schedule...</div>
+            </div>
+            <div v-else-if="simulationStore.isLoadingResult" class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading result...</div>
             </div>

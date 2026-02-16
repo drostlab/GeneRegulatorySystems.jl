@@ -4,23 +4,23 @@
 
 | File | Purpose | Key Exports |
 | ------ | --------- | ------------- |
-| `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `/schedules/{source}/{name}/network`, `POST /schedules/network`, simulation run/results |
-| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path` |
+| `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `POST /schedules/union-network`, `POST /schedules/network`, `POST /simulations/{id}/timeseries` (filtered), simulation run/results |
+| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network`. Internal: `_gene_names` (lightweight dispatch-based gene extraction without building networks), `_spec_bindings`/`_spec_seed` (handle both Dict and Vector specs), `_validate_spec` (Dict and Vector overloads), `_label`/`_type_label` (label extraction with fallback for unlabelled models) |
 | `src/schedule_storage.jl` | Schedule file persistence (examples/user/snapshot) | `list_schedules`, `load_schedule`, `save_schedule` |
-| `src/simulation.jl` | Simulation execution and result management | `run_simulation`, `load_result`, `list_results` |
+| `src/simulation.jl` | Simulation execution and result management | `run_simulation`, `load_result`, `list_results`, `load_timeseries_for_species` |
 | `src/streaming_sink.jl` | Arrow IPC streaming for simulation events | `StreamingSink` |
 
-## Frontend (Vue 3 + Pinia + SciChart)
+## Frontend (Vue 3 + Pinia + SciChart + Cytoscape)
 
 ### Stores
 
 | File | Purpose | Key State/Actions |
 | ------ | --------- | ------------------- |
-| `scheduleStore.ts` | Schedule data, network cache | State: `schedule`, `networks`, `isLoading`. Computed: `allGenes`, `geneColours`, `segments`, `activeNetwork` (from viewerStore.activeModelPath). Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchNetwork` |
-| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`, `activeModelPath`. Computed: `selectedPaths`. Actions: `selectSegments`, `setActiveModelPath` |
-| `simulationStore.ts` | Simulation results | State: `currentResult`, `isSimulationRunning`. Computed: `timeseries`. Actions: `runSimulation`, `loadResult`, `getTimeseries(genes?, paths?)` |
+| `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`, `isNetworkLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork`, `clearNetwork` |
+| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`. Computed: `activeModelPath` (derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint`, `maxProteinCounts`. Actions: `selectSegments` |
+| `simulationStore.ts` | Simulation results with lazy loading | State: `currentResult`, `isSimulationRunning`, `timeseriesCache`, `fetchedGenes`. Computed: `timeseries`. Actions: `runSimulation`, `loadResult` (metadata only), `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)` |
 
-### Charts
+### Charts (SciChart)
 
 | File | Purpose |
 | ------ | --------- |
@@ -38,15 +38,28 @@
 | `modifiers/SharedTimeCursorModifier.ts` | Vertical cursor line synced across sub-charts |
 | `modifiers/SubChartLayoutModifier.ts` | Vertical stacking of visible sub-charts |
 
+### Network (Cytoscape)
+
+| File | Purpose |
+| ------ | --------- |
+| `network/NetworkView.ts` | Orchestrator. Owns Cytoscape instance, lifecycle. Creates and coordinates sub-modules. Uses `layoutstop` event (not timeout). Layout: fcose with nodeRepulsion=50000, idealEdgeLength=100, edgeElasticity=0.8, numIter=5000. |
+| `network/networkElements.ts` | `convertGeneElements(union, geneColours)` for gene-level view. `getDetailElements()` for species (with compound parent) + reactions. Filters `MODEL_NODE_KINDS` and `MACHINERY_SPECIES`. |
+| `network/networkStyles.ts` | `buildStylesheet()` returns Cytoscape style array. `.excluded { display: none }` for ModelFilter. Compound parent selector `$node > node` for gene label positioning. Self-loop edge style. |
+| `network/AdaptiveZoom.ts` | Zoom threshold (1.2). Below: genes only. Above: adds species as compound children of genes (positioned in tight grid), reactions near neighbours. 50ms debounce. Fires `onDetailChange` callback. |
+| `network/ModelFilter.ts` | Watches `viewerStore.activeModelPath`. Toggles `.excluded` CSS class on nodes/edges (no add/remove, avoids conflicts with AdaptiveZoom). |
+| `network/SelectionSync.ts` | Two-way sync: `viewerStore.selectedGenes` <-> Cytoscape node tap. Multi-select: click toggles gene in/out of selection. Highlights selected, dims others. |
+| `network/DynamicsSync.ts` | Watches `viewerStore.proteinCountsAtTimepoint` + `selectedGenes`. Only resizes selected genes (80-250 x 40-100); unselected stay at base size. Debounced at 16ms. |
+| `network/EdgeTooltip.ts` | Edge hover tooltip showing link kind. Lightweight DOM element positioned at cursor. |
+
 ### Data Flow
 
-1. Schedule loaded -> `scheduleStore.loadScheduleByKey/Spec` -> server returns `ScheduleData` (segments, structure, gene_colours, species_gene_mapping, no network)
-2. `TrackViewer` watches schedule data -> `MainChart.setScheduleData` -> `TimelinePanel` computes layout rectangles -> `collectPathYRanges` passed to `PromoterPanel`. Then re-pushes simulation data via `refreshSimulationData()` so species mappings are fresh.
-3. Simulation loaded -> `simulationStore.loadResult/runSimulation` -> timeseries watcher -> `refreshSimulationData()` (only if metadata ready) -> `MainChart.setSimulationData` -> filters by species type per panel
-4. Gene selection: click on series -> `SelectSyncModifier` fires callback -> TrackViewer saves previous selection locally and sets `viewerStore.selectedGenes = [geneId]` -> watcher re-filters timeseries. Empty selection restores previous. ESC also restores.
-5. Hover: `onHoveredChanged` on each series -> `SeriesSyncCoordinator.syncHover()` -> propagates `isHovered` to matching series + dims non-matching (opacity=0.3), skips null-group segments, invalidates parent surfaces for re-render
-6. Segment click: `TimelinePanel` fires callback -> `viewerStore.selectSegments` + `scheduleStore.fetchNetwork(modelPath)` -> `activeNetwork` updates -> `NetworkDiagram` re-renders
-7. Network loaded on-demand: `scheduleStore.fetchNetwork(modelPath)` -> cached in `networks` Map -> `activeNetwork` computed from `viewerStore.activeModelPath`. First model auto-loaded on schedule load.
+1. Schedule loaded -> `scheduleStore.loadScheduleByKey/Spec` -> server returns `ScheduleData` (segments, structure, genes, gene_colours, no network)
+2. `TrackViewer` watches schedule data -> `MainChart.setScheduleData` -> `TimelinePanel` computes layout rectangles -> `collectPathYRanges` passed to `PromoterPanel`. Then calls `scheduleStore.fetchUnionNetwork()` which eagerly fetches union of all models.
+3. `NetworkDiagram` watches `scheduleStore.unionNetwork` -> `NetworkView.setNetwork()` -> renders gene-level graph -> fcose layout runs once -> sub-modules attach: `ModelFilter` hides excluded nodes for first model, `SelectionSync` + `DynamicsSync` start watching.
+4. Simulation loaded -> `simulationStore.loadResult` loads metadata only. `selectedGenes` watcher triggers `fetchGeneTimeseries(genes)` which lazily loads per-gene timeseries via `POST /simulations/{id}/timeseries`. After fetch -> `refreshSimulationData()` pushes to chart.
+5. Gene selection: click on series (chart) -> `viewerStore.selectedGenes` updates -> lazy fetch for new genes -> `SelectionSync` highlights in network. Click on gene node (network) -> same flow.
+6. `activeModelPath` is a computed derived from `currentTimepoint` + segments. As time cursor moves, model filter updates automatically.
+7. Zoom in past threshold -> `AdaptiveZoom` adds species/reaction nodes (gene positions pinned) -> `ModelFilter.refresh()` + `SelectionSync.refresh()`.
 
 ### Key Naming Convention
 
@@ -58,7 +71,7 @@
 | ------ | ----------- |
 | `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule` |
 | `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` |
-| `types/network.ts` | `Node`, `Link`, `Network` |
+| `types/network.ts` | `Node`, `Link`, `Network`, `UnionNetwork`, `ModelExclusions`, `linkId()`, `MODEL_NODE_KINDS` |
 
 ### Components
 
@@ -66,7 +79,7 @@
 | ------ | --------- |
 | `App.vue` | 3-panel splitter layout |
 | `TrackViewer.vue` | Toolbar (run/load/gene filter/track settings) + MainChart + fullscreen |
-| `NetworkDiagram.vue` | Cytoscape graph, watches `scheduleStore.activeNetwork` |
+| `NetworkDiagram.vue` | Cytoscape graph via `NetworkView`. Model label overlay (bottom-left). Watches `scheduleStore.unionNetwork`. |
 | `ScheduleEditor.vue` | Schedule dropdown + Monaco JSON editor + validation |
 
 ### Utils and Services
@@ -75,5 +88,5 @@
 | ------ | --------- |
 | `utils/colorUtils.ts` | `parseHex`, `rgbToHex`, `lerpColor`, `lighten`, `darken`, `withOpacity` |
 | `utils/api.ts` | `apiFetch`, `apiFetchJson`, `apiFetchText` with retry/timeout |
-| `services/scheduleService.ts` | Schedule API: load, save, list, `fetchNetwork`, `fetchNetworkFromSpec` |
+| `services/scheduleService.ts` | Schedule API: load, save, list, `fetchUnionNetwork`, `fetchNetwork`, `fetchNetworkFromSpec` |
 | `services/simulationService.ts` | Simulation API: run, load result, list results |

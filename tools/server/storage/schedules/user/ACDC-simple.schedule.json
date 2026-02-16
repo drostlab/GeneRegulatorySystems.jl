@@ -5,13 +5,13 @@
             "genes": [
                 {
                     "$": ["defaults", "gene"],
-                    "activation": [{"from": 1, "at": 12.0}],
+                    "activation": [{"from": 1, "at": 0.01}],
                     "repression": [{"from": 3, "at": 4.0}]
                 },
                 {
                     "$": ["defaults", "gene"],
                     "activation": [{"from": 2, "at": 2.0}],
-                    "repression": [{"from": 1, "at": 4.0}]
+                    "repression": [{"from": 1, "at": 0.04}]
                 },
                 {
                     "$": ["defaults", "gene"],
@@ -24,7 +24,7 @@
             {"{seed}": "${seed}-rep"},
             {"{add}": {
                 "$": ["defaults", "bootstrap"],
-                "1.proteins": 100
+                "2.proteins": 100
             }},
             {"to": 4550.0},
             {

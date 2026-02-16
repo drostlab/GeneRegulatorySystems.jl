@@ -45,4 +45,9 @@ export abstract class BasePanel {
             xAxis.visibleRangeLimit = new NumberRange(minTime, maxTime)
         }
     }
+
+    clearData(): void {
+        this.surface.renderableSeries.clear()
+        this.surface.annotations.clear()
+    }
 }

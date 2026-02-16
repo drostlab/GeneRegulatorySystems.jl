@@ -14,8 +14,4 @@ export abstract class TimeseriesPanel extends BasePanel {
     }
 
     abstract setData(timeseries: TimeseriesData): void
-
-    clearData(): void {
-        this.surface.renderableSeries.clear()
-    }
 }
