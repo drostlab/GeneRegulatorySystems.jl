@@ -105,14 +105,18 @@ async function handleScheduleSelect(event: SelectChangeEvent) {
 
     // Clear simulation when user selects a new schedule
     simulationStore.clearResult()
+
+    // Clear editor content immediately so stale JSON isn't visible during loading
+    setCurrentJson('')
     
     await store.loadScheduleByKey(scheduleKey)
 }
 
 watch (
-    () => store.scheduleKey,
-    async (newKey) => {
-        if (newKey && store.schedule) {
+    () => store.schedule.spec,
+    (spec) => {
+        // Update editor when spec text changes (e.g. after fast fetch or full load)
+        if (spec) {
             resetEditor()
         }
     }
@@ -310,8 +314,8 @@ onBeforeUnmount(() =>
             </Message>
         </div>
 
-        <!-- Loading overlay -->
-        <div v-if="isLoading" class="loading-overlay"></div>
+        <!-- Dim overlay while schedule is loading (no spinner -- the slow part is data/network, not validation) -->
+        <div v-if="isLoading" class="disabled-overlay" />
     </div>
 </template>
 

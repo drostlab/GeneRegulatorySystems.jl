@@ -10,14 +10,14 @@
  */
 
 import { apiFetchJson } from '@/utils/api'
-import type { SimulationResultMetadata, SimulationResult, TimeseriesData } from '@/types'
+import type { SimulationResult, TimeseriesData } from '@/types'
 
 /**
- * Fetch all stored simulation results metadata, without frames data
+ * Fetch all stored simulation results (metadata only, data=null)
  */
-export async function fetchResultsList(): Promise<SimulationResultMetadata[]> {
+export async function fetchResultsList(): Promise<SimulationResult[]> {
 
-    const data = await apiFetchJson<SimulationResultMetadata[]>('/simulations')
+    const data = await apiFetchJson<SimulationResult[]>('/simulations')
 
     if (!Array.isArray(data)) {
         console.warn('[simulationService] No results found or invalid format')
@@ -41,9 +41,9 @@ export async function loadSimulationResult(resultId: string): Promise<Simulation
  * Used to verify if simulation is still running (timeout recovery)
  * Returns null if request fails
  */
-export async function pollResult(resultId: string): Promise<SimulationResultMetadata | null> {
+export async function pollResult(resultId: string): Promise<SimulationResult | null> {
     try {
-        const metadata = await apiFetchJson<SimulationResultMetadata>(`/simulations/${resultId}`)
+        const metadata = await apiFetchJson<SimulationResult>(`/simulations/${resultId}`)
         return metadata
     } catch (error) {
         console.error('[simulationService] Error polling result:', error)

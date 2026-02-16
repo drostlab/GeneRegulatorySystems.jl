@@ -16,9 +16,9 @@
 
 | File | Purpose | Key State/Actions |
 | ------ | --------- | ------------------- |
-| `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`, `isNetworkLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork`, `clearNetwork` |
+| `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`, `isNetworkLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork`, `clearNetwork`. Spec-skip: compares new spec to current before reloading. |
 | `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`. Computed: `activeModelPath` (derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint`, `maxProteinCounts`. Actions: `selectSegments` |
-| `simulationStore.ts` | Simulation results with lazy loading | State: `currentResult`, `isSimulationRunning`, `timeseriesCache`, `fetchedGenes`. Computed: `timeseries`. Actions: `runSimulation`, `loadResult` (metadata only), `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)` |
+| `simulationStore.ts` | Simulation results with lazy loading | State: `currentResult` (`SimulationResult | null`), `isSimulationRunning`, `timeseriesCache`, `fetchedGenes`. Computed: `timeseries`. Actions: `runSimulation`, `loadResult` (metadata only), `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)` |
 
 ### Charts (SciChart)
 
@@ -61,6 +61,19 @@
 6. `activeModelPath` is a computed derived from `currentTimepoint` + segments. As time cursor moves, model filter updates automatically.
 7. Zoom in past threshold -> `AdaptiveZoom` adds species/reaction nodes (gene positions pinned) -> `ModelFilter.refresh()` + `SelectionSync.refresh()`.
 
+### Loading UX Pattern
+
+Two overlay classes:
+- `.disabled-overlay`: dim, no spinner, pointer-events disabled. Used when a component is waiting for an earlier loading stage.
+- `.loading-overlay` + `.loading-card`: dim with centred spinner + text. Used when that component's data is actively being fetched.
+
+Schedule change stages:
+1. Editor clears content, shows "Validating schedule..." spinner overlay. Chart and network show `.disabled-overlay` (old content visible, dimmed).
+2. When validation returns, editor updates. Chart/network get new data; old content replaced.
+3. Network fetch fires non-blocking after schedule data arrives. Network shows spinner only during `isNetworkLoading`.
+
+Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent gene selections show spinner in MultiSelect only.
+
 ### Key Naming Convention
 
 `dataSeriesName` format: `{geneId}:{executionPath}` for timeseries, `segment:{segmentId}` for timeline rectangles. Sync modifiers extract gene ID as prefix before `:` and skip `segment:` prefixed names.
@@ -70,7 +83,7 @@
 | File | Key Types |
 | ------ | ----------- |
 | `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule` |
-| `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` |
+| `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` (unified; `data: SimulationData \| null`), `SimulationResultMetadata` (deprecated alias) |
 | `types/network.ts` | `Node`, `Link`, `Network`, `UnionNetwork`, `ModelExclusions`, `linkId()`, `MODEL_NODE_KINDS` |
 
 ### Components

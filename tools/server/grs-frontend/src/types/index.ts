@@ -10,7 +10,6 @@ export type {
 } from './schedule'
 
 export {
-    isResultLoaded,
     getMaxTime,
     formatResultLabel,
     restructureTimeseriesByPathAndGene
@@ -20,6 +19,5 @@ export type {
     TimeseriesMetadata,
     SimulationStatus,
     SimulationData,
-    SimulationResultMetadata,
     SimulationResult
 } from './simulation'

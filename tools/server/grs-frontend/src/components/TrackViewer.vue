@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useSimulationStore } from '@/stores/simulationStore'
 import { useScheduleStore } from '@/stores/scheduleStore'
 import { useViewerStore } from '@/stores/viewerStore'
-import type { SimulationResultMetadata } from '@/types/simulation'
+import type { SimulationResult } from '@/types/simulation'
 import { formatResultLabel } from '@/types/simulation'
 import { speciesTypeLabels, DEFAULT_VISIBLE_SPECIES_TYPES, SPECIES_TYPES } from '@/types/schedule'
 import type { SpeciesType } from '@/types/schedule'
@@ -12,7 +12,6 @@ import Select, { type SelectChangeEvent } from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import InputText from 'primevue/inputtext'
 import ProgressSpinner from 'primevue/progressspinner'
-import Message from 'primevue/message'
 import OverlayPanel from 'primevue/overlaypanel'
 import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
@@ -25,8 +24,7 @@ const viewerStore = useViewerStore()
 const DEFAULT_SELECTED_GENES_COUNT = 5
 
 const containerRef = ref<HTMLDivElement>()
-const results = ref<SimulationResultMetadata[]>([])
-const error = ref<string>('')
+const results = ref<SimulationResult[]>([])
 const isFullscreen = ref<boolean>(false)
 const selectedTracks = ref<string[]>([])
 const trackSettingsPanel = ref()
@@ -38,6 +36,11 @@ const isScheduleLoading = computed(() => scheduleStore.isLoading)
 const isSimulationBusy = computed(() => simulationStore.isSimulationRunning || simulationStore.isLoadingResult)
 
 const isUiDisabled = computed(() => isScheduleLoading.value || isSimulationBusy.value)
+
+/** True when timeseries has never been loaded (first fetch needs a full overlay). */
+const isFirstTimeseriesFetch = computed(() =>
+    simulationStore.isFetchingTimeseries && simulationStore.fetchedGenes.size === 0
+)
 
 const trackOptions = computed(() => {
     const options: Array<{ label: string; value: string }> = []
@@ -62,7 +65,7 @@ watch(
         scheduleLoaded: scheduleStore.isLoaded,
         simulationLoaded: simulationStore.isLoaded
     }),
-    (state) => {
+    (state, oldState) => {
         const validTracks: string[] = []
         
         if (state.scheduleLoaded) {
@@ -72,8 +75,10 @@ watch(
         if (state.simulationLoaded) {
             SPECIES_TYPES.forEach(type => validTracks.push(type))
         }
-        
-        if (state.simulationLoaded && selectedTracks.value.length === 0) {
+
+        // Set defaults when simulation transitions to loaded
+        const simulationJustLoaded = state.simulationLoaded && !oldState?.simulationLoaded
+        if (simulationJustLoaded) {
             const defaults: string[] = []
             if (state.scheduleLoaded) {
                 defaults.push('schedule')
@@ -96,25 +101,20 @@ watch(
     () => ({ structure: scheduleStore.schedule.data?.structure, segments: scheduleStore.segments, metadata: scheduleStore.timeseriesMetadata }),
     async ({ structure, segments, metadata }) => {
         if (structure && segments && segments.length > 0 && metadata) {
+            // Stale-closure guard: ignore if schedule changed mid-flight
+            const specAtStart = scheduleStore.schedule.spec
             console.debug(`[TrackViewer] Schedule data ready: ${segments.length} segments`)
             chart.setScheduleData(structure, segments, metadata)
 
-            // Load union network (eagerly fetches all models)
-            await scheduleStore.fetchUnionNetwork()
+            // Fire network fetch without blocking (chart already rendered)
+            scheduleStore.fetchUnionNetwork().catch(e => {
+                console.error('[TrackViewer] Failed to fetch union network:', e)
+            })
 
-            // Re-push simulation data now that metadata is fresh
-            refreshSimulationData()
-        }
-    }
-)
-
-watch(
-    () => simulationStore.timeseries,
-    (newTimeseries) => {
-        if (newTimeseries && scheduleStore.timeseriesMetadata) {
-            refreshSimulationData()
-        } else if (!newTimeseries) {
-            chart.clearSimulationData()
+            // Only refresh if schedule hasn't changed during the above
+            if (scheduleStore.schedule.spec === specAtStart) {
+                refreshSimulationData()
+            }
         }
     }
 )
@@ -133,13 +133,12 @@ watch(
     }
 )
 
-// Lazy-fetch timeseries when selected genes change
+// Lazy-fetch timeseries when selected genes change (refresh handled by data watcher below)
 watch(
     () => viewerStore.selectedGenes,
     async (genes) => {
         if (!simulationStore.isLoaded || genes.length === 0) return
         await simulationStore.fetchGeneTimeseries(genes)
-        refreshSimulationData()
     },
     { deep: true }
 )
@@ -200,15 +199,21 @@ onBeforeUnmount(() => {
 })
 
 async function loadResult(event: SelectChangeEvent) {
-    simulationStore.clearResult()
     const selectedResultId = event.value
-    chart.clear()
+    simulationStore.clearResult()
+    chart.clearSimulationData()
 
     await simulationStore.loadResult(selectedResultId)
+
+    // If schedule was same spec, watchers won't fire -- explicitly fetch timeseries
+    const genes = viewerStore.selectedGenes
+    if (genes.length > 0 && simulationStore.isLoaded) {
+        await simulationStore.fetchGeneTimeseries(genes)
+    }
 }
 
 async function runSimulation() {
-    chart.clear()
+    chart.clearSimulationData()
     await simulationStore.runSimulation()
     await loadResults()
 }
@@ -244,13 +249,18 @@ watch(
     }
 )
 
-
-
+// Single watcher for all simulation data refresh triggers
+// Fires when timeseries cache, gene selection, or path selection changes
 watch(
-    () => ({ genes: viewerStore.selectedGenes, paths: viewerStore.selectedPaths }),
-    () => {
-        refreshSimulationData()
-    }
+    () => ({ timeseries: simulationStore.timeseries, genes: viewerStore.selectedGenes, paths: viewerStore.selectedPaths }),
+    ({ timeseries }) => {
+        if (timeseries && scheduleStore.timeseriesMetadata) {
+            refreshSimulationData()
+        } else if (!timeseries) {
+            chart.clearSimulationData()
+        }
+    },
+    { deep: true }
 )
 
 </script>
@@ -311,19 +321,20 @@ watch(
                 </div>
 
                 <div class="header-right">
-                    <MultiSelect
-                        v-if="simulationStore.currentResultId"
-                        v-model="viewerStore.selectedGenes"
-                        :options="scheduleStore.allGenes || []"
-                        :disabled="isUiDisabled"
-                        size="small"
-                        placeholder="Filter genes..."
-                        :max-selected-labels="3"
-                        class="dropdown-small"
-                        style="width: 620px; font-size: 0.75rem"
-                        filter
-                        :virtual-scroller-options="{ itemSize: 44 }"
-                    >
+                    <div v-if="simulationStore.currentResultId" class="gene-selector-wrapper">
+                        <MultiSelect
+                            v-model="viewerStore.selectedGenes"
+                            :options="scheduleStore.allGenes || []"
+                            :disabled="isUiDisabled"
+                            size="small"
+                            placeholder="Filter genes..."
+                            :max-selected-labels="3"
+                            class="dropdown-small"
+                            style="width: 620px; font-size: 0.75rem"
+                            filter
+                            :virtual-scroller-options="{ itemSize: 44 }"
+                            :loading="simulationStore.isFetchingTimeseries"
+                        >
                         <template #value="{ value }">
                             <div class="chip-container">
                                 <span
@@ -351,6 +362,7 @@ watch(
                             </div>
                         </template>
                     </MultiSelect>
+                    </div>
 
                     <Button
                         v-if="simulationStore.currentResultId"
@@ -415,20 +427,25 @@ watch(
             </div>
         </div>
 
-        <Message
-            v-if="error"
-            severity="error"
-            :text="error"
-        />
-
-        <div v-if="isScheduleLoading || simulationStore.isLoadingResult" class="loading-overlay">
-            <div v-if="isScheduleLoading" class="loading-card">
+        <!-- Overlays cover entire viewer (header + chart) -->
+        <div v-if="isScheduleLoading" class="loading-overlay">
+            <div class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading schedule...</div>
             </div>
-            <div v-else-if="simulationStore.isLoadingResult" class="loading-card">
+        </div>
+
+        <div v-if="simulationStore.isLoadingResult" class="loading-overlay">
+            <div class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading result...</div>
+            </div>
+        </div>
+
+        <div v-if="isFirstTimeseriesFetch" class="loading-overlay">
+            <div class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+                <div class="loading-text">Loading timeseries...</div>
             </div>
         </div>
         </div>

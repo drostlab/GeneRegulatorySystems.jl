@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useScheduleStore } from './scheduleStore'
-import type { SimulationResult, SimulationResultMetadata, TimeseriesData } from '@/types/simulation'
+import type { SimulationResult, TimeseriesData } from '@/types/simulation'
 import { formatResultLabel } from '@/types/simulation'
 import * as simulationService from '@/services/simulationService'
 
@@ -24,7 +24,7 @@ export const useSimulationStore = defineStore(
         // STATE
         // =====================================================================
 
-        const currentResult = ref<SimulationResultMetadata | SimulationResult | null>(null)
+        const currentResult = ref<SimulationResult | null>(null)
         const isSimulationRunning = ref(false)
         const isLoadingResult = ref(false)
 
@@ -74,21 +74,24 @@ export const useSimulationStore = defineStore(
             }
 
             isFetchingTimeseries.value = true
-            console.debug(`[SimulationStore] Fetching timeseries for genes: [${newGenes.join(', ')}] (${species.length} species)`)
+            try {
+                console.debug(`[SimulationStore] Fetching timeseries for genes: [${newGenes.join(', ')}] (${species.length} species)`)
 
-            const data = await simulationService.fetchTimeseriesForSpecies(resultId, species)
+                const data = await simulationService.fetchTimeseriesForSpecies(resultId, species)
 
-            // Merge into cache
-            const merged = { ...timeseriesCache.value }
-            for (const [speciesName, pathData] of Object.entries(data)) {
-                merged[speciesName] = pathData
+                // Merge into cache
+                const merged = { ...timeseriesCache.value }
+                for (const [speciesName, pathData] of Object.entries(data)) {
+                    merged[speciesName] = pathData
+                }
+                timeseriesCache.value = merged
+
+                newGenes.forEach(g => fetchedGenes.value.add(g))
+
+                console.debug(`[SimulationStore] Cache now has ${Object.keys(timeseriesCache.value).length} species`)
+            } finally {
+                isFetchingTimeseries.value = false
             }
-            timeseriesCache.value = merged
-
-            newGenes.forEach(g => fetchedGenes.value.add(g))
-            isFetchingTimeseries.value = false
-
-            console.debug(`[SimulationStore] Cache now has ${Object.keys(timeseriesCache.value).length} species`)
         }
 
         /**
@@ -128,14 +131,17 @@ export const useSimulationStore = defineStore(
 
         async function loadResult(resultId: string): Promise<void> {
             isLoadingResult.value = true
-            clearTimeseriesCache()
-            const metadata = await simulationService.pollResult(resultId)
-            if (!metadata) throw new Error('Result not found')
-            currentResult.value = metadata
+            try {
+                clearTimeseriesCache()
+                const metadata = await simulationService.pollResult(resultId)
+                if (!metadata) throw new Error('Result not found')
+                currentResult.value = metadata
 
-            const scheduleStore = useScheduleStore()
-            await scheduleStore.loadScheduleBySpec(metadata.schedule_spec, metadata.schedule_name)
-            isLoadingResult.value = false
+                const scheduleStore = useScheduleStore()
+                await scheduleStore.loadScheduleBySpec(metadata.schedule_spec, metadata.schedule_name)
+            } finally {
+                isLoadingResult.value = false
+            }
         }
 
         async function runSimulation(): Promise<SimulationResult> {
@@ -147,19 +153,22 @@ export const useSimulationStore = defineStore(
             currentResult.value = null
             isSimulationRunning.value = true
 
-            const result = await simulationService.runSimulation(scheduleStore.schedule.name, scheduleStore.schedule.spec)
-            currentResult.value = result
+            try {
+                const result = await simulationService.runSimulation(scheduleStore.schedule.name, scheduleStore.schedule.spec)
+                currentResult.value = result
 
-            // Eagerly populate cache from full result
-            if (result.data?.timeseries) {
-                timeseriesCache.value = result.data.timeseries
-                // Mark all genes as fetched
-                const allGenes = scheduleStore.allGenes ?? []
-                allGenes.forEach(g => fetchedGenes.value.add(g))
+                // Eagerly populate cache from full result
+                if (result.data?.timeseries) {
+                    timeseriesCache.value = result.data.timeseries
+                    // Mark all genes as fetched
+                    const allGenes = scheduleStore.allGenes ?? []
+                    allGenes.forEach(g => fetchedGenes.value.add(g))
+                }
+
+                return result
+            } finally {
+                isSimulationRunning.value = false
             }
-
-            isSimulationRunning.value = false
-            return result
         }
 
         function clearTimeseriesCache(): void {

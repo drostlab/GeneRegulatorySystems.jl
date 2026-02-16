@@ -14,7 +14,7 @@ export interface SimulationData {
     timeseries: TimeseriesData
 }
 
-export interface SimulationResultMetadata {
+export interface SimulationResult {
     id: string
     created_at?: string
     schedule_name: string
@@ -22,16 +22,11 @@ export interface SimulationResultMetadata {
     status: SimulationStatus
     frame_count: number
     error?: string
-    data: null
+    data: SimulationData | null
 }
 
-export interface SimulationResult extends Omit<SimulationResultMetadata, 'data'> {
-    data: SimulationData
-}
-
-export function isResultLoaded(result: SimulationResultMetadata | SimulationResult): result is SimulationResult {
-    return result.data !== null
-}
+/** @deprecated Use `result.data !== null` instead. */
+export type SimulationResultMetadata = SimulationResult
 
 export function getMaxTime(timeseries: TimeseriesData): number {
     let maxTime = 0
@@ -76,7 +71,7 @@ export function restructureTimeseriesByPathAndGene(
     return result
 }
 
-export function formatResultLabel(result: SimulationResultMetadata | SimulationResult | undefined | null): string {
+export function formatResultLabel(result: SimulationResult | undefined | null): string {
     if (!result) return ''
 
     let date: Date

@@ -416,7 +416,6 @@ function _merge_contiguous_segments(segments::Vector{TimelineSegment})::Vector{T
     ) for (i, seg) in enumerate(merged)]
 end
 
-# ============================================================================
 # Internal: Structure Tree
 # ============================================================================
 

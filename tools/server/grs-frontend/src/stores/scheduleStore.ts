@@ -5,7 +5,7 @@ import type { UnionNetwork } from '@/types/network'
 import * as scheduleService from '@/services/scheduleService'
 import {
     computeScheduleKey, extractAllGeneIds, getSpeciesForGene,
-    getSpeciesForType, getTimeExtent
+    getSpeciesForType, getTimeExtent, parseScheduleKey
 } from '@/types/schedule'
 import type { SpeciesType } from '@/types/schedule'
 import type { TimeseriesMetadata } from '@/types/simulation'
@@ -60,22 +60,48 @@ export const useScheduleStore = defineStore(
             if (unionNetwork.value) return unionNetwork.value
 
             isNetworkLoading.value = true
-            const segs = schedule.value.data.segments
-            const result = await scheduleService.fetchUnionNetwork(schedule.value.spec, segs)
-            unionNetwork.value = result
-            isNetworkLoading.value = false
+            try {
+                const segs = schedule.value.data.segments
+                const result = await scheduleService.fetchUnionNetwork(schedule.value.spec, segs)
+                unionNetwork.value = result
 
-            console.debug(`[ScheduleStore] Union network loaded: ${result.nodes.length} nodes, ${result.links.length} links, ${Object.keys(result.model_exclusions).length} models`)
-            return result
+                console.debug(`[ScheduleStore] Union network loaded: ${result.nodes.length} nodes, ${result.links.length} links, ${Object.keys(result.model_exclusions).length} models`)
+                return result
+            } finally {
+                isNetworkLoading.value = false
+            }
         }
 
         async function loadScheduleByKey(key: string): Promise<Schedule> {
-            isLoading.value = true
-            clearNetwork()
-            schedule.value.data = null
+            const { source, name } = parseScheduleKey(key)
 
+            // Set editor state immediately (name/source visible before fetch)
+            schedule.value.name = name
+            schedule.value.source = source as any
+            schedule.value.validationMessages = []
+
+            isLoading.value = true
             try {
+                // Fetch spec text first (fast file read) so editor shows JSON early
+                const specText = await scheduleService.getScheduleSpec(key)
+                const isSameSpec = schedule.value.data !== null && schedule.value.spec === specText
+                schedule.value.spec = specText
+
+                // Skip full reload if data already loaded for same spec
+                if (isSameSpec) {
+                    console.debug(`[ScheduleStore] Same spec already loaded, skipping data reload: ${key}`)
+                    // Still fetch validation messages
+                    const res = await scheduleService.loadScheduleFromKey(key)
+                    schedule.value.validationMessages = res.validationMessages ?? []
+                    return schedule.value
+                }
+
+                // Full load (validation + data generation)
+                // Don't clear data/network yet -- keep old content visible during validation
                 const res = await scheduleService.loadScheduleFromKey(key)
+
+                // Now that we have new data, clear old state and replace
+                clearNetwork()
                 schedule.value = res
                 console.debug(`[ScheduleStore] Loaded schedule: ${key}`)
                 return schedule.value
@@ -85,12 +111,28 @@ export const useScheduleStore = defineStore(
         }
 
         async function loadScheduleBySpec(spec: string, name: string): Promise<Schedule> {
+            // Skip full reload if data already loaded for same spec
+            const isSameSpec = schedule.value.data !== null && schedule.value.spec === spec
+
+            // Set editor state immediately
+            schedule.value.name = name
+            schedule.value.source = 'snapshot'
+            schedule.value.spec = spec
+            schedule.value.validationMessages = []
+
+            if (isSameSpec) {
+                console.debug(`[ScheduleStore] Same spec already loaded, skipping data reload: ${name}`)
+                return schedule.value
+            }
+
             isLoading.value = true
-            clearNetwork()
-            schedule.value.data = null
 
             try {
+                // Don't clear data/network yet -- keep old content visible during validation
                 const res = await scheduleService.loadScheduleFromSpec(spec, name)
+
+                // Now that we have new data, clear old state and replace
+                clearNetwork()
                 schedule.value = res
                 console.debug(`[ScheduleStore] Loaded schedule from spec: ${name}`)
                 return schedule.value

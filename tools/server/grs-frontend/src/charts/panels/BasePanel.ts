@@ -47,7 +47,15 @@ export abstract class BasePanel {
     }
 
     clearData(): void {
+        this.surface.renderableSeries.asArray().forEach(rs => {
+            rs.dataSeries?.delete()
+        })
         this.surface.renderableSeries.clear()
         this.surface.annotations.clear()
+    }
+
+    dispose(): void {
+        this.clearData()
+        this.surface.delete()
     }
 }

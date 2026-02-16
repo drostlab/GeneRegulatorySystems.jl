@@ -50,10 +50,18 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
     }
 
     onDetachSubSurface(subChart: ISciChartSubSurface): void {
-        const l = this.xLines.get(subChart.id)
-        l?.delete()
-        subChart.annotations.remove(l!)
-        this.xLines.delete(subChart.id)
+        const line = this.xLines.get(subChart.id)
+        if (line) {
+            subChart.annotations.remove(line)
+            line.delete()
+            this.xLines.delete(subChart.id)
+        }
+        const label = this.timeLabels.get(subChart.id)
+        if (label) {
+            subChart.annotations.remove(label)
+            label.delete()
+            this.timeLabels.delete(subChart.id)
+        }
     }
 
     modifierMouseMove(args: ModifierMouseArgs): void {

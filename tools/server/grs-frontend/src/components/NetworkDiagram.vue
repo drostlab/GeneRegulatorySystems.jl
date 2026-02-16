@@ -38,14 +38,11 @@ onBeforeUnmount(() => {
 
 watch(() => scheduleStore.unionNetwork, (network) => {
     if (network) {
+        // New network data arrived -- replace the old graph
         networkView.setNetwork(network, scheduleStore.geneColours ?? {})
-    } else {
-        // Network cleared (new schedule loading) - destroy old graph
-        networkView.destroy()
-        if (containerRef.value) {
-            networkView.init(containerRef)
-        }
     }
+    // Don't destroy old graph when network becomes null during loading;
+    // keep it visible behind the dim overlay until replacement data arrives.
 })
 </script>
 
@@ -59,12 +56,12 @@ watch(() => scheduleStore.unionNetwork, (network) => {
             <div class="model-label-path">{{ activeModelLabel.path }}</div>
         </div>
 
-        <div v-if="scheduleStore.isLoading || scheduleStore.isNetworkLoading" class="loading-overlay">
-            <div v-if="scheduleStore.isLoading" class="loading-card">
-                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
-                <div class="loading-text">Loading schedule...</div>
-            </div>
-            <div v-else-if="scheduleStore.isNetworkLoading" class="loading-card">
+        <!-- Dim overlay while schedule is validating (keep old network, no spinner) -->
+        <div v-if="scheduleStore.isLoading && !scheduleStore.isNetworkLoading" class="disabled-overlay" />
+
+        <!-- Spinner overlay while network is actually being fetched -->
+        <div v-if="scheduleStore.isNetworkLoading" class="loading-overlay">
+            <div class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading network...</div>
             </div>

@@ -131,7 +131,9 @@ export class MainChart {
         })
     }
 
-    dispose() {
+    dispose(): void {
+        this.tracks?.forEach(({ panel }) => panel.dispose())
+        this.surface?.delete()
     }
 
     setSimulationData(timeseries: TimeseriesData): void {
@@ -170,6 +172,7 @@ export class MainChart {
 
     clearSimulationData(): void {
         this.selectSyncModifier?.clearSelection()
+        this.getTimeseriesPanels().forEach(({ panel }) => panel.clearData())
     }
 }
 
