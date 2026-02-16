@@ -399,6 +399,15 @@ cast(::Type{Repression}, x::AbstractDict{Symbol}; context) = @invoke cast(
 cast(::Type{<:Regulation}, x::AbstractDict{Symbol}, ::Val{:aggregate}; _...) =
     aggregation(Val(Symbol(x[:aggregate])), x)
 
+function cast(::Type{HillRegulator}, x::AbstractDict{Symbol}; _...)
+    if haskey(x, Symbol("-k"))
+        haskey(x, :k) && error("ambiguous HillRegulator definition")
+        x = merge(x, Dict(:k => -x[Symbol("-k")]))
+    end
+
+    @invoke cast(HillRegulator::Type, x::AbstractDict{Symbol})
+end
+
 aggregation(::Val{:neutral}, _) = one ∘ typeof ∘ first
 aggregation(::Val{:minimum}, _) = minimum
 aggregation(::Val{:maximum}, _) = maximum
