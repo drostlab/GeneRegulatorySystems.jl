@@ -116,10 +116,15 @@ function nodeElement(
         && hasGeneParent(node, geneNames)
     const cytoscapeParent = isCompoundChild ? node.parent! : undefined
 
+    // Use species_type as label for species nodes, fallback to name
+    const label = node.kind === 'species' && node.properties?.species_type
+        ? String(node.properties.species_type)
+        : node.name
+
     return {
         data: {
             id: node.name,
-            label: node.name,
+            label,
             kind: node.kind,
             parent: cytoscapeParent,
             geneParent: node.parent,
@@ -135,6 +140,11 @@ function linkElement(link: Link): cytoscape.ElementDefinition {
     const label = shouldShowEdgeLabel(link.kind) ? formatLinkLabel(link) : ''
     const isSelfLoop = link.from === link.to
 
+    // Extract "at" parameter for activation/repression edges (affects weight and width)
+    const at = (link.properties.at as number) ?? 1
+    // Weight: inverse of "at" so higher "at" = lower weight = tighter pull in layout
+    const weight = 1 / Math.max(at, 0.1)
+
     return {
         data: {
             id: linkId(link),
@@ -143,6 +153,8 @@ function linkElement(link: Link): cytoscape.ElementDefinition {
             kind: link.kind,
             edgeColour,
             label,
+            at,
+            weight,
             ...link.properties,
         },
         classes: `${link.kind}${isSelfLoop ? ' loop' : ''}`,
@@ -161,13 +173,35 @@ function getNodeColour(node: Node, geneColours: Record<string, string>): string 
 }
 
 function formatLinkLabel(link: Link): string {
+    const entries = Object.entries(link.properties ?? {})
+    if (entries.length === 0) return ''
+
+    // If only one property, show just the value
+    if (entries.length === 1) {
+        const [key, value] = entries[0]!
+        return formatPropertyValue(value, key)
+    }
+
+    // Multiple properties: show key=value pairs
     const parts: string[] = []
-    for (const [key, value] of Object.entries(link.properties ?? {})) {
-        if (typeof value === 'number') {
-            parts.push(`${key}=${value.toFixed(2)}`)
-        } else if (value !== null && value !== undefined) {
-            parts.push(`${key}=${String(value)}`)
-        }
+    for (const [key, value] of entries) {
+        const formatted = formatPropertyValue(value, key)
+        parts.push(`${key}=${formatted}`)
     }
     return parts.join(' ')
+}
+
+/**
+ * Format a property value: integers without decimals for stoichiometry, 
+ * floats with 2 decimals for others.
+ */
+function formatPropertyValue(value: any, key: string = ''): string {
+    if (typeof value === 'number') {
+        // Show stoichiometry without decimals, all other numbers with 2 decimals
+        if (key === 'stoichiometry' && Number.isInteger(value)) {
+            return String(value)
+        }
+        return value.toFixed(2)
+    }
+    return value !== null && value !== undefined ? String(value) : ''
 }

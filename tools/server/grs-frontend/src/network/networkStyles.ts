@@ -18,9 +18,9 @@ const FONT_FAMILY = 'Montserrat'
 
 /** Edge colours by link kind. */
 export const EDGE_COLOURS: Record<string, string> = {
-    activation: '#787878',
+    activation: '#777e78',
     repression: '#e16868',
-    proteolysis: '#FF7F00',
+    proteolysis: '#ffa54a',
     substrate: '#999999',
     product: '#666666',
     next: '#4DAF4A',
@@ -40,10 +40,10 @@ export const SPECIES_SIZE = 10
 export const ORPHAN_SPECIES_SIZE = { width: GENE_BASE.width * 0.7, height: GENE_BASE.height * 0.7 }
 
 /** Reaction node size (tiny dot). */
-export const REACTION_SIZE = 5
+export const REACTION_SIZE = 3
 
 /** Opacity for dimmed (unselected / excluded) elements. */
-export const DIM_OPACITY = 0.15
+export const DIM_OPACITY = 0.28
 
 export function getEdgeColour(kind: string): string {
     return EDGE_COLOURS[kind] ?? '#999999'
@@ -65,7 +65,7 @@ export function buildStylesheet(): any[] {
                 'label': 'data(label)',
                 'text-valign': 'center' as any,
                 'text-halign': 'center' as any,
-                'font-size': 10,
+                'font-size': 3,
                 'font-family': FONT_FAMILY,
                 'border-width': 1.5,
                 'border-color': '#333',
@@ -82,7 +82,7 @@ export function buildStylesheet(): any[] {
                 'width': GENE_BASE.width,
                 'height': GENE_BASE.height,
                 'text-valign': 'center' as any,
-                'font-size': 24,
+                'font-size': 14,
                 'padding': '6px',
                 'min-width': `${GENE_BASE.width}px`,
                 'min-height': `${GENE_BASE.height}px`,
@@ -113,8 +113,10 @@ export function buildStylesheet(): any[] {
                 'shape': 'ellipse',
                 'width': SPECIES_SIZE,
                 'height': SPECIES_SIZE,
-                'font-size': 6,
-                'border-width': 1,
+                'font-size': 2,
+                'border-width': 0.2,
+                'text-valign': 'bottom' as any,
+                'text-margin-y': 1,
             } as any,
         },
         // -- reaction (tiny dot) --
@@ -171,17 +173,25 @@ export function buildStylesheet(): any[] {
                 'font-size': 7,
                 'font-family': FONT_FAMILY,
                 'color': '#555',
+                'edge-distances': 'node-position',
                 'text-rotation': 'autorotate' as any,
                 'text-margin-y': -8,
                 'text-background-color': '#fff',
                 'text-background-opacity': 0.7,
                 'text-background-padding': '2px',
+                'z-index': 109,
             } as any,
         },
         {
-            selector: 'edge[kind="activation"], edge[kind="repression"], edge[kind="proteolysis"]',
+            selector: 'edge[kind="activation"], edge[kind="repression"]',
             style: {
-                'width': 3,
+                'width': 'mapData(at, 0.1, 10, 5, 1)',
+            } as any,
+        },
+        {
+            selector: 'edge[kind="proteolysis"]',
+            style: {
+                'width': 1.5,
             } as any,
         },
         {
@@ -191,22 +201,37 @@ export function buildStylesheet(): any[] {
             } as any,
         },
         {
-            selector: 'edge[kind="substrate"], edge[kind="product"]',
+            selector: 'edge[kind="substrate"]',
             style: {
-                'line-style': 'dashed',
-                'width': 1,
-                'font-size': 4,
+                'width': 0.5,
+                'font-size': 2,
+                'curve-style': 'unbundled-bezier',
+                'control-point-step-size': 4,
+                'target-arrow-shape': 'none',
+                'text-margin-y': -1,
+                'text-background-opacity': 0,
             } as any,
         },
-        // -- self-loop edges --
+
         {
-            selector: 'edge.loop',
+            selector: 'edge[kind="product"]',
+            style: {
+                'width': 0.5,
+                'font-size': 2,
+                'arrow-scale': 0.2,
+                'curve-style': 'unbundled-bezier',
+                'control-point-step-size': 4,
+                'text-margin-y': -1,
+                'text-background-opacity': 0,
+            } as any,
+        },
+        {
+            selector: 'edge:loop',
             style: {
                 'curve-style': 'unbundled-bezier',
-                'loop-direction': '45deg',
-                'loop-sweep': '90deg',
-                'control-point-distances': [40],
-                'control-point-weights': [0.5],
+                'control-point-step-size': 100,
+                'loop-sweep': '60deg',
+                'text-background-opacity': 0,
             } as any,
         },
     ]

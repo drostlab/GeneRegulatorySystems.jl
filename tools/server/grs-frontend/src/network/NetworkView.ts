@@ -25,6 +25,7 @@ import { ModelFilter } from './ModelFilter'
 import { SelectionSync } from './SelectionSync'
 import { DynamicsSync } from './DynamicsSync'
 import { EdgeTooltip } from './EdgeTooltip'
+import { NodeTooltip } from './NodeTooltip'
 
 cytoscape.use(fcose)
 
@@ -37,6 +38,7 @@ export class NetworkView {
     private selectionSync = new SelectionSync()
     private dynamicsSync = new DynamicsSync()
     private edgeTooltip = new EdgeTooltip()
+    private nodeTooltip = new NodeTooltip()
 
     /**
      * Initialise the cytoscape container.
@@ -94,7 +96,7 @@ export class NetworkView {
             quality: 'proof',
             randomize: true,
             animate: true,
-            animationDuration: 1200,
+            animationDuration: 1500,
             fit: true,
             padding: 50,
             nodeDimensionsIncludeLabels: true,
@@ -102,21 +104,22 @@ export class NetworkView {
             packComponents: true,
             // Strong repulsion to avoid overlap
             nodeRepulsion: 50000,
-            // Shorter ideal edges so connected nodes stay close
-            idealEdgeLength: 100,
-            // Higher elasticity pulls connected nodes together
-            edgeElasticity: 0.8,
+            idealEdgeLength: (edge: any) => {
+                const weight = edge.data('weight') ?? 1
+                // Softer scaling: sqrt dampens extreme differences
+                return 100 / Math.sqrt(weight)
+            },
+            edgeElasticity: 0.2,
             nestingFactor: 0.1,
-            gravity: 0.4,
-            // More iterations for convergence
-            numIter: 5000,
+            gravity: 32.8,
+            numIter: 1000,
             tile: true,
             tilingPaddingVertical: 30,
             tilingPaddingHorizontal: 30,
-            gravityRangeCompound: 1.5,
+            gravityRangeCompound: 3.5,
             gravityCompound: 1.0,
             gravityRange: 3.8,
-            initialEnergyOnIncremental: 0.3,
+            initialEnergyOnIncremental: 1,
         } as any)
 
         layout.one('layoutstop', () => {
@@ -128,6 +131,7 @@ export class NetworkView {
             this.selectionSync.attach(this.cy)
             this.dynamicsSync.attach(this.cy)
             this.edgeTooltip.attach(this.cy)
+            this.nodeTooltip.attach(this.cy)
 
             // When detail visibility changes, refresh model filter + selection
             this.adaptiveZoom.onDetailChange = (_visible: boolean) => {
@@ -145,6 +149,7 @@ export class NetworkView {
         this.selectionSync.destroy()
         this.dynamicsSync.destroy()
         this.edgeTooltip.destroy()
+        this.nodeTooltip.destroy()
     }
 
     private destroyCytoscape(): void {

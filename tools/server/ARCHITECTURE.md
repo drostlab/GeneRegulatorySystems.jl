@@ -5,7 +5,7 @@
 | File | Purpose | Key Exports |
 | ------ | --------- | ------------- |
 | `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `POST /schedules/union-network`, `POST /schedules/network`, `POST /simulations/{id}/timeseries` (filtered), simulation run/results |
-| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network` |
+| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network`. Internal: `_gene_names` (lightweight dispatch-based gene extraction without building networks), `_spec_bindings`/`_spec_seed` (handle both Dict and Vector specs), `_validate_spec` (Dict and Vector overloads), `_label`/`_type_label` (label extraction with fallback for unlabelled models) |
 | `src/schedule_storage.jl` | Schedule file persistence (examples/user/snapshot) | `list_schedules`, `load_schedule`, `save_schedule` |
 | `src/simulation.jl` | Simulation execution and result management | `run_simulation`, `load_result`, `list_results`, `load_timeseries_for_species` |
 | `src/streaming_sink.jl` | Arrow IPC streaming for simulation events | `StreamingSink` |

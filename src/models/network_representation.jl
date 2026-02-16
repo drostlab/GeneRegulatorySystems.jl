@@ -73,21 +73,17 @@ function entity(rs::ReactionSystem)
     nodes = [entity(SpeciesId(s)) for s in Catalyst.species(rs)]
     links = Link[]
 
-    for (i, rxn) in enumerate(Catalyst.reactions(rs))
-        # ? maybe we could retrieve the names from the gene cascades or annotate the reactions before building the model somehow?
-        # ! also the rxn.rate is basically an equation that depends on the symbol values
-        # here if we wanted to display the actual numerical values for a given state of the simulation
-        # we would have to either compute them on the frontend side from the equations
-        # or ask the server to compute them for us.
-        rxn_name = Symbol("rxn$i")
+    for rxn in Catalyst.reactions(rs)
+        # Generate deterministic reaction ID from reactants and products
+        rxn_name = _reaction_id(rxn)
         push!(nodes, Entity(kind=:reaction, name=rxn_name, properties=Dict(:rate => Symbol(rxn.rate))))
 
         append!(links,
-            [Link(kind=:substrate, from=SpeciesId(s).name, to=rxn_name, properties=Dict(:stoich => rxn.substoich[i]))
+            [Link(kind=:substrate, from=SpeciesId(s).name, to=rxn_name, properties=Dict(:stoichiometry => rxn.substoich[i]))
              for (i,s) in enumerate(rxn.substrates)]
         )
         append!(links,
-            [Link(kind=:product, from=rxn_name, to=SpeciesId(p).name, properties=Dict(:stoich => rxn.prodstoich[i]))
+            [Link(kind=:product, from=rxn_name, to=SpeciesId(p).name, properties=Dict(:stoichiometry => rxn.prodstoich[i]))
              for (i,p) in enumerate(rxn.products)]
         )
     end
@@ -96,6 +92,23 @@ function entity(rs::ReactionSystem)
            name=:reaction_system,
            nodes=nodes,
            links=links)
+end
+
+"""
+Generate a deterministic reaction ID from substrates and products.
+Format: [stoich]species;[stoich]species->[stoich]species;[stoich]species
+Example: [2]1.mRNA;[1]1.protein->[1]1.mRNA;[2]1.protein
+"""
+function _reaction_id(rxn::Reaction)::Symbol
+    substrates = [
+        string("[", rxn.substoich[i], "]", SpeciesId(s).name)
+        for (i, s) in enumerate(rxn.substrates)
+    ]
+    products = [
+        string("[", rxn.prodstoich[i], "]", SpeciesId(p).name)
+        for (i, p) in enumerate(rxn.products)
+    ]
+    return Symbol(join(substrates, ";") * "->" * join(products, ";"))
 end
 
 function _genes_from_reaction_network(rs_network::Entity)::Tuple{Vector{Entity}, Vector{Entity}, Vector{Link}}
@@ -228,6 +241,18 @@ function entity(definition::KroneckerNetworks.Definition, f!::Wrapped; include_r
     Entity(
         kind=:kronecker_network,
         name=:kronecker_network,
+        properties=v1_entity.properties,
+        nodes=v1_entity.nodes,
+        links=v1_entity.links
+    )
+end
+
+# Random differentiation: always skip species/reaction detail (too large)
+function entity(definition::RandomDifferentiation.Definition, f!::Wrapped; include_reactions=true, kw...)
+    v1_entity = entity(f!.model; include_reactions=false, kw...)
+    Entity(
+        kind=:random_differentiation,
+        name=:random_differentiation,
         properties=v1_entity.properties,
         nodes=v1_entity.nodes,
         links=v1_entity.links

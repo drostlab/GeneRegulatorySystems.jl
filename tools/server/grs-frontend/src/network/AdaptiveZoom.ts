@@ -10,6 +10,7 @@
 import type { Core, EventHandler } from 'cytoscape'
 import type { UnionNetwork } from '@/types/network'
 import { getDetailElements } from './networkElements'
+import { SPECIES_TYPES } from '@/types/schedule'
 
 /** Zoom level above which species/reactions become visible. */
 const ZOOM_THRESHOLD = 3.0
@@ -141,30 +142,93 @@ export class AdaptiveZoom {
         })
     }
 
-    /** Arrange species/reactions in a tight grid inside their parent gene node. */
+    /**
+     * Position compound children inside their gene parents.
+     * Species nodes get hardcoded positions following the cascade:
+     *   active -> elongations -> premrnas -> mrnas -> proteins
+     * Reaction nodes are placed at the centroid of their connected species.
+     */
     private positionCompoundChildren(): void {
         const cy = this.cy!
+
+        // Hardcoded relative offsets for each species type in a zig-zag cascade
+        const speciesOffsets: Record<string, { x: number; y: number }> = {
+            active:      { x: -30, y: -15 },
+            elongations: { x: -15, y:  15 },
+            premrnas:    { x:   0, y: -15 },
+            mrnas:       { x:  15, y:  15 },
+            proteins:    { x:  30, y: -15 },
+        }
 
         cy.nodes('.gene').forEach((gene: any) => {
             const children = gene.children()
             if (children.empty()) return
 
             const center = gene.position()
-            const n = children.length
-            const cols = Math.ceil(Math.sqrt(n))
-            const rows = Math.ceil(n / cols)
-            const spacing = 12
-            const startX = center.x - ((cols - 1) * spacing) / 2
-            const startY = center.y - ((rows - 1) * spacing) / 2
 
-            children.forEach((child: any, i: number) => {
-                const col = i % cols
-                const row = Math.floor(i / cols)
-                child.position({
-                    x: startX + col * spacing,
-                    y: startY + row * spacing,
-                })
+            // First pass: position species nodes
+            children.forEach((child: any) => {
+                if (child.data('kind') !== 'species') return
+                const speciesType = child.data('species_type') as string | undefined
+                const offset = speciesOffsets[speciesType ?? '']
+                if (offset) {
+                    child.position({
+                        x: center.x + offset.x,
+                        y: center.y + offset.y,
+                    })
+                }
+            })
+
+            // Second pass: position reaction nodes at centroid of connected neighbours
+            children.forEach((child: any) => {
+                if (child.data('kind') !== 'reaction') return
+                const pos = computeNeighbourCentroid(child, center)
+                child.position(pos)
             })
         })
     }
+}
+
+/**
+ * Compute the centroid of a node's connected neighbours.
+ * Falls back to the parent centre if no positioned neighbours are found.
+ * For single-neighbour reactions, offsets perpendicular to avoid overlap.
+ */
+function computeNeighbourCentroid(
+    node: any,
+    fallback: { x: number; y: number },
+): { x: number; y: number } {
+    const neighbours = node.neighborhood('node')
+    if (neighbours.empty()) return { x: fallback.x, y: fallback.y + 15 }
+
+    let sumX = 0
+    let sumY = 0
+    let count = 0
+
+    neighbours.forEach((n: any) => {
+        const pos = n.position()
+        sumX += pos.x
+        sumY += pos.y
+        count++
+    })
+
+    if (count === 0) return { x: fallback.x, y: fallback.y + 15 }
+
+    const cx = sumX / count
+    const cy = sumY / count
+
+    // Single neighbour: offset away from it so the reaction isn't on top of the species
+    if (count === 1) {
+        const nPos = neighbours.first().position()
+        const dx = cx - fallback.x
+        const dy = cy - fallback.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist > 0.1) {
+            // Place perpendicular to the direction from centre to neighbour
+            return { x: cx - (dy / dist) * 20, y: cy + (dx / dist) * 20 }
+        }
+        return { x: cx + 10, y: cy }
+    }
+
+    return { x: cx, y: cy }
 }

@@ -10,6 +10,7 @@ module ScheduleVisualization
 using GeneRegulatorySystems
 using GeneRegulatorySystems.Models
 using GeneRegulatorySystems.Models: Wrapped, Instant, Label, Descriptions
+using GeneRegulatorySystems.Models.V1
 using GeneRegulatorySystems.Models.Scheduling
 using GeneRegulatorySystems.Models.Scheduling: Primitive, Schedule as GRSSchedule
 using GeneRegulatorySystems.Models.NetworkRepresentation
@@ -159,19 +160,13 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
             @info "Generating schedule visualisation" name source
             vis_start = time()
 
-            bindings = Dict(
-                :seed => get(spec, :seed, "default"),
-                :into => "",
-                :channel => "",
-                :defaults => Models.load_defaults(),
-            )
+            bindings = _spec_bindings(spec)
             specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
             grs_schedule = GRSSchedule(; specification, bindings)
 
-            segments = _collect_segments(grs_schedule)
+            segments, genes = _collect_segments(grs_schedule)
             merged = _merge_contiguous_segments(segments)
             structure = _build_structure_tree(grs_schedule)
-            genes = _extract_gene_names_union(grs_schedule, merged)
             gene_colours = _generate_gene_colours(genes)
 
             @info "Schedule visualisation generated" name segments=length(merged) genes=length(genes) elapsed=(time() - vis_start)
@@ -216,12 +211,7 @@ Convenience: parse spec string and extract network.
 """
 function extract_network_for_model_path(spec_string::String, model_path::String)::Network
     spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
-    bindings = Dict(
-        :seed => get(spec, :seed, "default"),
-        :into => "",
-        :channel => "",
-        :defaults => Models.load_defaults(),
-    )
+    bindings = _spec_bindings(spec)
     specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
     grs_schedule = GRSSchedule(; specification, bindings)
     return extract_network_for_model_path(grs_schedule, model_path)
@@ -235,12 +225,7 @@ Each model's exclusions (nodes/links absent from that model) are recorded.
 """
 function extract_union_network(spec_string::String, segments::Vector{TimelineSegment}; include_reactions::Bool=true)::UnionNetwork
     spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
-    bindings = Dict(
-        :seed => get(spec, :seed, "default"),
-        :into => "",
-        :channel => "",
-        :defaults => Models.load_defaults(),
-    )
+    bindings = _spec_bindings(spec)
     specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
     grs_schedule = GRSSchedule(; specification, bindings)
 
@@ -320,10 +305,34 @@ end
 _label(wrapped::Models.Wrapped) = _label(Models.describe(wrapped.definition))
 _label(label::Models.Label) = label.label
 _label(model::Models.Instant) = repr(model)
+_label(::Models.EmptyDescription) = ""
+_label(x) = _type_label(x)
 
 function _label(desc::Descriptions)
     i = findfirst(d -> d isa Label, desc.descriptions)
     i !== nothing ? _label(desc.descriptions[i]) : ""
+end
+
+"""Human-readable label derived from a model's type name (e.g. ResampleEachBinomial -> "resample each binomial")."""
+function _type_label(x)::String
+    name = string(nameof(typeof(x)))
+    # CamelCase -> space-separated lowercase
+    words = replace(name, r"([a-z])([A-Z])" => s"\1 \2")
+    return lowercase(words)
+end
+
+"""Extract seed from a parsed spec (Dict or Vector)."""
+_spec_seed(spec::AbstractDict{Symbol}) = get(spec, :seed, "default")
+_spec_seed(::AbstractVector) = "default"
+
+"""Build standard bindings from a parsed spec."""
+function _spec_bindings(spec)
+    Dict(
+        :seed => _spec_seed(spec),
+        :into => "",
+        :channel => "",
+        :defaults => Models.load_defaults(),
+    )
 end
 
 # ============================================================================
@@ -331,27 +340,38 @@ end
 # ============================================================================
 
 """
-Collect all raw segments from a dryrun pass with auto-increment IDs.
+Collect all raw segments and gene names from a single dryrun pass.
+Returns (segments, gene_names) — gene names are deduplicated per model_path.
 """
-function _collect_segments(grs_schedule)::Vector{TimelineSegment}
+function _collect_segments(grs_schedule)::Tuple{Vector{TimelineSegment}, Vector{String}}
     segments = TimelineSegment[]
     next_id = Ref(1)
+    genes = Set{String}()
+    seen_model_paths = Set{String}()
 
     function dryrun_collector(primitive!, x, Δt; path, _...)
         label = _label(primitive!.f!.model)
+        model_path = primitive!.path
         push!(segments, TimelineSegment(
             id = next_id[],
             execution_path = path,
-            model_path = primitive!.path,
+            model_path = model_path,
             from = x.t,
             to = x.t + (isfinite(Δt) ? Δt : 0.0),
             label = label,
         ))
         next_id[] += 1
+
+        if model_path ∉ seen_model_paths && isfinite(Δt) && Δt > 0.0
+            push!(seen_model_paths, model_path)
+            for name in _gene_names(primitive!)
+                push!(genes, string(name))
+            end
+        end
     end
 
     grs_schedule(Models.FlatState(); dryrun = dryrun_collector)
-    return segments
+    return (segments, sort(collect(genes)))
 end
 
 """
@@ -525,30 +545,13 @@ _safe_label(x) = string(typeof(x))
 # Internal: Gene Name Extraction
 # ============================================================================
 
-"""
-Extract sorted gene names from all unique model_paths in segments.
-"""
-function _extract_gene_names_union(grs_schedule, segments::Vector{TimelineSegment})::Vector{String}
-    gene_names = Set{String}()
-    seen_model_paths = Set{String}()
-
-    for seg in segments
-        seg.from == seg.to && continue
-        seg.model_path in seen_model_paths && continue
-        push!(seen_model_paths, seg.model_path)
-
-        try
-            network = extract_network_for_model_path(grs_schedule, seg.model_path)
-            for node in network.nodes
-                node.kind == :gene && push!(gene_names, string(node.name))
-            end
-        catch e
-            @debug "Could not extract network for model_path" model_path=seg.model_path exception=e
-        end
-    end
-
-    return sort(collect(gene_names))
-end
+# Lightweight gene name extraction via multiple dispatch.
+# Descends through Wrapped layers to find V1.Definition without building networks.
+_gene_names(primitive::Primitive) = _gene_names(primitive.f!)
+_gene_names(wrapped::Wrapped) = _gene_names(wrapped.definition, wrapped)
+_gene_names(::V1.Definition, wrapped::Wrapped) = Symbol[g.name for g in wrapped.definition.genes]
+_gene_names(_, wrapped::Wrapped) = _gene_names(wrapped.model)  # descend through Wrapped layers
+_gene_names(_) = Symbol[]  # fallback for non-gene models (e.g. resampling)
 
 # ============================================================================
 # Internal: Gene Colours
@@ -569,7 +572,7 @@ end
 # Internal: Validation
 # ============================================================================
 
-function _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
+function _validate_spec(spec::AbstractDict{Symbol})::Vector{ValidationMessage}
     messages = ValidationMessage[]
 
     if isempty(spec)
@@ -590,6 +593,33 @@ function _validate_spec(spec::Dict{Symbol, Any})::Vector{ValidationMessage}
             spec,
             bindings = Dict(
                 :seed => get(spec, :seed, "default"),
+                :into => "",
+                :channel => "",
+                :defaults => Models.load_defaults(),
+            ),
+        )
+    catch e
+        push!(messages, ValidationMessage(type="error", content="Schedule validation failed: $(string(e))"))
+    end
+
+    return messages
+end
+
+function _validate_spec(spec::AbstractVector)::Vector{ValidationMessage}
+    messages = ValidationMessage[]
+
+    if isempty(spec)
+        push!(messages, ValidationMessage(type="error", content="Schedule specification is empty"))
+        return messages
+    end
+
+    push!(messages, ValidationMessage(type="info", content="No seed specified (will use default)"))
+
+    try
+        Models.Model(
+            spec,
+            bindings = Dict(
+                :seed => "default",
                 :into => "",
                 :channel => "",
                 :defaults => Models.load_defaults(),
