@@ -30,7 +30,7 @@ export class CountsPanel extends TimeseriesPanel {
             labelFormat: ENumericFormat.Decimal,
             labelPrecision: 0,
             labelStyle: {fontSize: CHART_FONT_SIZES.label},
-            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title, padding: {bottom: 122, left: 4, right: 242, top: 1}},
+            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title},
             drawMajorBands: false,
             drawMajorTickLines: false,
             drawMinorTickLines: false,
@@ -100,16 +100,12 @@ export class CountsPanel extends TimeseriesPanel {
                     xySeries.appendRange(time, counts)
                     this.seriesMap.set(key, xySeries)
 
-                    const coordinator = this.coordinator
                     const lineSeries = new FastLineRenderableSeries(this.wasmContext, {
                         dataSeries: xySeries,
                         stroke: colour,
                         strokeThickness: 1,
                         isDigitalLine: true,
-                        animation: new SweepAnimation({ duration: SWEEP_DURATION_MS }),
-                        onHoveredChanged: sourceSeries => {
-                            coordinator.syncHover(sourceSeries)
-                        }
+                        animation: new SweepAnimation({ duration: SWEEP_DURATION_MS })
                     })
                     this.surface.renderableSeries.add(lineSeries)
                     created++
@@ -157,15 +153,11 @@ export class CountsPanel extends TimeseriesPanel {
         })
         this.seriesMap.set(key, xySeries)
 
-        const coordinator = this.coordinator
         const lineSeries = new FastLineRenderableSeries(this.wasmContext, {
             dataSeries: xySeries,
             stroke: colour,
             strokeThickness: 1,
-            isDigitalLine: true,
-            onHoveredChanged: sourceSeries => {
-                coordinator.syncHover(sourceSeries)
-            }
+            isDigitalLine: true
         })
         this.surface.renderableSeries.add(lineSeries)
         return xySeries

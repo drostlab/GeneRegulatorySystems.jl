@@ -1,7 +1,6 @@
 import { EXyDirection, MouseWheelZoomModifier, SciChartSurface, ZoomExtentsModifier, ZoomPanModifier, SeriesSelectionModifier, type TSciChart } from "scichart"
 import { AxisSyncModifier } from "./modifiers/AxisSyncModifier"
 import { SelectSyncModifier, type GroupingFn } from "./modifiers/SelectSyncModifier"
-import { SeriesSyncCoordinator } from "./SeriesSyncCoordinator"
 import type { BasePanel, BasePanelOptions } from "./panels/BasePanel"
 import type { TimeseriesPanel } from "./panels/TimeseriesPanel"
 import type { Ref } from "vue"
@@ -40,19 +39,9 @@ export class MainChart {
 
         await this.surface.registerFont("Montserrat", "/Montserrat-Regular.ttf")
 
-        /** Groups timeseries by gene ID (prefix before ':'); excludes segment rectangles. */
-        const geneGroupFn: GroupingFn = (name) => {
-            if (name.startsWith('segment:')) return null
-            const colonIndex = name.indexOf(':')
-            return colonIndex >= 0 ? name.substring(0, colonIndex) : name
-        }
-
-        const coordinator = new SeriesSyncCoordinator(this.surface, geneGroupFn)
-
         const options: BasePanelOptions = {
             parentSurface: this.surface,
             wasmContext: this.wasmContext,
-            coordinator,
             modifiers: [
                 { modifierClass: ZoomPanModifier, args: { xyDirection: EXyDirection.XDirection } },
                 { modifierClass: MouseWheelZoomModifier, args: { xyDirection: EXyDirection.XDirection } },
@@ -77,6 +66,13 @@ export class MainChart {
         this.surface.chartModifiers.add(this.axisSynchroniser)
         this.timeCursorModifier = new SharedTimeCursorModifier(t => this.timepointChangeCallback?.(t))
         this.surface.chartModifiers.add(this.timeCursorModifier)
+
+        /** Groups timeseries by gene ID (prefix before ':'); excludes segment rectangles. */
+        const geneGroupFn: GroupingFn = (name) => {
+            if (name.startsWith('segment:')) return null
+            const colonIndex = name.indexOf(':')
+            return colonIndex >= 0 ? name.substring(0, colonIndex) : name
+        }
 
         this.selectSyncModifier = new SelectSyncModifier(geneGroupFn, genes => this.selectionChangeCallback?.(genes))
         this.surface.chartModifiers.add(this.selectSyncModifier)
@@ -116,11 +112,11 @@ export class MainChart {
     }
 
     setVisibleTracks(ids: string[]) {
-        console.debug(`[MainChart] setVisibleTracks: [${ids}]`)
         this.tracks.forEach(({ id, panel }) => {
             panel.isVisible = ids.includes(id)
         })
         this.layoutModifier.updateLayout()
+        this.timeCursorModifier?.onSubChartVisibilityChanged()
     }
 
     clear() {

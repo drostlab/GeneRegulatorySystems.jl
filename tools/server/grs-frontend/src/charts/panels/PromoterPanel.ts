@@ -32,7 +32,7 @@ export class PromoterPanel extends TimeseriesPanel {
         })
 
         const yAxis = new NumericAxis(this.wasmContext, {
-            axisTitle: "Promoter",
+            axisTitle: "Promoter Activity",
             axisAlignment: EAxisAlignment.Left,
             axisTitleStyle: { fontSize: CHART_FONT_SIZES.title},
             drawMajorBands: false,
@@ -149,17 +149,13 @@ export class PromoterPanel extends TimeseriesPanel {
                     }
                     this.seriesMap.set(key, xyyDataSeries)
 
-                    const coordinator = this.coordinator
                     const bandSeries = new FastBandRenderableSeries(this.wasmContext, {
                         dataSeries: xyyDataSeries,
                         stroke: colour,
                         strokeThickness: 0.0,
                         fillY1: colour,
                         strokeY1: colour,
-                        animation: new SweepAnimation({ duration: SWEEP_DURATION_MS }),
-                        onHoveredChanged: (sourceSeries) => {
-                            coordinator.syncHover(sourceSeries)
-                        }
+                        animation: new SweepAnimation({ duration: SWEEP_DURATION_MS })
                     })
                     this.surface.renderableSeries.add(bandSeries)
                     created++
@@ -242,16 +238,12 @@ export class PromoterPanel extends TimeseriesPanel {
         })
         this.seriesMap.set(key, xyyData)
 
-        const coordinator = this.coordinator
         const bandSeries = new FastBandRenderableSeries(this.wasmContext, {
             dataSeries: xyyData,
             stroke: colour,
             strokeThickness: 0.0,
             fillY1: colour,
-            strokeY1: colour,
-            onHoveredChanged: (sourceSeries) => {
-                coordinator.syncHover(sourceSeries)
-            }
+            strokeY1: colour
         })
         this.surface.renderableSeries.add(bandSeries)
         return xyyData

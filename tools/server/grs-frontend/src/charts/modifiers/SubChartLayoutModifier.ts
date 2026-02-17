@@ -1,13 +1,15 @@
-import { ChartModifierBase2D, EChart2DModifierType, Rect} from "scichart";
+import { ChartModifierBase2D, EChart2DModifierType, Rect, SciChartVerticalGroup} from "scichart";
 
 
 export class SubChartLayoutModifier extends ChartModifierBase2D {
     public type = EChart2DModifierType.Custom
     private xAxisLabel: string
+    private verticalGroup: SciChartVerticalGroup
 
     constructor(xAxisLabel = "") {
         super()
         this.xAxisLabel = xAxisLabel
+        this.verticalGroup = new SciChartVerticalGroup()
     }
 
     onAttach(): void {
@@ -36,6 +38,7 @@ export class SubChartLayoutModifier extends ChartModifierBase2D {
 
         let y = 0 
         panes.forEach((sc, i) => {
+            this.verticalGroup.addSurfaceToGroup(sc)
             const isBottom = i === n-1
             const h = isBottom ? lastHeight : baseHeight
             sc.subPosition = new Rect(0, y, 1, h)
