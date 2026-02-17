@@ -1,19 +1,19 @@
 import { ChartModifierBase2D, DpiHelper, EChart2DModifierType, ECoordinateMode, EHorizontalAnchorPoint, EVerticalAnchorPoint, LineAnnotation, ModifierMouseArgs, Point, TextAnnotation, Thickness, translateFromCanvasToSeriesViewRect, type ISciChartSubSurface } from "scichart"
 
 
+/** Colour for the time cursor line and label. */
+const CURSOR_COLOUR = "#666666"
 
 
 export class SharedTimeCursorModifier extends ChartModifierBase2D {
     public type = EChart2DModifierType.Custom
     private xLines = new Map<string, LineAnnotation>()
     private timeLabels = new Map<string, TextAnnotation>()
-    private color: string
     private onTimeChanged?: (t: number) => void
 
-    constructor(callback?: (t: number) => void, color="#1f1f1f") {
+    constructor(callback?: (t: number) => void) {
         super()
         this.onTimeChanged = callback
-        this.color = color
     }
 
 
@@ -23,8 +23,8 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
         const line = new LineAnnotation({
             xCoordinateMode: ECoordinateMode.DataValue,
             yCoordinateMode: ECoordinateMode.Pixel,
-            stroke: this.color,
-            strokeThickness: 2,
+            stroke: CURSOR_COLOUR,
+            strokeThickness: 3,
             isHidden: true
         })
         subChart.annotations.add(line)
@@ -38,7 +38,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
             horizontalAnchorPoint: EHorizontalAnchorPoint.Center,
             fontSize: 8,
             textColor: "#FFFFFF",
-            background: this.color,
+            background: CURSOR_COLOUR,
             opacity: 1.0,
             padding: new Thickness(3,2,3,2),
             isHidden: true
@@ -66,8 +66,17 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
     modifierMouseMove(args: ModifierMouseArgs): void {
         super.modifierMouseMove(args)
-        if (!this.mousePoint) return
+        this._updateCursorFromMouse()
+    }
 
+    modifierMouseDown(args: ModifierMouseArgs): void {
+        super.modifierMouseDown(args)
+        this._updateCursorFromMouse()
+    }
+
+    /** Translate current mouse position to data time and update all cursor lines. */
+    private _updateCursorFromMouse(): void {
+        if (!this.mousePoint) return
 
         let activeSubChart: ISciChartSubSurface | undefined
         let translatedPt: Point | undefined
@@ -82,7 +91,6 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
         if (!activeSubChart || !translatedPt) return
 
-
         const xAxis = activeSubChart.xAxes.get(0)
         const calc = xAxis.getCurrentCoordinateCalculator()
         const time = calc.getDataValue(translatedPt.x)
@@ -95,26 +103,27 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
             if (!rect) return
 
             const line = this.xLines.get(sc.id)
-            line!.isHidden = false
-            line!.x1 = time
-            line!.x2 = time
-            line!.y1 = 0
-            line!.y2 = rect.bottom / DpiHelper.PIXEL_RATIO
-            
-            // add time label on last subchart
+            if (!line) return
+            line.isHidden = false
+            line.x1 = time
+            line.x2 = time
+            line.y1 = 0
+            line.y2 = rect.bottom / DpiHelper.PIXEL_RATIO
+
+            // Add time label on last subchart only
             if (sc === lastVisibleChart) {
                 const label = this.timeLabels.get(sc.id)
-                label!.isHidden = false
-                label!.x1 = time
-                label!.text = time.toFixed(2)
+                if (label) {
+                    label.isHidden = false
+                    label.x1 = time
+                    label.text = time.toFixed(2)
+                }
             }
-        });
-
+        })
     }
 
     modifierMouseLeave(_: ModifierMouseArgs): void {
-        this.timeLabels.forEach(l => l.isHidden = true)
-        this.xLines.forEach(l => l.isHidden = true)
+        // Cursor stays visible at last position
     }
 
 }

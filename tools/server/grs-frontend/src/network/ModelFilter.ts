@@ -60,7 +60,6 @@ export class ModelFilter {
         this.excludedLinks = new Set(exclusions?.links ?? [])
 
         this.applyExclusions()
-        console.debug(`[ModelFilter] Model ${modelPath}: ${this.excludedNodes.size} excluded nodes, ${this.excludedLinks.size} excluded links`)
     }
 
     private applyExclusions(): void {

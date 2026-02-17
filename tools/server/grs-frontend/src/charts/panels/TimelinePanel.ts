@@ -17,6 +17,8 @@ export type SegmentClickCallback = (segmentId: number, modelPath: string) => voi
 export class TimelinePanel extends BasePanel {
     private segmentClickCallback?: SegmentClickCallback
     private hoverTooltip!: TextAnnotation
+    /** Track data annotations so we can clear only them (not modifier-owned ones). */
+    private dataAnnotations: Set<LineAnnotation | TextAnnotation> = new Set()
 
     constructor(options: BasePanelOptions) {
         super(options)
@@ -55,8 +57,13 @@ export class TimelinePanel extends BasePanel {
 
     setScheduleData(structure: StructureNode, segments: TimelineSegment[]): LayoutRectangle[] {
         this.surface.renderableSeries.clear()
-        this.surface.annotations.clear()
-        // Recreate tooltip (old SVG node was destroyed by clear)
+        // Clear only our own data annotations, not modifier-owned cursor annotations
+        for (const ann of this.dataAnnotations) {
+            this.surface.annotations.remove(ann)
+            ann.delete()
+        }
+        this.dataAnnotations.clear()
+        // Recreate tooltip (old one was deleted)
         this.createHoverTooltip()
         if (segments.length === 0) return []
 
@@ -151,6 +158,7 @@ export class TimelinePanel extends BasePanel {
             verticalAnchorPoint: EVerticalAnchorPoint.Center
         })
         this.surface.annotations.add(label)
+        this.dataAnnotations.add(label)
     }
 
     /** Create a fresh hover tooltip annotation and add it to the surface. */
@@ -171,6 +179,7 @@ export class TimelinePanel extends BasePanel {
             isHidden: true
         })
         this.surface.annotations.add(this.hoverTooltip)
+        this.dataAnnotations.add(this.hoverTooltip)
     }
 
     /** Render a group of instant annotations at the same x, with vertically stacked labels. */
@@ -189,6 +198,7 @@ export class TimelinePanel extends BasePanel {
             strokeDashArray: [4, 2]
         })
         this.surface.annotations.add(line)
+        this.dataAnnotations.add(line)
 
         // Stack horizontal labels vertically downward from the top
         const labelHeight = 0.04
@@ -206,6 +216,7 @@ export class TimelinePanel extends BasePanel {
                 verticalAnchorPoint: EVerticalAnchorPoint.Top
             })
             this.surface.annotations.add(label)
+            this.dataAnnotations.add(label)
         })
     }
 }

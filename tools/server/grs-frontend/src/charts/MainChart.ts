@@ -1,4 +1,4 @@
-import { EXyDirection, MouseWheelZoomModifier, RolloverModifier, SciChartSurface, ZoomExtentsModifier, ZoomPanModifier, SeriesSelectionModifier, type TSciChart } from "scichart"
+import { EXyDirection, MouseWheelZoomModifier, SciChartSurface, ZoomExtentsModifier, ZoomPanModifier, SeriesSelectionModifier, type TSciChart } from "scichart"
 import { AxisSyncModifier } from "./modifiers/AxisSyncModifier"
 import { SelectSyncModifier, type GroupingFn } from "./modifiers/SelectSyncModifier"
 import { SeriesSyncCoordinator } from "./SeriesSyncCoordinator"
@@ -54,13 +54,7 @@ export class MainChart {
                 { modifierClass: ZoomPanModifier, args: { xyDirection: EXyDirection.XDirection } },
                 { modifierClass: MouseWheelZoomModifier, args: { xyDirection: EXyDirection.XDirection } },
                 { modifierClass: ZoomExtentsModifier },
-                { modifierClass: SeriesSelectionModifier, args: { enableSelection: true, enableHover: true } },
-                { modifierClass: RolloverModifier, args: {
-                    showTooltip: true,
-                    showRolloverLine: false,
-                    showAxisLabel: false,
-                    tooltipDataTemplate: seriesTooltipTemplate
-                } }
+                { modifierClass: SeriesSelectionModifier, args: { enableSelection: true, enableHover: true } }
             ]
         }
 
@@ -183,7 +177,7 @@ export class MainChart {
      * Routes each species to its panel by species type.
      *
      * @param timeseries - Incremental timeseries from the current WS batch
-     * @param currentTime - Current simulation time for cursor extension point
+     * @param currentTime - Current simulation time for x-axis range
      */
     appendStreamingData(timeseries: TimeseriesData, currentTime: number): void {
         const scheduleStore = useScheduleStore()
@@ -197,7 +191,8 @@ export class MainChart {
             ) as TimeseriesData
 
             if (Object.keys(filteredTimeseries).length > 0) {
-                panel.appendStreamingData(filteredTimeseries, currentTime)
+                panel.appendStreamingData(filteredTimeseries)
+                panel.surface.zoomExtentsY()
             }
         })
 
@@ -208,25 +203,4 @@ export class MainChart {
             })
         }
     }
-}
-
-/** Tooltip template for RolloverModifier: parses dataSeriesName conventions. */
-function seriesTooltipTemplate(seriesInfo: any): string[] {
-    const name: string = seriesInfo.seriesName ?? ''
-
-    // Segment rectangle: "segment:123"
-    if (name.startsWith('segment:')) {
-        return [`Segment ${name.substring(8)}`]
-    }
-
-    // Timeseries: "geneId:executionPath"
-    const colonIdx = name.indexOf(':')
-    if (colonIdx >= 0) {
-        const gene = name.substring(0, colonIdx)
-        const path = name.substring(colonIdx + 1)
-        const yVal = seriesInfo.yValue !== undefined ? Number(seriesInfo.yValue).toFixed(1) : ''
-        return [`Gene: ${gene}`, `Path: ${path}`, yVal ? `Value: ${yVal}` : ''].filter(Boolean)
-    }
-
-    return [name]
 }

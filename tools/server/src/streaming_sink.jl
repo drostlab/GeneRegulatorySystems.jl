@@ -69,8 +69,8 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
 - `ws_client::Union{HTTP.WebSocket, Nothing}`: WebSocket for streaming
 - `controller`: SimulationController for pause/progress/timeseries (duck-typed)
 - `i_to_path::Dict{Int, String}`: Episode index to path mapping
-- `stream_interval::Float64`: Time window (sim-time) between WS timeseries sends
-- `last_stream_time::Float64`: Last sim-time at which we streamed
+- `stream_event_interval::Int`: Number of events between WS timeseries sends
+- `events_since_stream::Int`: Events accumulated since last stream
 - `pending_timeseries::Dict`: Accumulated timeseries for subscribed species since last stream
 - `frame_count::Int`: Running count of frames for progress reporting
 """
@@ -83,8 +83,8 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
     ws_client::Union{HTTP.WebSocket, Nothing} = nothing
     controller::Any = nothing
     i_to_path::Dict{Int, String} = Dict{Int, String}()
-    stream_interval::Float64 = 200.0
-    last_stream_time::Float64 = -Inf
+    stream_event_interval::Int = 100000
+    events_since_stream::Int = 0
     pending_timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}} = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
     frame_count::Int = 0
 end
@@ -119,7 +119,6 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     # Accumulate events from this state
     channel = get!(Channel, sink.channels, into)
     count = 0
-    event_count_since_stream = 0
 
     Models.each_event(state) do t::Float64, name::Symbol, value::Int64
         # Flush buffer if threshold reached
@@ -134,17 +133,16 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
         push!(channel.names, name)
         push!(channel.values, value)
         count += 1
-        event_count_since_stream += 1
+        sink.events_since_stream += 1
 
         # Accumulate for subscribed species streaming
         _accumulate_subscribed(sink, name, path, t, value)
 
-        # Stream inside the event loop for long-running episodes
-        if t - sink.last_stream_time >= sink.stream_interval
+        # Stream inside the event loop at regular event intervals
+        if sink.events_since_stream >= sink.stream_event_interval
             _check_pause_if_needed(sink)
             _stream_update(sink, t)
-            sink.last_stream_time = t
-            event_count_since_stream = 0
+            sink.events_since_stream = 0
         end
     end
 
@@ -154,10 +152,10 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     push!(sink.index, (; sink.i, path, from, to, model, label, count, into, seed))
     sink.i_to_path[sink.i] = path
 
-    # Time-window streaming: send progress + timeseries periodically
-    if to - sink.last_stream_time >= sink.stream_interval
+    # Stream at episode boundary if enough events accumulated
+    if sink.events_since_stream >= sink.stream_event_interval
         _stream_update(sink, to)
-        sink.last_stream_time = to
+        sink.events_since_stream = 0
     end
 end
 

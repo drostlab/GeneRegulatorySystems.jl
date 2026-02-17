@@ -59,7 +59,7 @@ export abstract class BasePanel {
             rs.dataSeries?.delete()
         })
         this.surface.renderableSeries.clear()
-        this.surface.annotations.clear()
+        // Note: annotations are NOT cleared here -- modifiers manage their own annotations
     }
 
     dispose(): void {

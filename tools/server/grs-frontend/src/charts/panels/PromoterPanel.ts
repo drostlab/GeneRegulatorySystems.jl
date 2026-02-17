@@ -16,9 +16,6 @@ export class PromoterPanel extends TimeseriesPanel {
     /** Persistent data series map for streaming: `geneId:path` -> XyyDataSeries */
     private seriesMap: Map<string, XyyDataSeries> = new Map()
 
-    /** Series keys that currently have a trailing cursor extension point */
-    private cursorKeys: Set<string> = new Set()
-
     /** Cached band layout params per series key: { yCenter, bandHeight } */
     private bandParams: Map<string, { yCenter: number; bandHeight: number }> = new Map()
 
@@ -85,93 +82,120 @@ export class PromoterPanel extends TimeseriesPanel {
 
     override clearData(): void {
         this.seriesMap.clear()
-        this.cursorKeys.clear()
         // Note: bandParams is NOT cleared here -- it's layout, recomputed from setMetadata/setPathYRanges
         super.clearData()
     }
 
     setData(timeseries: TimeseriesData): void {
-        this.clearData()
-        if (!timeseries || !this.metadata) return
+        if (!timeseries || !this.metadata) {
+            this.clearData()
+            return
+        }
 
         const dataByPath = restructureTimeseriesByPathAndGene(timeseries, this.metadata)
-        console.debug(`[PromoterPanel] setData: ${Object.keys(dataByPath).length} paths in data, ${this.pathYRanges.size} paths in yRanges`)
 
+        // Build set of keys that should exist and compute new band params
+        const incomingKeys = new Set<string>()
+        for (const [path, geneData] of Object.entries(dataByPath)) {
+            const yRange = this.pathYRanges.get(path)
+            if (!yRange) continue
+            const sortedGenes = Object.keys(geneData).sort()
+            const genesCount = sortedGenes.length
+            const bandHeight = (yRange.yMax - yRange.yMin) / genesCount
+            sortedGenes.forEach((geneId, geneIndex) => {
+                const key = `${geneId}:${path}`
+                const yCenter = yRange.yMin + geneIndex * bandHeight + 0.5 * bandHeight
+                this.bandParams.set(key, { yCenter, bandHeight })
+                incomingKeys.add(key)
+            })
+        }
+
+        // Remove stale series
+        for (const key of [...this.seriesMap.keys()]) {
+            if (!incomingKeys.has(key)) {
+                this._removeRenderableSeries(key)
+            }
+        }
+
+        // Add or update series
+        let created = 0
         for (const [path, geneData] of Object.entries(dataByPath)) {
             const yRange = this.pathYRanges.get(path)
             if (!yRange) continue
 
             const sortedGenes = Object.keys(geneData).sort()
-            const genesCount = sortedGenes.length
-            const bandHeight = (yRange.yMax - yRange.yMin) / genesCount
-
-            sortedGenes.forEach((geneId, geneIndex) => {
+            sortedGenes.forEach((geneId) => {
                 const { colour, series } = geneData[geneId]!
-                const yCenter = yRange.yMin + geneIndex * bandHeight + 0.5 * bandHeight
                 const key = `${geneId}:${path}`
-
-                // Cache band layout for streaming
-                this.bandParams.set(key, { yCenter, bandHeight })
-
+                const { yCenter, bandHeight } = this.bandParams.get(key)!
                 const { xData, yTop, yBottom } = this._buildBandArrays(series, yCenter, bandHeight)
 
-                const xyyDataSeries = new XyyDataSeries(this.wasmContext, {
-                    isSorted: true,
-                    containsNaN: false,
-                    dataSeriesName: key
-                })
-                if (xData.length > 0) {
-                    xyyDataSeries.appendRange(xData, yTop, yBottom)
-                }
-                this.seriesMap.set(key, xyyDataSeries)
-
-                const coordinator = this.coordinator
-                const bandSeries = new FastBandRenderableSeries(this.wasmContext, {
-                    dataSeries: xyyDataSeries,
-                    stroke: colour,
-                    strokeThickness: 0.0,
-                    fillY1: colour,
-                    strokeY1: colour,
-                    animation: new SweepAnimation({ duration: SWEEP_DURATION_MS }),
-                    onHoveredChanged: (sourceSeries) => {
-                        coordinator.syncHover(sourceSeries)
+                const existing = this.seriesMap.get(key)
+                if (existing) {
+                    // Update data in place (repositions bands, no animation)
+                    existing.clear()
+                    if (xData.length > 0) {
+                        existing.appendRange(xData, yTop, yBottom)
                     }
-                })
-                this.surface.renderableSeries.add(bandSeries)
+                } else {
+                    // New series: create with sweep animation
+                    const xyyDataSeries = new XyyDataSeries(this.wasmContext, {
+                        isSorted: true,
+                        containsNaN: false,
+                        dataSeriesName: key
+                    })
+                    if (xData.length > 0) {
+                        xyyDataSeries.appendRange(xData, yTop, yBottom)
+                    }
+                    this.seriesMap.set(key, xyyDataSeries)
+
+                    const coordinator = this.coordinator
+                    const bandSeries = new FastBandRenderableSeries(this.wasmContext, {
+                        dataSeries: xyyDataSeries,
+                        stroke: colour,
+                        strokeThickness: 0.0,
+                        fillY1: colour,
+                        strokeY1: colour,
+                        animation: new SweepAnimation({ duration: SWEEP_DURATION_MS }),
+                        onHoveredChanged: (sourceSeries) => {
+                            coordinator.syncHover(sourceSeries)
+                        }
+                    })
+                    this.surface.renderableSeries.add(bandSeries)
+                    created++
+                }
             })
+        }
+        if (created > 0) {
+            console.debug(`[PromoterPanel] setData: created ${created} new series, ${this.seriesMap.size} total`)
         }
     }
 
-    appendStreamingData(timeseries: TimeseriesData, currentTime: number): void {
+    appendStreamingData(timeseries: TimeseriesData): void {
         if (!this.metadata) return
 
+        this.surface.suspendUpdates()
         for (const [species, pathData] of Object.entries(timeseries)) {
             for (const [path, points] of Object.entries(pathData)) {
                 const geneId = getGeneFromSpeciesName(species) ?? ""
                 const key = `${geneId}:${path}`
 
                 const params = this.bandParams.get(key)
-                if (!params) continue  // Skip if no pre-computed layout for this key
+                if (!params) continue
 
                 let xyyData = this.seriesMap.get(key)
                 if (!xyyData) {
                     xyyData = this._createStreamingSeries(key, geneId)
                 }
 
-                // Remove trailing cursor point
-                this._removeCursorPoint(key, xyyData)
-
-                // Build and append band arrays from raw points
                 const { yCenter, bandHeight } = params
                 const { xData, yTop, yBottom } = this._buildBandArrays(points, yCenter, bandHeight)
                 if (xData.length > 0) {
                     xyyData.appendRange(xData, yTop, yBottom)
                 }
-
-                // Add cursor point
-                this._addCursorPoint(key, xyyData, currentTime)
             }
         }
+        this.surface.resumeUpdates()
     }
 
     /**
@@ -233,31 +257,18 @@ export class PromoterPanel extends TimeseriesPanel {
         return xyyData
     }
 
-    /** Remove trailing cursor extension point if present. */
-    private _removeCursorPoint(key: string, xyyData: XyyDataSeries): void {
-        if (!this.cursorKeys.has(key)) return
-        const count = xyyData.count()
-        if (count > 0) {
-            xyyData.removeRange(count - 1, 1)
+    /** Remove a renderable series (and its data series) by key. */
+    private _removeRenderableSeries(key: string): void {
+        const dataSeries = this.seriesMap.get(key)
+        if (!dataSeries) return
+        const renderables = this.surface.renderableSeries.asArray()
+        const rs = renderables.find(r => r.dataSeries === dataSeries)
+        if (rs) {
+            this.surface.renderableSeries.remove(rs)
+            rs.delete()
         }
-        this.cursorKeys.delete(key)
-    }
-
-    /** Add trailing cursor point extending the last state to currentTime (clamped to path end). */
-    private _addCursorPoint(key: string, xyyData: XyyDataSeries, currentTime: number): void {
-        const count = xyyData.count()
-        if (count === 0) return
-        const lastTime = xyyData.getNativeXValues().get(count - 1)
-
-        // Clamp cursor to path's end time
-        const path = key.substring(key.indexOf(':') + 1)
-        const pathRange = this.pathTimeRanges.get(path)
-        const maxCursorTime = pathRange ? Math.min(currentTime, pathRange.to) : currentTime
-
-        if (maxCursorTime <= lastTime) return
-        const lastTop = xyyData.getNativeYValues().get(count - 1)
-        const lastBottom = xyyData.getNativeY1Values().get(count - 1)
-        xyyData.append(maxCursorTime, lastTop, lastBottom)
-        this.cursorKeys.add(key)
+        dataSeries.delete()
+        this.seriesMap.delete(key)
+        this.bandParams.delete(key)
     }
 }

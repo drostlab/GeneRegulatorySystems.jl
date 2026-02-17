@@ -211,6 +211,10 @@ onBeforeUnmount(() => {
 
 async function loadResult(event: SelectChangeEvent) {
     const selectedResultId = event.value
+    // Cancel running simulation if switching results while paused
+    if (simulationStore.isSimulationRunning) {
+        simulationStore.cancelSimulation()
+    }
     simulationStore.clearResult()
     chart.clearSimulationData()
 
@@ -225,6 +229,13 @@ async function loadResult(event: SelectChangeEvent) {
 
 async function runSimulation() {
     chart.clearSimulationData()
+    // Reset streaming buffer
+    streamingBuffer = {}
+    lastStreamCurrentTime = 0
+    if (streamingRafId !== null) {
+        cancelAnimationFrame(streamingRafId)
+        streamingRafId = null
+    }
     // runSimulation returns immediately (async server-side), then WS streams data
     simulationStore.runSimulation().then(() => loadResults())
 }
@@ -238,9 +249,19 @@ function resumeSimulation() {
 }
 
 function clearSimulation() {
+    if (simulationStore.isSimulationRunning) {
+        simulationStore.cancelSimulation()
+    }
     chart.clear()
     simulationStore.clearResult()
     selectedTracks.value = scheduleStore.isLoaded ? ['schedule'] : []
+    // Reset streaming buffer
+    streamingBuffer = {}
+    lastStreamCurrentTime = 0
+    if (streamingRafId !== null) {
+        cancelAnimationFrame(streamingRafId)
+        streamingRafId = null
+    }
 }
 
 function toggleFullscreen() {
@@ -270,11 +291,12 @@ watch(
 
 // Single watcher for all simulation data refresh triggers
 // Fires when timeseries cache, gene selection, or path selection changes
-// Skips during running simulation (streaming delta watcher handles that)
+// Skips during running simulation and during active fetch (avoids double render)
 watch(
     () => ({ timeseries: simulationStore.timeseries, genes: viewerStore.selectedGenes, paths: viewerStore.selectedPaths }),
     ({ timeseries }) => {
         if (simulationStore.isSimulationRunning) return
+        if (simulationStore.isFetchingTimeseries) return
         if (timeseries && scheduleStore.timeseriesMetadata) {
             refreshSimulationData()
         } else if (!timeseries) {
@@ -284,10 +306,29 @@ watch(
     { deep: true }
 )
 
-// During a running simulation, push streaming data to the chart via RAF throttle
+// During a running simulation, push streaming data to the chart via RAF throttle.
+// Multiple WS deltas arriving between frames are merged into a single buffer
+// so the chart only renders once per animation frame.
 let streamingRafId: number | null = null
-let pendingStreamingData: Record<string, Record<string, Array<[number, number]>>> | null = null
+let streamingBuffer: Record<string, Record<string, Array<[number, number]>>> = {}
 let lastStreamCurrentTime = 0
+
+/** Merge a timeseries delta into the accumulated buffer. */
+function _mergeIntoBuffer(delta: Record<string, Record<string, Array<[number, number]>>>): void {
+    for (const [species, pathData] of Object.entries(delta)) {
+        if (!streamingBuffer[species]) {
+            streamingBuffer[species] = {}
+        }
+        for (const [path, points] of Object.entries(pathData)) {
+            const existing = streamingBuffer[species]![path]
+            if (existing) {
+                existing.push(...points)
+            } else {
+                streamingBuffer[species]![path] = [...points]
+            }
+        }
+    }
+}
 
 watch(
     () => simulationStore.currentResult,
@@ -307,7 +348,7 @@ watch(
     () => ({ delta: simulationStore.streamingDelta, running: simulationStore.isSimulationRunning, ct: simulationStore.currentResult?.current_time }),
     ({ delta, running, ct }) => {
         if (!running || !delta) return
-        pendingStreamingData = delta
+        _mergeIntoBuffer(delta)
         lastStreamCurrentTime = ct ?? 0
         _scheduleStreamingFlush()
     },
@@ -318,9 +359,15 @@ function _scheduleStreamingFlush(): void {
     if (streamingRafId !== null) return
     streamingRafId = requestAnimationFrame(() => {
         streamingRafId = null
-        if (pendingStreamingData && scheduleStore.timeseriesMetadata) {
-            chart.appendStreamingData(pendingStreamingData, lastStreamCurrentTime)
-            pendingStreamingData = null
+        // Abort if simulation finished (definitive data loaded via HTTP)
+        if (!simulationStore.isSimulationRunning) {
+            streamingBuffer = {}
+            return
+        }
+        const hasData = Object.keys(streamingBuffer).length > 0
+        if (hasData && scheduleStore.timeseriesMetadata) {
+            chart.appendStreamingData(streamingBuffer, lastStreamCurrentTime)
+            streamingBuffer = {}
         }
     })
 }
@@ -337,7 +384,7 @@ function _scheduleStreamingFlush(): void {
                 <div class="header-left">
                     <div class="results-control">
                         <Select
-                            v-if="!simulationStore.isSimulationRunning"
+                            v-if="!simulationStore.isSimulationRunning || simulationStore.isPaused"
                             :model-value="simulationStore.currentResultId"
                             :options="results"
                             :disabled="isScheduleLoading"
@@ -363,7 +410,7 @@ function _scheduleStreamingFlush(): void {
                         </Select>
 
                         <InputText
-                            v-else
+                            v-if="simulationStore.isSimulationRunning && !simulationStore.isPaused"
                             :model-value="simulationStore.currentResultLabel"
                             disabled
                             size="small"
@@ -413,7 +460,7 @@ function _scheduleStreamingFlush(): void {
                         <MultiSelect
                             v-model="viewerStore.selectedGenes"
                             :options="scheduleStore.allGenes || []"
-                            :disabled="isUiDisabled"
+                            :disabled="isScheduleLoading"
                             size="small"
                             placeholder="Filter genes..."
                             :max-selected-labels="3"
@@ -455,7 +502,7 @@ function _scheduleStreamingFlush(): void {
                     <Button
                         v-if="simulationStore.currentResultId"
                         icon="pi pi-sliders-v"
-                        :disabled="isUiDisabled"
+                        :disabled="isScheduleLoading"
                         size="small"
                         text
                         @click="(e) => trackSettingsPanel.toggle(e)"
@@ -485,7 +532,7 @@ function _scheduleStreamingFlush(): void {
                     <Button
                         v-if="simulationStore.currentResultId"
                         icon="pi pi-times"
-                        :disabled="isUiDisabled"
+                        :disabled="isScheduleLoading"
                         size="small"
                         severity="danger"
                         text
@@ -534,6 +581,13 @@ function _scheduleStreamingFlush(): void {
             <div class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
                 <div class="loading-text">Loading timeseries...</div>
+            </div>
+        </div>
+
+        <div v-if="simulationStore.isPreparingSimulation" class="loading-overlay">
+            <div class="loading-card">
+                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
+                <div class="loading-text">Preparing simulation...</div>
             </div>
         </div>
         </div>

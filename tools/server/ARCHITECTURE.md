@@ -67,7 +67,7 @@
 **Backend flow:**
 1. `POST /simulations/run` creates a `SimulationController` and stores it as `active_controller`. Returns immediately with `status=running`.
 2. `StreamingSimulationSink` receives every simulation event. It writes Arrow IPC to disk, and if the controller has subscribed species, accumulates timeseries data per species/path.
-3. At time-window intervals (`stream_interval = 200.0` sim-time units), the sink sends a `progress` message and a `timeseries` batch to the WS client via the controller.
+3. At time-window intervals (`stream_interval = 1000.0` sim-time units), the sink sends a `progress` message and a `timeseries` batch to the WS client via the controller.
 4. When the simulation completes, the sink sends a final `status: completed` message.
 
 **WS protocol** (`/ws`):

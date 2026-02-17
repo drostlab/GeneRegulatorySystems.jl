@@ -27,7 +27,6 @@ export abstract class TimeseriesPanel extends BasePanel {
      * Implementations should use appendRange for efficiency.
      *
      * @param timeseries - Incremental data points from the current time window
-     * @param currentTime - Current simulation time (used for trailing cursor point)
      */
-    abstract appendStreamingData(timeseries: TimeseriesData, currentTime: number): void
+    abstract appendStreamingData(timeseries: TimeseriesData): void
 }

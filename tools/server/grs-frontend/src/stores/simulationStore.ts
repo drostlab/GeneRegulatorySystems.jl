@@ -32,6 +32,9 @@ export const useSimulationStore = defineStore(
         const isPaused = ref(false)
         const isLoadingResult = ref(false)
 
+        /** True between clicking Run and receiving the first streaming frame. */
+        const isPreparingSimulation = ref(false)
+
         /** Accumulated timeseries data, merged across per-gene fetches and streaming. */
         const timeseriesCache = ref<TimeseriesData>({})
 
@@ -139,6 +142,7 @@ export const useSimulationStore = defineStore(
 
         function _onProgress(currentTime: number, frameCount: number): void {
             if (!currentResult.value) return
+            isPreparingSimulation.value = false
             currentResult.value = {
                 ...currentResult.value,
                 current_time: currentTime,
@@ -216,6 +220,7 @@ export const useSimulationStore = defineStore(
             clearTimeseriesCache()
             currentResult.value = null
             isSimulationRunning.value = true
+            isPreparingSimulation.value = true
             isPaused.value = false
 
             // Connect WS before starting
@@ -256,6 +261,19 @@ export const useSimulationStore = defineStore(
             isPaused.value = false
         }
 
+        /** Cancel a running/paused simulation: pause it server-side and clean up. */
+        function cancelSimulation(): void {
+            if (isSimulationRunning.value) {
+                getSimulationStream().pause()
+                getSimulationStream().untrack()
+            }
+            isSimulationRunning.value = false
+            isPaused.value = false
+            isPreparingSimulation.value = false
+            clearTimeseriesCache()
+            currentResult.value = null
+        }
+
         function clearTimeseriesCache(): void {
             timeseriesCache.value = {}
             fetchedGenes.value = new Set()
@@ -266,6 +284,7 @@ export const useSimulationStore = defineStore(
             currentResult.value = null
             isSimulationRunning.value = false
             isPaused.value = false
+            isPreparingSimulation.value = false
             clearTimeseriesCache()
         }
 
@@ -273,6 +292,7 @@ export const useSimulationStore = defineStore(
             currentResult.value = null
             isSimulationRunning.value = false
             isPaused.value = false
+            isPreparingSimulation.value = false
             clearTimeseriesCache()
         }
 
@@ -307,6 +327,7 @@ export const useSimulationStore = defineStore(
             isPaused,
             isLoadingResult,
             isFetchingTimeseries,
+            isPreparingSimulation,
             currentResultId,
             currentResultLabel,
             isLoaded,
@@ -320,6 +341,7 @@ export const useSimulationStore = defineStore(
             loadResult,
             pauseSimulation,
             resumeSimulation,
+            cancelSimulation,
             updateStreamSubscription,
             reset,
             clearResult,
