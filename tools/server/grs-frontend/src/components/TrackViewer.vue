@@ -12,6 +12,7 @@ import Select, { type SelectChangeEvent } from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import InputText from 'primevue/inputtext'
 import ProgressSpinner from 'primevue/progressspinner'
+import ProgressBar from 'primevue/progressbar'
 import OverlayPanel from 'primevue/overlaypanel'
 import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
@@ -36,6 +37,9 @@ const isScheduleLoading = computed(() => scheduleStore.isLoading)
 const isSimulationBusy = computed(() => simulationStore.isSimulationRunning || simulationStore.isLoadingResult)
 
 const isUiDisabled = computed(() => isScheduleLoading.value || isSimulationBusy.value)
+
+/** Progress percentage for the progress bar (0-100). */
+const progressPercent = computed(() => Math.round(simulationStore.progress * 100))
 
 /** True when timeseries has never been loaded (first fetch needs a full overlay). */
 const isFirstTimeseriesFetch = computed(() =>
@@ -138,6 +142,13 @@ watch(
     () => viewerStore.selectedGenes,
     async (genes) => {
         if (!simulationStore.isLoaded || genes.length === 0) return
+
+        // During streaming, only update WS subscription (HTTP fetch deferred to completion)
+        if (simulationStore.isSimulationRunning) {
+            simulationStore.updateStreamSubscription(genes)
+            return
+        }
+
         await simulationStore.fetchGeneTimeseries(genes)
     },
     { deep: true }
@@ -214,8 +225,16 @@ async function loadResult(event: SelectChangeEvent) {
 
 async function runSimulation() {
     chart.clearSimulationData()
-    await simulationStore.runSimulation()
-    await loadResults()
+    // runSimulation returns immediately (async server-side), then WS streams data
+    simulationStore.runSimulation().then(() => loadResults())
+}
+
+function pauseSimulation() {
+    simulationStore.pauseSimulation()
+}
+
+function resumeSimulation() {
+    simulationStore.resumeSimulation()
 }
 
 function clearSimulation() {
@@ -251,9 +270,11 @@ watch(
 
 // Single watcher for all simulation data refresh triggers
 // Fires when timeseries cache, gene selection, or path selection changes
+// Skips during running simulation (streaming delta watcher handles that)
 watch(
     () => ({ timeseries: simulationStore.timeseries, genes: viewerStore.selectedGenes, paths: viewerStore.selectedPaths }),
     ({ timeseries }) => {
+        if (simulationStore.isSimulationRunning) return
         if (timeseries && scheduleStore.timeseriesMetadata) {
             refreshSimulationData()
         } else if (!timeseries) {
@@ -262,6 +283,47 @@ watch(
     },
     { deep: true }
 )
+
+// During a running simulation, push streaming data to the chart via RAF throttle
+let streamingRafId: number | null = null
+let pendingStreamingData: Record<string, Record<string, Array<[number, number]>>> | null = null
+let lastStreamCurrentTime = 0
+
+watch(
+    () => simulationStore.currentResult,
+    (result) => {
+        if (!result || !simulationStore.isSimulationRunning) return
+
+        // Sync time cursor with simulation progress
+        if (result.current_time > 0) {
+            viewerStore.setTimepoint(result.current_time)
+        }
+    },
+    { deep: true }
+)
+
+// Watch streaming delta during simulation to push incremental data to chart
+watch(
+    () => ({ delta: simulationStore.streamingDelta, running: simulationStore.isSimulationRunning, ct: simulationStore.currentResult?.current_time }),
+    ({ delta, running, ct }) => {
+        if (!running || !delta) return
+        pendingStreamingData = delta
+        lastStreamCurrentTime = ct ?? 0
+        _scheduleStreamingFlush()
+    },
+    { deep: true }
+)
+
+function _scheduleStreamingFlush(): void {
+    if (streamingRafId !== null) return
+    streamingRafId = requestAnimationFrame(() => {
+        streamingRafId = null
+        if (pendingStreamingData && scheduleStore.timeseriesMetadata) {
+            chart.appendStreamingData(pendingStreamingData, lastStreamCurrentTime)
+            pendingStreamingData = null
+        }
+    })
+}
 
 </script>
 
@@ -310,14 +372,40 @@ watch(
                     </div>
 
                     <Button
-                        :label="simulationStore.isSimulationRunning ? 'Running Simulation' : 'Run Simulation'"
-                        :icon="simulationStore.isSimulationRunning ? 'pi pi-spin pi-spinner' : 'pi pi-play-circle'"
+                        v-if="!simulationStore.isSimulationRunning"
+                        label="Run Simulation"
+                        icon="pi pi-play-circle"
                         :disabled="isUiDisabled"
                         size="small"
                         severity="success"
                         @click="runSimulation"
                         class="run-simulation-btn"
                     />
+
+                    <Button
+                        v-if="simulationStore.isSimulationRunning && !simulationStore.isPaused"
+                        icon="pi pi-pause"
+                        size="small"
+                        severity="warn"
+                        @click="pauseSimulation"
+                        title="Pause simulation"
+                    />
+                    <Button
+                        v-if="simulationStore.isSimulationRunning && simulationStore.isPaused"
+                        icon="pi pi-play"
+                        size="small"
+                        severity="success"
+                        @click="resumeSimulation"
+                        title="Resume simulation"
+                    />
+
+                    <div v-if="simulationStore.isSimulationRunning" class="progress-wrapper">
+                        <ProgressBar
+                            :value="progressPercent"
+                            :show-value="true"
+                            style="height: 20px; width: 140px; font-size: 0.7rem"
+                        />
+                    </div>
                 </div>
 
                 <div class="header-right">
@@ -492,6 +580,11 @@ watch(
 .header-left {
     display: flex;
     gap: var(--spacing-md);
+    align-items: center;
+}
+
+.progress-wrapper {
+    display: flex;
     align-items: center;
 }
 

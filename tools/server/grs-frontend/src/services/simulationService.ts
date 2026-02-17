@@ -1,10 +1,11 @@
 /**
- * Simulation Service – API integration for simulation operations
+ * Simulation Service -- API integration for simulation operations
  *
  * Responsibilities:
- * - Fetch stored simulation result metadata (without frames)
- * - Load full simulation result (metadata + frames combined)
- * - Run simulations (handled via WebSocket in simulationStore)
+ * - Fetch stored simulation results (without timeseries)
+ * - Load a single simulation result by ID
+ * - Start a simulation run (async, returns immediately; progress via WS)
+ * - Fetch timeseries data for specific species (lazy per-gene loading)
  *
  * Used by: simulationStore
  */
@@ -13,10 +14,9 @@ import { apiFetchJson } from '@/utils/api'
 import type { SimulationResult, TimeseriesData } from '@/types'
 
 /**
- * Fetch all stored simulation results (metadata only, data=null)
+ * Fetch all stored simulation results (no timeseries data).
  */
 export async function fetchResultsList(): Promise<SimulationResult[]> {
-
     const data = await apiFetchJson<SimulationResult[]>('/simulations')
 
     if (!Array.isArray(data)) {
@@ -29,48 +29,33 @@ export async function fetchResultsList(): Promise<SimulationResult[]> {
 }
 
 /**
- * Load full simulation result with metadata and frames from single endpoint
+ * Load a single simulation result by ID.
  */
-export async function loadSimulationResult(resultId: string): Promise<SimulationResult> {
-    const result = await apiFetchJson<SimulationResult>(`/simulations/${resultId}`)
-    return result
+export async function loadResult(resultId: string): Promise<SimulationResult> {
+    return apiFetchJson<SimulationResult>(`/simulations/${resultId}`)
 }
 
 /**
- * Poll server for current result status
- * Used to verify if simulation is still running (timeout recovery)
- * Returns null if request fails
+ * Start a simulation run.
+ * The server spawns the simulation async and returns immediately with status=running.
+ * Progress and timeseries arrive via WebSocket.
  */
-export async function pollResult(resultId: string): Promise<SimulationResult | null> {
-    try {
-        const metadata = await apiFetchJson<SimulationResult>(`/simulations/${resultId}`)
-        return metadata
-    } catch (error) {
-        console.error('[simulationService] Error polling result:', error)
-        return null
-    }
-}
-
-/**
- * Run a simulation with the provided schedule name and JSON
- * Accepts schedule specification as JSON instead of loading from stored schedules
- * Returns full simulation result with all frames (synchronous)
- */
-export async function runSimulation(scheduleName: string, scheduleJson: string): Promise<SimulationResult> {
-    const response = await apiFetchJson<SimulationResult>('/simulations/run', {
+export async function runSimulation(scheduleName: string, scheduleJson: string, maxTime: number): Promise<SimulationResult> {
+    const result = await apiFetchJson<SimulationResult>('/simulations/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             schedule_name: scheduleName,
-            schedule_spec: scheduleJson
-        })
+            schedule_spec: scheduleJson,
+            max_time: maxTime,
+        }),
     })
 
-    if (!response.id) {
+    if (!result.id) {
         throw new Error('Server did not return result')
     }
 
-    return response
+    return result
 }
 
 /**

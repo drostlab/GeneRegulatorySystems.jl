@@ -12,6 +12,7 @@ import { CountsPanel } from "./panels/CountsPanel"
 import { SubChartLayoutModifier } from "./modifiers/SubChartLayoutModifier"
 import { SharedTimeCursorModifier } from "./modifiers/SharedTimeCursorModifier"
 import { collectPathYRanges } from "./layout/rectangleLayout"
+import { getPathTimeRanges } from "@/types/schedule"
 import type { StructureNode, TimelineSegment, TimeseriesData, TimeseriesMetadata } from "@/types"
 import { type SpeciesType } from "@/types/schedule"
 import { useScheduleStore } from "@/stores/scheduleStore"
@@ -161,9 +162,11 @@ export class MainChart {
         const promoterPanel = this.getPromoterPanel()
         promoterPanel.setPathYRanges(pathYRanges)
 
+        const pathTimeRanges = getPathTimeRanges(segments)
         const timeseriesPanels = this.getTimeseriesPanels()
         timeseriesPanels.forEach(({ panel }) => {
             panel.setMetadata(metadata)
+            panel.setPathTimeRanges(pathTimeRanges)
         })
         this.tracks.forEach(({ panel }) => {
             panel.setTimeExtent(metadata.time_extent.min, metadata.time_extent.max)
@@ -173,6 +176,37 @@ export class MainChart {
     clearSimulationData(): void {
         this.selectSyncModifier?.clearSelection()
         this.getTimeseriesPanels().forEach(({ panel }) => panel.clearData())
+    }
+
+    /**
+     * Append incremental streaming data to the appropriate timeseries panels.
+     * Routes each species to its panel by species type.
+     *
+     * @param timeseries - Incremental timeseries from the current WS batch
+     * @param currentTime - Current simulation time for cursor extension point
+     */
+    appendStreamingData(timeseries: TimeseriesData, currentTime: number): void {
+        const scheduleStore = useScheduleStore()
+        const timeseriesPanels = this.getTimeseriesPanels()
+
+        timeseriesPanels.forEach(({ id, panel }) => {
+            const speciesIds = new Set(scheduleStore.getSpeciesForSpeciesType(id as SpeciesType))
+            const filteredTimeseries = Object.fromEntries(
+                Object.entries(timeseries)
+                    .filter(([species]) => speciesIds.has(species))
+            ) as TimeseriesData
+
+            if (Object.keys(filteredTimeseries).length > 0) {
+                panel.appendStreamingData(filteredTimeseries, currentTime)
+            }
+        })
+
+        // Update x-axis visible range to current time
+        if (currentTime > 0) {
+            this.tracks.forEach(({ panel }) => {
+                panel.setVisibleTimeRange(0, currentTime)
+            })
+        }
     }
 }
 

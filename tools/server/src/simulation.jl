@@ -15,14 +15,15 @@ import Tables
 
 import ..StreamingSink
 import ..ScheduleStorage
+import ..SimulationController_: SimulationController, check_pause!, send_progress, send_timeseries, send_status
 import GeneRegulatorySystems.Models
 import GeneRegulatorySystems.Models.Scheduling
 import HTTP
 import HTTP: send
 
 # Re-export SimulationFrame from StreamingSink
-export SimulationFrame, SimulationData, SimulationResultMetadata, SimulationResult
-export update_result_metadata, load_result_metadata, load_result, list_results, delete_result,
+export SimulationFrame, SimulationData, SimulationResult, SimulationController
+export update_result_metadata, load_result, list_results, delete_result,
        get_result_path, load_timeseries_from_result, load_timeseries_for_species, results_dir
 
 # ============================================================================
@@ -47,46 +48,22 @@ Container for simulation timeseries data.
 end
 
 """
-    SimulationResultMetadata
+    SimulationResult
 
-Metadata for a stored simulation result without frame data.
-
-Use this for API responses that don't load frames (e.g., listing results).
-Use SimulationResult when frames are included.
+Unified simulation result. Timeseries data is always loaded lazily via
+the `/simulations/{id}/timeseries` endpoint.
 
 # Fields
 - `id::String`: Unique simulation ID (ISO 8601 timestamp)
 - `created_at::DateTime`: When simulation was run
-- `schedule_name::String`: Name of the schedule that was run (e.g., "repressilator")
-- `status::String`: "running", "completed", or "error"
-- `frame_count::Int`: Number of frames collected
+- `schedule_name::String`: Name of the schedule that was run
+- `schedule_spec::String`: JSON schedule specification
+- `status::String`: "running", "paused", "completed", or "error"
+- `frame_count::Int`: Number of frames collected so far
+- `current_time::Float64`: Current simulation time (for progress tracking)
+- `max_time::Float64`: Maximum simulation time (from schedule extent)
 - `error::Union{String, Nothing}`: Error message if status is "error"
-- `path::String`: Path to stored result directory (internal use)
-"""
-@kwdef struct SimulationResultMetadata
-    id::String
-    created_at::DateTime
-    schedule_name::String = ""
-    schedule_spec::String = ""
-    status::String
-    frame_count::Int = 0
-    error::Union{String, Nothing} = nothing
-    path::String = ""  # Internal use, not sent to frontend
-end
-
-
-
-"""
-    SimulationResult
-
-Full simulation result with metadata and frame data.
-
-Combines SimulationResultMetadata with frames. Use SimulationResultMetadata
-when only metadata is needed (e.g., listing results).
-
-# Fields
-- All fields from SimulationResultMetadata
-- `data::Union{SimulationData, Nothing}`: Collected simulation frames
+- `path::String`: Path to stored result directory (internal use, not serialised)
 """
 @kwdef struct SimulationResult
     id::String
@@ -95,16 +72,11 @@ when only metadata is needed (e.g., listing results).
     schedule_spec::String = ""
     status::String
     frame_count::Int = 0
+    current_time::Float64 = 0.0
+    max_time::Float64 = 0.0
     error::Union{String, Nothing} = nothing
-    data::Union{SimulationData, Nothing} = nothing
     path::String = ""  # Internal use, not sent to frontend
 end
-
-SimulationResult(m::SimulationResultMetadata; data::Union{SimulationData, Nothing} = nothing) =
-    SimulationResult(
-        m.id, m.created_at, m.schedule_name, m.schedule_spec,
-        m.status, m.frame_count, m.error, data, m.path
-    )
 
 # ============================================================================
 # Storage Management
@@ -180,21 +152,14 @@ end
 # ============================================================================
 
 """
-    prepare_result(schedule_name::String, schedule_spec::String)::SimulationResultMetadata
+    prepare_result(schedule_name, schedule_spec; max_time=0.0) -> SimulationResult
 
 Prepare a simulation result directory with initial metadata.
 
-Creates result directory, writes schedule snapshot, and initializes metadata.json
-with status=running. Returns metadata object for immediate API response.
-
-# Arguments
-- `schedule_name::String`: Name of the schedule (for result identification)
-- `schedule_spec::String`: Schedule JSON specification (written to disk)
-
-# Returns
-- `SimulationResultMetadata`: Initial metadata with status=running
+Creates result directory, writes schedule snapshot, and initialises metadata.json
+with status=running.
 """
-function prepare_result(schedule_name::String, schedule_spec::String)::SimulationResultMetadata
+function prepare_result(schedule_name::String, schedule_spec::String; max_time::Float64 = 0.0)::SimulationResult
     result_id = generate_simulation_id()
     result_path = get_result_path(result_id)
     mkpath(result_path)
@@ -209,7 +174,9 @@ function prepare_result(schedule_name::String, schedule_spec::String)::Simulatio
         "id" => result_id,
         "schedule_name" => schedule_name,
         "status" => "running",
-        "frame_count" => 0
+        "frame_count" => 0,
+        "current_time" => 0.0,
+        "max_time" => max_time
     )
 
     open(joinpath(result_path, "metadata.json"), "w") do f
@@ -222,81 +189,69 @@ function prepare_result(schedule_name::String, schedule_spec::String)::Simulatio
         now()
     end
 
-    return SimulationResultMetadata(
+    return SimulationResult(
         id = result_id,
         created_at = created_at,
         schedule_name = schedule_name,
         schedule_spec = schedule_spec,
         status = "running",
         frame_count = 0,
+        current_time = 0.0,
+        max_time = max_time,
         path = result_path
     )
 end
 
 """
-    run_simulation(result::SimulationResultMetadata, schedule::Models.Model, ws_client::Union{HTTP.WebSocket, Nothing})
+    run_simulation(result, schedule, ws_client; controller=nothing)
 
-Execute a simulation and stream results.
-
-Creates sink, executes schedule with sink as trace callback, flushes events,
-counts frames, updates metadata, and notifies WebSocket client.
-
-# Arguments
-- `result::SimulationResultMetadata`: Result metadata (contains path for storage)
-- `schedule::Models.Model`: Pre-constructed Model to execute
-- `ws_client::Union{HTTP.WebSocket, Nothing}`: WebSocket client for streaming
+Execute a simulation, stream progress/timeseries via WS, and write results to disk.
 """
-function run_simulation(result::SimulationResultMetadata, schedule::Models.Model, ws_client::Union{HTTP.WebSocket, Nothing})
+function run_simulation(result::SimulationResult, schedule::Models.Model, ws_client::Union{HTTP.WebSocket, Nothing};
+                        controller::Union{SimulationController, Nothing} = nothing)
     @info "[Simulation] Starting simulation" id=result.id schedule=result.schedule_name
 
     sink = StreamingSink.StreamingSimulationSink(
         location = result.path,
-        ws_client = ws_client
+        ws_client = ws_client,
+        controller = controller
     )
 
     state = Models.FlatState()
 
-    try
-        # Execute schedule with sink as trace callback
-        @info "[Simulation] Executing schedule" id=result.id
-        schedule(state, Inf; trace = sink, record = true)
+    # Execute schedule with sink as trace callback
+    @info "[Simulation] Executing schedule" id=result.id
+    schedule(state, Inf; trace = sink, record = true)
 
-        # Flush remaining buffered events and stream frames
-        @info "[Simulation] Flushing events" id=result.id
-        StreamingSink.flush!(sink)
+    # Flush remaining buffered events and stream frames
+    @info "[Simulation] Flushing events" id=result.id
+    StreamingSink.flush!(sink)
 
-        # Count frames from Arrow files
-        @info "[Simulation] Counting frames" id=result.id
-        frame_count = _count_frames_in_result(result.path)
-        @info "[Simulation] Frame count" id=result.id frames=frame_count
+    # Count frames from Arrow files
+    @info "[Simulation] Counting frames" id=result.id
+    frame_count = _count_frames_in_result(result.path)
+    @info "[Simulation] Frame count" id=result.id frames=frame_count
 
-        # Update metadata with final status
-        @info "[Simulation] Updating metadata" id=result.id status="completed" frames=frame_count
-        update_result_metadata(
-            result.path;
-            status = "completed",
-            frame_count = frame_count
-        )
+    # Update metadata with final status
+    @info "[Simulation] Updating metadata" id=result.id status="completed" frames=frame_count
+    update_result_metadata(
+        result.path;
+        status = "completed",
+        frame_count = frame_count,
+        current_time = result.max_time
+    )
 
-        # Notify WebSocket client of completion
-        if !isnothing(ws_client)
-            @info "[Simulation] Notifying WebSocket client" id=result.id
-            send(ws_client, JSON.json(Dict("type" => "completed", "id" => result.id, "frame_count" => frame_count)))
-        end
-        @info "[Simulation] Completed successfully" id=result.id
-    catch e
-        @error "[Simulation] Error during execution" id=result.id exception=string(e) stacktrace=stacktrace(catch_backtrace())
-        update_result_metadata(
-            result.path;
-            status = "error",
-            frame_count = 0,
-            error = string(e)
-        )
-        if !isnothing(ws_client)
-            send(ws_client, JSON.json(Dict("type" => "error", "id" => result.id, "error" => string(e))))
-        end
-        rethrow()
+    # Notify WebSocket client of completion
+    if !isnothing(ws_client)
+        @info "[Simulation] Notifying WebSocket client" id=result.id
+        send(ws_client, JSON.json(Dict(
+            "type" => "status",
+            "simulation_id" => result.id,
+            "status" => "completed",
+            "frame_count" => frame_count
+        )))
     end
+    @info "[Simulation] Completed successfully" id=result.id
 end
 
 """
@@ -343,8 +298,11 @@ Update result metadata status and frame count (after simulation completion).
 
 Only modifies metadata.json, preserves schedule.json already written.
 """
-function update_result_metadata(result_path::String; status::String, frame_count::Int,
-                                error::Union{String, Nothing}=nothing)
+function update_result_metadata(result_path::String;
+                                status::Union{String, Nothing} = nothing,
+                                frame_count::Union{Int, Nothing} = nothing,
+                                current_time::Union{Float64, Nothing} = nothing,
+                                error::Union{String, Nothing} = nothing)
     metadata_file = joinpath(result_path, "metadata.json")
 
     if !isfile(metadata_file)
@@ -352,16 +310,14 @@ function update_result_metadata(result_path::String; status::String, frame_count
         return
     end
 
-    @debug "[Simulation] Reading metadata" file=metadata_file
     metadata = JSON.parsefile(metadata_file)
-    @debug "[Simulation] Updating metadata fields" status=status frame_count=frame_count has_error=!isnothing(error)
 
-    metadata["status"] = status
-    metadata["frame_count"] = frame_count
+    !isnothing(status) && (metadata["status"] = status)
+    !isnothing(frame_count) && (metadata["frame_count"] = frame_count)
+    !isnothing(current_time) && (metadata["current_time"] = current_time)
+    !isnothing(error) && (metadata["error"] = error)
 
-    if !isnothing(error)
-        metadata["error"] = error
-    end
+    @debug "[Simulation] Updating metadata" status frame_count current_time
 
     open(metadata_file, "w") do f
         JSON.print(f, metadata, 2)
@@ -373,27 +329,19 @@ end
 # ============================================================================
 
 """
-    load_result_metadata(simulation_id::String)::Union{SimulationResultMetadata, Nothing}
+    load_result(simulation_id) -> SimulationResult | nothing
 
-Load simulation result metadata from disk without frames.
-
-Returns nothing if result not found.
+Load simulation result metadata from disk. Returns nothing if not found.
 """
-function load_result_metadata(simulation_id::String)::Union{SimulationResultMetadata, Nothing}
+function load_result(simulation_id::String)::Union{SimulationResult, Nothing}
     result_path = get_result_path(simulation_id)
-
-    if !isdir(result_path)
-        return nothing
-    end
+    !isdir(result_path) && return nothing
 
     metadata_file = joinpath(result_path, "metadata.json")
-    if !isfile(metadata_file)
-        return nothing
-    end
+    !isfile(metadata_file) && return nothing
 
     metadata = JSON.parsefile(metadata_file)
 
-    # Parse creation time from id (ISO 8601 timestamp)
     created_at = try
         Dates.DateTime(metadata["id"], "yyyy-mm-ddTHH:MM:SS.sss")
     catch
@@ -407,30 +355,18 @@ function load_result_metadata(simulation_id::String)::Union{SimulationResultMeta
         schedule_spec = read(schedule_file, String)
     end
 
-    return SimulationResultMetadata(
+    return SimulationResult(
         id = metadata["id"],
         created_at = created_at,
         schedule_name = get(metadata, "schedule_name", ""),
         schedule_spec = schedule_spec,
-        status = metadata["status"],
+        status = get(metadata, "status", "completed"),
         error = get(metadata, "error", nothing),
-        frame_count = metadata["frame_count"],
+        frame_count = get(metadata, "frame_count", 0),
+        current_time = get(metadata, "current_time", 0.0),
+        max_time = get(metadata, "max_time", 0.0),
         path = result_path
     )
-end
-
-"""
-    load_result(simulation_id::String)::Union{SimulationResult, Nothing}
-
-Load simulation result with metadata and frames.
-
-Returns nothing if result not found.
-"""
-function load_result(simulation_id::String)::Union{SimulationResult, Nothing}
-    metadata = load_result_metadata(simulation_id)
-    isnothing(metadata) && return nothing
-    timeseries = load_timeseries_from_result(metadata.path)
-    return SimulationResult(metadata, data = SimulationData(timeseries = timeseries))
 end
 
 # ============================================================================
@@ -438,29 +374,24 @@ end
 # ============================================================================
 
 """
-    list_results(; status::Union{String, Nothing}=nothing)::Vector{SimulationResultMetadata}
+    list_results(; status=nothing) -> Vector{SimulationResult}
 
-List all stored simulation results.
-
-# Arguments
-- `status::String`: Filter by status ("running", "completed", "error"), or nothing for all
-
-# Returns
-- `Vector{SimulationResultMetadata}`: Sorted by creation time (newest first)
+List all stored simulation results, optionally filtered by status.
+Sorted by creation time (newest first).
 """
-function list_results(; status::Union{String, Nothing}=nothing)::Vector{SimulationResultMetadata}
+function list_results(; status::Union{String, Nothing}=nothing)::Vector{SimulationResult}
     results_path = results_dir()
 
     if !isdir(results_path)
-        return SimulationResultMetadata[]
+        return SimulationResult[]
     end
 
-    results = SimulationResultMetadata[]
+    results = SimulationResult[]
 
     for dir_entry in readdir(results_path; join=true)
         if isdir(dir_entry)
             sim_id = basename(dir_entry)
-            result = load_result_metadata(sim_id)
+            result = load_result(sim_id)
 
             if !isnothing(result)
                 if isnothing(status) || result.status == status

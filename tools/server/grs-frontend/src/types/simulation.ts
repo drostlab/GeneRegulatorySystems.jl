@@ -8,12 +8,12 @@ export interface TimeseriesMetadata {
     time_extent: { min: number; max: number }
 }
 
-export type SimulationStatus = 'running' | 'completed' | 'error'
+export type SimulationStatus = 'running' | 'paused' | 'completed' | 'error'
 
-export interface SimulationData {
-    timeseries: TimeseriesData
-}
-
+/**
+ * Unified simulation result. Timeseries data is always loaded lazily
+ * via the `/simulations/{id}/timeseries` endpoint.
+ */
 export interface SimulationResult {
     id: string
     created_at?: string
@@ -21,12 +21,16 @@ export interface SimulationResult {
     schedule_spec: string
     status: SimulationStatus
     frame_count: number
+    current_time: number
+    max_time: number
     error?: string
-    data: SimulationData | null
 }
 
-/** @deprecated Use `result.data !== null` instead. */
-export type SimulationResultMetadata = SimulationResult
+/** Progress as a fraction in [0, 1]. Returns 0 when max_time is unknown. */
+export function getProgress(result: SimulationResult): number {
+    if (result.max_time <= 0) return 0
+    return Math.min(result.current_time / result.max_time, 1)
+}
 
 export function getMaxTime(timeseries: TimeseriesData): number {
     let maxTime = 0

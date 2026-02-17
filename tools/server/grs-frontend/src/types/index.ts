@@ -11,6 +11,7 @@ export type {
 
 export {
     getMaxTime,
+    getProgress,
     formatResultLabel,
     restructureTimeseriesByPathAndGene
 } from './simulation'
@@ -18,6 +19,5 @@ export type {
     TimeseriesData,
     TimeseriesMetadata,
     SimulationStatus,
-    SimulationData,
     SimulationResult
 } from './simulation'

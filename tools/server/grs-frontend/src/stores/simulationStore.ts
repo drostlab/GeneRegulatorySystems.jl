@@ -2,20 +2,23 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useScheduleStore } from './scheduleStore'
 import type { SimulationResult, TimeseriesData } from '@/types/simulation'
-import { formatResultLabel } from '@/types/simulation'
+import { formatResultLabel, getProgress } from '@/types/simulation'
+import { getTimeExtent } from '@/types/schedule'
 import * as simulationService from '@/services/simulationService'
+import { getSimulationStream } from '@/composables/useSimulationStream'
+
+const DEFAULT_STREAM_GENE_COUNT = 5
 
 /**
- * Simulation Store -- manages simulation results with lazy per-gene timeseries loading.
+ * Simulation Store -- manages simulation results with lazy per-gene timeseries loading
+ * and live WebSocket streaming during runs.
  *
  * Architecture:
- * - `loadResult(id)` loads metadata only (no timeseries data)
- * - `fetchGeneTimeseries(genes)` fetches species for those genes from the server
- *   and merges into `timeseriesCache`
- * - `timeseries` computed exposes the accumulated cache
- * - `runSimulation` loads everything eagerly (result includes full data)
- *
- * Consumers call `getTimeseries(genes, paths)` which filters the cache.
+ * - `loadResult(id)` loads metadata only (no timeseries)
+ * - `fetchGeneTimeseries(genes)` fetches species for those genes via HTTP
+ * - `runSimulation()` starts async simulation, receives progress + timeseries via WS
+ * - `pauseSimulation()` / `resumeSimulation()` control running simulation
+ * - `progress` computed gives 0-1 fraction from current_time / max_time
  */
 export const useSimulationStore = defineStore(
     'simulation',
@@ -26,33 +29,44 @@ export const useSimulationStore = defineStore(
 
         const currentResult = ref<SimulationResult | null>(null)
         const isSimulationRunning = ref(false)
+        const isPaused = ref(false)
         const isLoadingResult = ref(false)
 
-        /** Accumulated timeseries data, merged across per-gene fetches. */
+        /** Accumulated timeseries data, merged across per-gene fetches and streaming. */
         const timeseriesCache = ref<TimeseriesData>({})
 
-        /** Set of genes already fetched (avoids duplicate requests). */
+        /** Set of genes already fetched (avoids duplicate HTTP requests). */
         const fetchedGenes = ref<Set<string>>(new Set())
 
         /** Currently in-flight gene fetch (prevents concurrent fetches). */
         const isFetchingTimeseries = ref(false)
 
-        const currentResultId = computed(() => {
-            return currentResult.value?.id ?? null
-        })
+        /** Latest streaming delta from WS (consumed by TrackViewer for appendStreamingData). */
+        const streamingDelta = ref<TimeseriesData | null>(null)
 
-        const currentResultLabel = computed(() => {
-            return formatResultLabel(currentResult.value)
-        })
+        // =====================================================================
+        // COMPUTED
+        // =====================================================================
 
-        const isLoaded = computed(() => {
-            return currentResult.value !== null
+        const currentResultId = computed(() => currentResult.value?.id ?? null)
+
+        const currentResultLabel = computed(() => formatResultLabel(currentResult.value))
+
+        const isLoaded = computed(() => currentResult.value !== null)
+
+        const progress = computed((): number => {
+            if (!currentResult.value) return 0
+            return getProgress(currentResult.value)
         })
 
         const timeseries = computed((): TimeseriesData | null => {
             if (!currentResult.value) return null
             return Object.keys(timeseriesCache.value).length > 0 ? timeseriesCache.value : null
         })
+
+        // =====================================================================
+        // TIMESERIES (LAZY HTTP)
+        // =====================================================================
 
         /**
          * Lazily fetch timeseries for the given genes.
@@ -66,7 +80,6 @@ export const useSimulationStore = defineStore(
             const newGenes = genes.filter(g => !fetchedGenes.value.has(g))
             if (newGenes.length === 0) return
 
-            // Collect all species for the new genes
             const species = newGenes.flatMap(gene => scheduleStore.getSpeciesForGeneId(gene))
             if (species.length === 0) {
                 newGenes.forEach(g => fetchedGenes.value.add(g))
@@ -76,18 +89,9 @@ export const useSimulationStore = defineStore(
             isFetchingTimeseries.value = true
             try {
                 console.debug(`[SimulationStore] Fetching timeseries for genes: [${newGenes.join(', ')}] (${species.length} species)`)
-
                 const data = await simulationService.fetchTimeseriesForSpecies(resultId, species)
-
-                // Merge into cache
-                const merged = { ...timeseriesCache.value }
-                for (const [speciesName, pathData] of Object.entries(data)) {
-                    merged[speciesName] = pathData
-                }
-                timeseriesCache.value = merged
-
+                _mergeTimeseries(data)
                 newGenes.forEach(g => fetchedGenes.value.add(g))
-
                 console.debug(`[SimulationStore] Cache now has ${Object.keys(timeseriesCache.value).length} species`)
             } finally {
                 isFetchingTimeseries.value = false
@@ -129,16 +133,76 @@ export const useSimulationStore = defineStore(
             ) as TimeseriesData
         }
 
+        // =====================================================================
+        // STREAMING (WS)
+        // =====================================================================
+
+        function _onProgress(currentTime: number, frameCount: number): void {
+            if (!currentResult.value) return
+            currentResult.value = {
+                ...currentResult.value,
+                current_time: currentTime,
+                frame_count: frameCount,
+            }
+        }
+
+        function _onTimeseries(data: TimeseriesData): void {
+            _mergeTimeseries(data)
+            streamingDelta.value = data
+        }
+
+        function _onStatus(status: string, error?: string): void {
+            if (!currentResult.value) return
+            currentResult.value = {
+                ...currentResult.value,
+                status: status as SimulationResult['status'],
+                ...(error ? { error } : {}),
+            }
+            if (status === 'completed' || status === 'error') {
+                isSimulationRunning.value = false
+                isPaused.value = false
+                getSimulationStream().untrack()
+
+                // Refetch definitive timeseries from server (replaces streaming cache)
+                if (status === 'completed') {
+                    clearTimeseriesCache()
+                    const scheduleStore = useScheduleStore()
+                    const genes = scheduleStore.allGenes ?? []
+                    if (genes.length > 0) {
+                        fetchGeneTimeseries(genes.slice(0, DEFAULT_STREAM_GENE_COUNT))
+                    }
+                }
+            }
+            if (status === 'paused') {
+                isPaused.value = true
+            }
+            if (status === 'running') {
+                isPaused.value = false
+            }
+        }
+
+        /** Update the set of species streamed via WS based on selected genes. */
+        function updateStreamSubscription(genes: string[]): void {
+            if (!isSimulationRunning.value) return
+            const scheduleStore = useScheduleStore()
+            const species = genes.flatMap(gene => scheduleStore.getSpeciesForGeneId(gene))
+            getSimulationStream().subscribe(species)
+            console.debug(`[SimulationStore] Updated stream subscription: ${species.length} species`)
+        }
+
+        // =====================================================================
+        // ACTIONS
+        // =====================================================================
+
         async function loadResult(resultId: string): Promise<void> {
             isLoadingResult.value = true
             try {
                 clearTimeseriesCache()
-                const metadata = await simulationService.pollResult(resultId)
-                if (!metadata) throw new Error('Result not found')
-                currentResult.value = metadata
+                const result = await simulationService.loadResult(resultId)
+                currentResult.value = result
 
                 const scheduleStore = useScheduleStore()
-                await scheduleStore.loadScheduleBySpec(metadata.schedule_spec, metadata.schedule_name)
+                await scheduleStore.loadScheduleBySpec(result.schedule_spec, result.schedule_name)
             } finally {
                 isLoadingResult.value = false
             }
@@ -152,54 +216,111 @@ export const useSimulationStore = defineStore(
             clearTimeseriesCache()
             currentResult.value = null
             isSimulationRunning.value = true
+            isPaused.value = false
 
-            try {
-                const result = await simulationService.runSimulation(scheduleStore.schedule.name, scheduleStore.schedule.spec)
-                currentResult.value = result
+            // Connect WS before starting
+            const stream = getSimulationStream()
+            stream.connect()
 
-                // Eagerly populate cache from full result
-                if (result.data?.timeseries) {
-                    timeseriesCache.value = result.data.timeseries
-                    // Mark all genes as fetched
-                    const allGenes = scheduleStore.allGenes ?? []
-                    allGenes.forEach(g => fetchedGenes.value.add(g))
-                }
+            const result = await simulationService.runSimulation(
+                scheduleStore.schedule.name,
+                scheduleStore.schedule.spec,
+                getTimeExtent(scheduleStore.segments).max,
+            )
+            currentResult.value = result
 
-                return result
-            } finally {
-                isSimulationRunning.value = false
+            // Track this simulation via WS
+            stream.track(result.id, {
+                onProgress: _onProgress,
+                onTimeseries: _onTimeseries,
+                onStatus: _onStatus,
+            })
+
+            // Subscribe default genes for live streaming
+            const allGenes = scheduleStore.allGenes ?? []
+            const defaultGenes = allGenes.slice(0, DEFAULT_STREAM_GENE_COUNT)
+            if (defaultGenes.length > 0) {
+                updateStreamSubscription(defaultGenes)
             }
+
+            return result
+        }
+
+        function pauseSimulation(): void {
+            getSimulationStream().pause()
+            isPaused.value = true
+        }
+
+        function resumeSimulation(): void {
+            getSimulationStream().resume()
+            isPaused.value = false
         }
 
         function clearTimeseriesCache(): void {
             timeseriesCache.value = {}
             fetchedGenes.value = new Set()
+            streamingDelta.value = null
         }
 
         function reset(): void {
             currentResult.value = null
+            isSimulationRunning.value = false
+            isPaused.value = false
             clearTimeseriesCache()
         }
 
         function clearResult(): void {
             currentResult.value = null
+            isSimulationRunning.value = false
+            isPaused.value = false
             clearTimeseriesCache()
+        }
+
+        // =====================================================================
+        // HELPERS
+        // =====================================================================
+
+        function _mergeTimeseries(data: TimeseriesData): void {
+            const merged = { ...timeseriesCache.value }
+            for (const [speciesName, pathData] of Object.entries(data)) {
+                if (!merged[speciesName]) {
+                    merged[speciesName] = pathData
+                } else {
+                    // Append to existing paths
+                    const existing = { ...merged[speciesName] }
+                    for (const [path, points] of Object.entries(pathData)) {
+                        if (!existing[path]) {
+                            existing[path] = points
+                        } else {
+                            existing[path] = [...existing[path]!, ...points]
+                        }
+                    }
+                    merged[speciesName] = existing
+                }
+            }
+            timeseriesCache.value = merged
         }
 
         return {
             currentResult,
             isSimulationRunning,
+            isPaused,
             isLoadingResult,
             isFetchingTimeseries,
             currentResultId,
             currentResultLabel,
             isLoaded,
+            progress,
             timeseries,
+            streamingDelta,
             fetchedGenes,
             getTimeseries,
             fetchGeneTimeseries,
             runSimulation,
             loadResult,
+            pauseSimulation,
+            resumeSimulation,
+            updateStreamSubscription,
             reset,
             clearResult,
         }

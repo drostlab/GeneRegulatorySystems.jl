@@ -46,6 +46,14 @@ export abstract class BasePanel {
         }
     }
 
+    /** Update visible range without changing the limit (for streaming). */
+    setVisibleTimeRange(minTime: number, maxTime: number): void {
+        const xAxis = this.surface.xAxes.get(0)
+        if (xAxis) {
+            xAxis.visibleRange = new NumberRange(minTime, maxTime)
+        }
+    }
+
     clearData(): void {
         this.surface.renderableSeries.asArray().forEach(rs => {
             rs.dataSeries?.delete()

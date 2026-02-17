@@ -1,14 +1,15 @@
 """
     StreamingSink
 
-Direct Arrow storage with WebSocket streaming and frame collection.
+Direct Arrow storage with WebSocket streaming for simulation events.
 
-Implements proper columnar Arrow storage (matching ExperimentTool format) while adding:
-1. SimulationFrame collection for in-memory access
-2. WebSocket broadcasting as frames are collected
-3. Direct file I/O (no dependency on ExperimentTool.artifact system)
+Implements columnar Arrow storage (matching ExperimentTool format) with:
+1. Time-window-based progress reporting via SimulationController
+2. Filtered timeseries streaming (only subscribed species)
+3. Pause/resume checkpoint at each trace callback
+4. Direct file I/O (no dependency on ExperimentTool.artifact system)
 
-Storage format matches ExperimentTool:
+Storage format:
 - `index.arrow`: Metadata about execution paths
 - `events_*.arrow`: Event columns (i, t, name, value) for each channel
 """
@@ -45,33 +46,33 @@ end
     Channel
 
 Accumulates events for a single execution channel.
-
 Matches ExperimentTool.Channel format for efficient Arrow columnar storage.
 """
 @kwdef struct Channel
-    is::Vector{Int64} = Int64[]           # episode indices
-    ts::Vector{Float64} = Float64[]       # time points
-    names::Vector{Symbol} = Symbol[]      # event names
-    values::Vector{Int64} = Int64[]       # event values
+    is::Vector{Int64} = Int64[]
+    ts::Vector{Float64} = Float64[]
+    names::Vector{Symbol} = Symbol[]
+    values::Vector{Int64} = Int64[]
 end
 
 """
     StreamingSimulationSink
 
-Direct Arrow sink with WebSocket frame streaming coupled to flushes.
-
-Collects simulation events into columnar format for Arrow storage. When events
-are flushed to disk, they are converted to frames and streamed via WebSocket
-in batches.
+Direct Arrow sink with optional WebSocket streaming via SimulationController.
 
 # Fields
-- `location::String`: Directory path for storing Arrow files
-- `i::Int`: Episode counter for tracking execution paths
-- `index::Vector`: Metadata for each execution segment
-- `threshold::Int`: Event buffer threshold before flush to disk
-- `channels::Dict{String, Channel}`: Accumulated events by channel
-- `ws_client::Union{HTTP.WebSocket, Nothing}`: WebSocket client for streaming
-- `i_to_path::Dict{Int, String}`: Episode index to path mapping for frame reconstruction
+- `location::String`: Directory for Arrow files
+- `i::Int`: Episode counter
+- `index::Vector`: Execution segment metadata
+- `threshold::Int`: Event buffer size before flush (default 200k)
+- `channels::Dict{String, Channel}`: Buffered events by channel
+- `ws_client::Union{HTTP.WebSocket, Nothing}`: WebSocket for streaming
+- `controller`: SimulationController for pause/progress/timeseries (duck-typed)
+- `i_to_path::Dict{Int, String}`: Episode index to path mapping
+- `stream_interval::Float64`: Time window (sim-time) between WS timeseries sends
+- `last_stream_time::Float64`: Last sim-time at which we streamed
+- `pending_timeseries::Dict`: Accumulated timeseries for subscribed species since last stream
+- `frame_count::Int`: Running count of frames for progress reporting
 """
 @kwdef mutable struct StreamingSimulationSink
     location::String
@@ -80,7 +81,12 @@ in batches.
     threshold::Int = 200000
     channels::Dict{String, Channel} = Dict{String, Channel}()
     ws_client::Union{HTTP.WebSocket, Nothing} = nothing
+    controller::Any = nothing
     i_to_path::Dict{Int, String} = Dict{Int, String}()
+    stream_interval::Float64 = 200.0
+    last_stream_time::Float64 = -Inf
+    pending_timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}} = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
+    frame_count::Int = 0
 end
 
 # ============================================================================
@@ -90,27 +96,22 @@ end
 """
     (sink::StreamingSimulationSink)(into, state; path, primitive!, from, seed, _...)
 
-Implement Sink interface (callable struct).
-
-Called for each state transition during schedule execution. Accumulates events
-into columnar format and broadcasts to WebSocket clients.
-
-Matches ExperimentTool.Sink interface for compatibility.
+Sink interface (callable struct). Called for each state transition.
+Accumulates events, checks pause, reports progress, and streams filtered timeseries.
 """
 function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, seed, _...)
-    sink.i += 1
+    # Check pause before processing
+    _check_pause_if_needed(sink)
 
+    sink.i += 1
     to = Models.t(state)
     model = primitive!.path
-    label = get(primitive!.bindings, :label, "")
+    label = haskey(primitive!.bindings, :label) ? primitive!.bindings[:label] : ""
 
-    # Record index metadata
+    # Record index metadata (no output channel)
     if into === nothing
-        @debug "[StreamingSink] Recording index entry (no output)" i=sink.i path=path from=from to=to model=model label=label
-        push!(
-            sink.index,
-            (; sink.i, path, from, to, model, label, count = 0, into = "", seed)
-        )
+        @debug "[StreamingSink] Index entry (no output)" i=sink.i path=path
+        push!(sink.index, (; sink.i, path, from, to, model, label, count = 0, into = "", seed))
         sink.i_to_path[sink.i] = path
         return
     end
@@ -118,11 +119,12 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     # Accumulate events from this state
     channel = get!(Channel, sink.channels, into)
     count = 0
+    event_count_since_stream = 0
 
     Models.each_event(state) do t::Float64, name::Symbol, value::Int64
         # Flush buffer if threshold reached
-        if length(channel.values) ≥ sink.threshold
-            @debug "[StreamingSink] Flushing channel (threshold reached)" into=into buffered=length(channel.values)
+        if length(channel.values) >= sink.threshold
+            @debug "[StreamingSink] Flushing channel (threshold)" into=into
             _flush_channel!(sink, into)
             channel = sink.channels[into] = Channel()
         end
@@ -132,16 +134,118 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
         push!(channel.names, name)
         push!(channel.values, value)
         count += 1
+        event_count_since_stream += 1
+
+        # Accumulate for subscribed species streaming
+        _accumulate_subscribed(sink, name, path, t, value)
+
+        # Stream inside the event loop for long-running episodes
+        if t - sink.last_stream_time >= sink.stream_interval
+            _check_pause_if_needed(sink)
+            _stream_update(sink, t)
+            sink.last_stream_time = t
+            event_count_since_stream = 0
+        end
     end
 
-    @debug "[StreamingSink] Recording execution segment" i=sink.i into=into from=from to=to count=count buffered=length(channel.values)
+    sink.frame_count += 1
 
     # Record execution segment metadata
-    push!(
-        sink.index,
-        (; sink.i, path, from, to, model, label, count, into, seed)
-    )
+    push!(sink.index, (; sink.i, path, from, to, model, label, count, into, seed))
     sink.i_to_path[sink.i] = path
+
+    # Time-window streaming: send progress + timeseries periodically
+    if to - sink.last_stream_time >= sink.stream_interval
+        _stream_update(sink, to)
+        sink.last_stream_time = to
+    end
+end
+
+# ============================================================================
+# Pause Support
+# ============================================================================
+
+function _check_pause_if_needed(sink::StreamingSimulationSink)
+    isnothing(sink.controller) && return
+    ctrl = sink.controller
+    ctrl.paused || return
+
+    lock(ctrl.pause_condition) do
+        while ctrl.paused
+            @info "[StreamingSink] Simulation paused, blocking..."
+            wait(ctrl.pause_condition)
+        end
+    end
+end
+
+# ============================================================================
+# Subscribed Species Streaming
+# ============================================================================
+
+"""
+Accumulate a data point for subscribed species into the pending buffer.
+"""
+function _accumulate_subscribed(sink::StreamingSimulationSink, name::Symbol, path::String, t::Float64, value::Int64)
+    isnothing(sink.controller) && return
+    name in sink.controller.subscribed_species || return
+
+    species_dict = get!(sink.pending_timeseries, name) do
+        Dict{String, Vector{Tuple{Float64, Int}}}()
+    end
+    push!(get!(species_dict, path) do; Tuple{Float64, Int}[] end, (t, value))
+end
+
+"""
+Send accumulated timeseries + progress to WS client, then clear the buffer.
+"""
+function _stream_update(sink::StreamingSimulationSink, current_time::Float64)
+    isnothing(sink.controller) && return
+    ctrl = sink.controller
+    isnothing(ctrl.ws_client) && return
+
+    # Send progress
+    @info "[StreamingSink] Streaming update" current_time=current_time frame_count=sink.frame_count subscribed=length(ctrl.subscribed_species) pending=length(sink.pending_timeseries)
+    _ws_send(ctrl.ws_client, Dict(
+        "type" => "progress",
+        "simulation_id" => ctrl.simulation_id,
+        "current_time" => current_time,
+        "frame_count" => sink.frame_count
+    ))
+
+    # Send timeseries if any accumulated
+    if !isempty(sink.pending_timeseries)
+        n_points = sum(sum(length(pts) for pts in values(pd)) for pd in values(sink.pending_timeseries))
+        @info "[StreamingSink] Sending timeseries" species=length(sink.pending_timeseries) points=n_points
+        _ws_send_timeseries(ctrl.ws_client, ctrl.simulation_id, sink.pending_timeseries)
+        empty!(sink.pending_timeseries)
+    end
+end
+
+function _ws_send(ws::HTTP.WebSocket, data::Dict)
+    try
+        send(ws, JSON.json(data))
+    catch e
+        @warn "[StreamingSink] WS send failed" exception=string(e)
+    end
+end
+
+function _ws_send_timeseries(ws::HTTP.WebSocket, simulation_id::String,
+                             timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}})
+    # Convert to JSON-friendly: { species: { path: [[t, v], ...] } }
+    data = Dict{String, Dict{String, Vector{Vector{Any}}}}()
+    for (species, path_data) in timeseries
+        sp = String(species)
+        data[sp] = Dict{String, Vector{Vector{Any}}}()
+        for (path, points) in path_data
+            data[sp][path] = [[t, v] for (t, v) in points]
+        end
+    end
+
+    _ws_send(ws, Dict(
+        "type" => "timeseries",
+        "simulation_id" => simulation_id,
+        "data" => data
+    ))
 end
 
 # ============================================================================
@@ -149,22 +253,14 @@ end
 # ============================================================================
 
 """
-    flush!(sink::StreamingSimulationSink)
+    flush!(sink)
 
-Flush all accumulated events to Arrow files and stream frames via WebSocket.
-
-For each channel:
-1. Write events_*.arrow to disk
-2. Convert events to frames
-3. Stream frames in batches via WebSocket (threshold-sized batches)
-4. Write index.arrow with metadata
+Flush all accumulated events to Arrow files. Sends final timeseries update.
 """
 function flush!(sink::StreamingSimulationSink)
     sink.i > 0 || return
+    @info "[StreamingSink] Flushing all channels"
 
-    @info "Flushing streaming sink"
-
-    # Flush all channel data and stream frames
     for into in keys(sink.channels)
         _flush_channel!(sink, into)
     end
@@ -184,24 +280,27 @@ function flush!(sink::StreamingSimulationSink)
             into = Arrow.DictEncode(index.into),
             index.seed,
         ))
-        @debug "Wrote Arrow index file" index_file
+        @debug "[StreamingSink] Wrote index file" index_file
+    end
+
+    # Final timeseries flush
+    if !isempty(sink.pending_timeseries) && !isnothing(sink.controller)
+        ctrl = sink.controller
+        if !isnothing(ctrl.ws_client)
+            _ws_send_timeseries(ctrl.ws_client, ctrl.simulation_id, sink.pending_timeseries)
+        end
+        empty!(sink.pending_timeseries)
     end
 end
 
 """
-    _flush_channel!(sink::StreamingSimulationSink, into::String)
-
-Internal: flush a single channel's buffered events to disk and stream frames.
-
-1. Writes events_*.arrow file
-2. Converts events to frames
-3. Streams frames via WebSocket
+Flush a single channel's buffered events to disk.
 """
 function _flush_channel!(sink::StreamingSimulationSink, into::String)
     channel = pop!(sink.channels, into)
     filename = joinpath(sink.location, "events$into.stream.arrow")
 
-    @info "[StreamingSink] Flushing channel to disk" into=into filename=filename events=length(channel.ts)
+    @info "[StreamingSink] Flushing channel" into=into events=length(channel.ts)
 
     events = (;
         i = channel.is,
@@ -211,96 +310,10 @@ function _flush_channel!(sink::StreamingSimulationSink, into::String)
     )
 
     if isfile(filename)
-        @debug "[StreamingSink] Appending to existing Arrow file" filename
         Arrow.append(filename, events)
     else
-        @debug "[StreamingSink] Creating new Arrow file" filename
         Arrow.write(filename, events, file = false)
     end
-
-    @info "[StreamingSink] Wrote Arrow events file" filename event_count=length(events.t)
-
-    # Convert events to frames and stream
-    _convert_and_stream_frames(sink, events)
 end
 
-"""
-    _convert_and_stream_frames(sink::StreamingSimulationSink, events::NamedTuple)
-
-Internal: convert events to frames and stream via WebSocket.
-
-Groups events by (episode_i, time), reconstructs frames, and sends
-via WebSocket if client is connected.
-"""
-function _convert_and_stream_frames(sink::StreamingSimulationSink, events::NamedTuple)
-    isnothing(sink.ws_client) && (@debug "[StreamingSink] No WebSocket client; skipping frame conversion"; return)
-
-    # Group events by (episode_i, time)
-    events_by_state = Dict{Tuple{Int, Float64}, Vector}()
-
-    for idx in eachindex(events.i)
-        i = events.i[idx]
-        t = events.t[idx]
-        name = events.name[idx]
-        value = events.value[idx]
-
-        key = (i, t)
-        if !haskey(events_by_state, key)
-            events_by_state[key] = []
-        end
-        push!(events_by_state[key], (i=i, t=t, name=name, value=value))
-    end
-
-    # Reconstruct frames
-    frames = SimulationFrame[]
-    for ((episode_i, t), state_events) in events_by_state
-        path = get(sink.i_to_path, episode_i, string(episode_i))
-        counts = Dict{String, Int}()
-        for event in state_events
-            counts[String(event.name)] = event.value
-        end
-        push!(frames, SimulationFrame(path=path, t=t, counts=counts))
-    end
-
-    @info "[StreamingSink] Converted to frames" frame_count=length(frames) unique_states=length(events_by_state)
-
-    # Stream all frames in one message
-    _broadcast_frames(sink, frames)
-end
-
-# ============================================================================
-# WebSocket Broadcasting
-# ============================================================================
-
-"""
-    _broadcast_frames(sink::StreamingSimulationSink, frames::Vector{SimulationFrame})
-
-Internal: send frames to WebSocket client as a single message.
-"""
-function _broadcast_frames(sink::StreamingSimulationSink, frames::Vector{SimulationFrame})
-    if isnothing(sink.ws_client)
-        @debug "[StreamingSink] No WebSocket client for broadcasting"
-        return
-    end
-
-    if isempty(frames)
-        @debug "[StreamingSink] No frames to broadcast"
-        return
-    end
-
-    @info "[StreamingSink] Broadcasting frames via WebSocket" frame_count=length(frames)
-
-    message = Dict(
-        "type" => "frames",
-        "data" => frames
-    )
-
-    try
-        send(sink.ws_client, JSON.json(message))
-        @debug "[StreamingSink] Frames sent successfully" frame_count=length(frames)
-    catch e
-        @error "[StreamingSink] Error sending frames" exception=string(e)
-    end
-end
-
-end # module StreamingSink
+end # module

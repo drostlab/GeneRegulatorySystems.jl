@@ -93,6 +93,21 @@ export function parseScheduleKey(key: string): { source: ScheduleSource; name: s
     return { source: source as ScheduleSource, name: nameParts.join('/') }
 }
 
+/** Compute time ranges per execution path from segments. */
+export function getPathTimeRanges(segments: TimelineSegment[]): Map<string, { from: number; to: number }> {
+    const ranges = new Map<string, { from: number; to: number }>()
+    for (const seg of segments) {
+        const existing = ranges.get(seg.execution_path)
+        if (existing) {
+            existing.from = Math.min(existing.from, seg.from)
+            existing.to = Math.max(existing.to, seg.to)
+        } else {
+            ranges.set(seg.execution_path, { from: seg.from, to: seg.to })
+        }
+    }
+    return ranges
+}
+
 export function extractPaths(segments: TimelineSegment[]): string[] {
     const paths: string[] = []
     const seen = new Set<string>()

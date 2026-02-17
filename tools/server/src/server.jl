@@ -16,12 +16,14 @@ using GeneRegulatorySystems.Models.Scheduling
 include("streaming_sink.jl")
 include("schedule_storage.jl")
 include("schedule_visualisation.jl")
+include("simulation_controller.jl")
 include("simulation.jl")
 
 # Use submodules
 using .ScheduleStorage
 using .StreamingSink
 using .Simulation
+using .SimulationController_
 using .ScheduleVisualization
 using Base: @kwdef
 
@@ -94,20 +96,12 @@ end
 
 ### Simulation service
 
-# list all simulation results metadata
+# list all simulation results
 @get "/simulations" function()
-    return Simulation.list_results()::Vector{Simulation.SimulationResultMetadata}
+    return Simulation.list_results()::Vector{Simulation.SimulationResult}
 end
 
-# get simulation metadata for result
-@get "/simulations/{id}/metadata" function(_, id::String)
-    result = Simulation.load_result_metadata(id)
-    isnothing(result) && throw("Result not found")
-
-    return result::Simulation.SimulationResultMetadata
-end
-
-# get full simulation result with data (metadata + frames from Arrow files)
+# get simulation result (metadata only, no frames)
 @get "/simulations/{id}" function(_, id::String)
     result = Simulation.load_result(id)
     isnothing(result) && throw("Result not found")
@@ -119,16 +113,17 @@ end
 end
 # get filtered timeseries for specific species
 @post "/simulations/{id}/timeseries" function(req, id::String, data::Json{TimeseriesRequest})
-    metadata = Simulation.load_result_metadata(id)
-    isnothing(metadata) && throw("Result not found")
+    result = Simulation.load_result(id)
+    isnothing(result) && throw("Result not found")
     species_filter = Set(Symbol.(data.payload.species))
-    timeseries = Simulation.load_timeseries_for_species(metadata.path, species_filter)
+    timeseries = Simulation.load_timeseries_for_species(result.path, species_filter)
     return Simulation.SimulationData(; timeseries)
 end
 
-const ws_client = Ref{Union{Nothing, HTTP.WebSocket}}()
+const ws_client = Ref{Union{Nothing, HTTP.WebSocket}}(nothing)
 const WS_LOCK = ReentrantLock()
-const simulation_task = Ref{Union{Nothing, Task}}()
+const simulation_task = Ref{Union{Nothing, Task}}(nothing)
+const active_controller = Ref{Union{Nothing, SimulationController}}(nothing)
 
 @websocket "/ws" function(ws::HTTP.WebSocket)
     @info "WebSocket client connected"
@@ -136,8 +131,8 @@ const simulation_task = Ref{Union{Nothing, Task}}()
         ws_client[] = ws
     end
 
-    for msg in ws
-        @debug "[WebSocket] Received message" msg
+    for raw_msg in ws
+        _handle_ws_message(raw_msg)
     end
 
     lock(WS_LOCK) do
@@ -147,41 +142,70 @@ const simulation_task = Ref{Union{Nothing, Task}}()
     @info "WebSocket client disconnected"
 end
 
+function _handle_ws_message(raw::String)
+    msg = JSON.parse(raw)
+    msg_type = haskey(msg, "type") ? msg["type"] : ""
+    @info "[WS] Received message" type=msg_type
+    ctrl = active_controller[]
+
+    if msg_type == "subscribe"
+        species = haskey(msg, "species") ? msg["species"] : String[]
+        if !isnothing(ctrl)
+            subscribe_genes!(ctrl, convert(Vector{String}, species))
+            @debug "[WS] Subscribed to species" count=length(species)
+        end
+    elseif msg_type == "pause"
+        if !isnothing(ctrl)
+            pause!(ctrl)
+            Simulation.update_result_metadata(ctrl.result_path; status="paused")
+        end
+    elseif msg_type == "resume"
+        if !isnothing(ctrl)
+            resume!(ctrl)
+            Simulation.update_result_metadata(ctrl.result_path; status="running")
+        end
+    else
+        @warn "[WS] Unknown message type" msg_type
+    end
+end
+
 @kwdef struct RunSimulationRequest
     schedule_name::String
     schedule_spec::String
+    max_time::Float64 = 0.0
 end
 
-# start a simulation run (streamed)
-@post "/simulations/run/stream" function(req, data::Json{RunSimulationRequest})
+# start a simulation run (async, streamed via WS)
+@post "/simulations/run" function(req, data::Json{RunSimulationRequest})
     # Load and validate model from spec (throws on invalid spec)
     model = Simulation.load_model_from_spec(data.payload.schedule_spec)
 
+    max_time = data.payload.max_time
+
     # Prepare result directory and metadata
-    res_metadata = Simulation.prepare_result(data.payload.schedule_name, data.payload.schedule_spec)
+    result = Simulation.prepare_result(data.payload.schedule_name, data.payload.schedule_spec; max_time)
 
     # Get current websocket client
     current_ws = lock(WS_LOCK) do
         ws_client[]
     end
 
-    # Spawn async simulation task with constructed model
-    simulation_task[] = @async Simulation.run_simulation(res_metadata, model, current_ws)
+    # Create simulation controller for pause/resume and gene subscriptions
+    ctrl = SimulationController(
+        result_path = result.path,
+        simulation_id = result.id,
+        ws_client = current_ws
+    )
+    active_controller[] = ctrl
+
+    # Spawn async simulation task
+    simulation_task[] = @async begin
+        Simulation.run_simulation(result, model, current_ws; controller = ctrl)
+        active_controller[] = nothing
+    end
 
     # Return immediately with status=running
-    return res_metadata::Simulation.SimulationResultMetadata
+    return result::Simulation.SimulationResult
 end
-
-# start a simulation run (non-streamed)
-@post "/simulations/run/" function (req, data::Json{RunSimulationRequest})
-    model = Simulation.load_model_from_spec(data.payload.schedule_spec)
-
-    res_metadata = Simulation.prepare_result(data.payload.schedule_name, data.payload.schedule_spec)
-
-    Simulation.run_simulation(res_metadata, model, nothing)
-    result = Simulation.load_result(res_metadata.id)
-    return result
-end
-
 
 end
