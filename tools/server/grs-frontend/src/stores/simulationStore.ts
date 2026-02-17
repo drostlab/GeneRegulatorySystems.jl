@@ -74,6 +74,7 @@ export const useSimulationStore = defineStore(
         /**
          * Lazily fetch timeseries for the given genes.
          * Only fetches genes not already in cache. Merges results into timeseriesCache.
+         * Marks genes as pending immediately to prevent duplicate concurrent fetches.
          */
         async function fetchGeneTimeseries(genes: string[]): Promise<void> {
             const resultId = currentResultId.value
@@ -81,7 +82,10 @@ export const useSimulationStore = defineStore(
 
             const scheduleStore = useScheduleStore()
             const newGenes = genes.filter(g => !fetchedGenes.value.has(g))
-            if (newGenes.length === 0) return
+            if (newGenes.length === 0) {
+                console.debug(`[SimulationStore] All ${genes.length} genes already fetched, skipping`)
+                return
+            }
 
             const species = newGenes.flatMap(gene => scheduleStore.getSpeciesForGeneId(gene))
             if (species.length === 0) {
@@ -89,13 +93,19 @@ export const useSimulationStore = defineStore(
                 return
             }
 
+            // Mark genes as fetched immediately to prevent duplicate concurrent requests
+            newGenes.forEach(g => fetchedGenes.value.add(g))
+
             isFetchingTimeseries.value = true
             try {
                 console.debug(`[SimulationStore] Fetching timeseries for genes: [${newGenes.join(', ')}] (${species.length} species)`)
                 const data = await simulationService.fetchTimeseriesForSpecies(resultId, species)
                 _mergeTimeseries(data)
-                newGenes.forEach(g => fetchedGenes.value.add(g))
                 console.debug(`[SimulationStore] Cache now has ${Object.keys(timeseriesCache.value).length} species`)
+            } catch (e) {
+                // Rollback: remove genes from fetched set so they can be retried
+                newGenes.forEach(g => fetchedGenes.value.delete(g))
+                throw e
             } finally {
                 isFetchingTimeseries.value = false
             }
@@ -141,7 +151,11 @@ export const useSimulationStore = defineStore(
         // =====================================================================
 
         function _onProgress(currentTime: number, frameCount: number): void {
-            if (!currentResult.value) return
+            if (!currentResult.value) {
+                console.warn('[SimulationStore] _onProgress called but no currentResult')
+                return
+            }
+            console.debug(`[SimulationStore] _onProgress: time=${currentTime} frames=${frameCount} wasPreparing=${isPreparingSimulation.value}`)
             isPreparingSimulation.value = false
             currentResult.value = {
                 ...currentResult.value,
@@ -151,11 +165,14 @@ export const useSimulationStore = defineStore(
         }
 
         function _onTimeseries(data: TimeseriesData): void {
+            const speciesCount = Object.keys(data).length
+            console.debug(`[SimulationStore] _onTimeseries: ${speciesCount} species`)
             _mergeTimeseries(data)
             streamingDelta.value = data
         }
 
         function _onStatus(status: string, error?: string): void {
+            console.debug(`[SimulationStore] _onStatus: status=${status} error=${error ?? 'none'} hasResult=${!!currentResult.value}`)
             if (!currentResult.value) return
             currentResult.value = {
                 ...currentResult.value,
@@ -233,6 +250,7 @@ export const useSimulationStore = defineStore(
                 getTimeExtent(scheduleStore.segments).max,
             )
             currentResult.value = result
+            console.debug(`[SimulationStore] runSimulation: got result id=${result.id} status=${result.status}`)
 
             // Track this simulation via WS
             stream.track(result.id, {

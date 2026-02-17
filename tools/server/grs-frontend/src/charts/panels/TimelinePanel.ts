@@ -7,7 +7,7 @@ import { BasePanel, type BasePanelOptions } from "./BasePanel"
 import { layoutRectangles, type LayoutRectangle } from "../layout/rectangleLayout"
 import type { StructureNode, TimelineSegment } from "@/types/schedule"
 import { darken, withOpacity } from "@/utils/colorUtils"
-import { CHART_FONT_FAMILY, CHART_FONT_SIZES, AXIS_THICKNESS, SEGMENT_PALETTE } from "../chartConstants"
+import { CHART_FONT_SIZES, AXIS_THICKNESS, SEGMENT_PALETTE } from "../chartConstants"
 
 const SEGMENT_LABEL_FONT_SIZE = 7
 const SEGMENT_BORDER_THICKNESS = 2
@@ -22,11 +22,12 @@ export class TimelinePanel extends BasePanel {
 
     constructor(options: BasePanelOptions) {
         super(options)
+        console.debug('[TimelinePanel] Constructing panel')
 
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Time",
             labelStyle: { fontSize: CHART_FONT_SIZES.label },
-            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY },
+            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false
@@ -35,7 +36,7 @@ export class TimelinePanel extends BasePanel {
         const yAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Schedule Timeline",
             axisAlignment: EAxisAlignment.Left,
-            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY },
+            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title},
             drawMajorBands: false,
             drawLabels: false,
             drawMajorGridLines: false,
@@ -48,6 +49,7 @@ export class TimelinePanel extends BasePanel {
         this.surface.xAxes.add(xAxis)
         this.surface.yAxes.add(yAxis)
 
+        console.debug('[TimelinePanel] Axes configured, creating hover tooltip')
         this.createHoverTooltip()
     }
 
@@ -56,6 +58,7 @@ export class TimelinePanel extends BasePanel {
     }
 
     setScheduleData(structure: StructureNode, segments: TimelineSegment[]): LayoutRectangle[] {
+        console.debug(`[TimelinePanel] setScheduleData called: ${segments.length} segments, structure type=${structure.type}`)
         this.surface.renderableSeries.clear()
         // Clear only our own data annotations, not modifier-owned cursor annotations
         for (const ann of this.dataAnnotations) {
@@ -78,6 +81,7 @@ export class TimelinePanel extends BasePanel {
         }
 
         const palette = buildSegmentPalette(rectangles)
+        console.debug(`[TimelinePanel] Palette built: ${palette.size} entries`)
 
         // Collect instants grouped by x position for vertical label stacking
         const instantsByX = new Map<number, LayoutRectangle[]>()
@@ -96,7 +100,11 @@ export class TimelinePanel extends BasePanel {
         }
 
         // Add instant annotations with stacked labels
-        for (const [, instants] of instantsByX) {
+        const instantCount = rectangles.filter(r => r.isInstant).length
+        const rectCount = rectangles.filter(r => !r.isInstant).length
+        console.debug(`[TimelinePanel] Adding ${rectCount} rectangle series, ${instantsByX.size} instant groups (${instantCount} instants)`)
+        for (const [x, instants] of instantsByX) {
+            console.debug(`[TimelinePanel] Instant group at x=${x}: ${instants.length} instants`)
             this.addInstantGroup(instants)
         }
 
@@ -104,6 +112,7 @@ export class TimelinePanel extends BasePanel {
     }
 
     private addRectangleSeries(rect: LayoutRectangle, colour: string): void {
+        console.debug(`[TimelinePanel] addRectangleSeries: id=${rect.segmentId} path=${rect.executionPath} model=${rect.modelPath} bounds=[${rect.x1},${rect.y1}]->[${rect.x2},${rect.y2}] colour=${colour}`)
         const dataSeries = new XyxyDataSeries(this.wasmContext, {
             dataSeriesName: `segment:${rect.segmentId}`,
             isSorted: true,
@@ -124,6 +133,7 @@ export class TimelinePanel extends BasePanel {
             stroke: darken(colour),
             strokeThickness: SEGMENT_BORDER_THICKNESS,
             onHoveredChanged: (sourceSeries) => {
+                console.debug(`[TimelinePanel] Hover ${sourceSeries.isHovered ? 'enter' : 'leave'}: segment=${segmentId} model=${modelPath}`)
                 ;(sourceSeries as FastRectangleRenderableSeries).fill =
                     sourceSeries.isHovered ? withOpacity(colour, 0.8) : withOpacity(colour, 0.6)
                 if (sourceSeries.isHovered) {
@@ -152,7 +162,6 @@ export class TimelinePanel extends BasePanel {
             y1: labelMidY,
             text: rect.executionPath,
             fontSize: SEGMENT_LABEL_FONT_SIZE,
-            fontFamily: CHART_FONT_FAMILY,
             textColor: "#555555",
             horizontalAnchorPoint: EHorizontalAnchorPoint.Center,
             verticalAnchorPoint: EVerticalAnchorPoint.Center
@@ -163,6 +172,7 @@ export class TimelinePanel extends BasePanel {
 
     /** Create a fresh hover tooltip annotation and add it to the surface. */
     private createHoverTooltip(): void {
+        console.debug('[TimelinePanel] Creating hover tooltip')
         this.hoverTooltip = new TextAnnotation({
             xCoordinateMode: ECoordinateMode.DataValue,
             yCoordinateMode: ECoordinateMode.DataValue,
@@ -170,7 +180,6 @@ export class TimelinePanel extends BasePanel {
             y1: 0,
             text: "",
             fontSize: CHART_FONT_SIZES.annotation,
-            fontFamily: CHART_FONT_FAMILY,
             textColor: "#FFFFFF",
             background: "#333333",
             padding: new Thickness(4, 3, 4, 3),
@@ -187,6 +196,7 @@ export class TimelinePanel extends BasePanel {
         // Use the full y-span across all instants at this x
         const yMin = Math.min(...instants.map(r => r.y1))
         const yMax = Math.max(...instants.map(r => r.y2))
+        console.debug(`[TimelinePanel] addInstantGroup: x=${instants[0]!.x1} count=${instants.length} yRange=[${yMin},${yMax}]`)
 
         const line = new LineAnnotation({
             x1: instants[0]!.x1,
@@ -210,7 +220,6 @@ export class TimelinePanel extends BasePanel {
                 y1: startY + i * labelHeight,
                 text: rect.executionPath,
                 fontSize: SEGMENT_LABEL_FONT_SIZE,
-                fontFamily: CHART_FONT_FAMILY,
                 textColor: "#666666",
                 horizontalAnchorPoint: EHorizontalAnchorPoint.Left,
                 verticalAnchorPoint: EVerticalAnchorPoint.Top
@@ -222,6 +231,7 @@ export class TimelinePanel extends BasePanel {
 }
 
 function buildSegmentPalette(rectangles: LayoutRectangle[]): Map<number, string> {
+    console.debug(`[TimelinePanel] buildSegmentPalette: ${rectangles.length} rectangles`)
     const palette = new Map<number, string>()
     const pathColours = new Map<string, string>()
     let colourIndex = 0
@@ -236,5 +246,6 @@ function buildSegmentPalette(rectangles: LayoutRectangle[]): Map<number, string>
         }
         palette.set(rect.segmentId, colour)
     }
+    console.debug(`[TimelinePanel] Palette: ${palette.size} segments, ${pathColours.size} unique model paths`)
     return palette
 }

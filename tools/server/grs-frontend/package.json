@@ -24,7 +24,7 @@
     "pixi.js": "^8.14.3",
     "primeicons": "^7.0.0",
     "primevue": "^4.4.1",
-    "scichart": "^4.0.920",
+    "scichart": "^5.0.178",
     "vis-network": "^10.0.2",
     "vue": "^3.5.24"
   },

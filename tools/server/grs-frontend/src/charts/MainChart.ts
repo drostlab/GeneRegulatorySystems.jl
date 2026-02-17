@@ -26,6 +26,7 @@ export class MainChart {
     private axisSynchroniser!: AxisSyncModifier
     private layoutModifier!: SubChartLayoutModifier
     private selectSyncModifier!: SelectSyncModifier
+    private timeCursorModifier!: SharedTimeCursorModifier
     private tracks!: Array<{ id: string; panel: BasePanel }>
     private timepointChangeCallback?: (timepoint: number) => void
     private selectionChangeCallback?: SelectionChangeCallback
@@ -36,6 +37,8 @@ export class MainChart {
 
         this.surface = sciChartSurface
         this.wasmContext = wasmContext
+
+        await this.surface.registerFont("Montserrat", "/Montserrat-Regular.ttf")
 
         /** Groups timeseries by gene ID (prefix before ':'); excludes segment rectangles. */
         const geneGroupFn: GroupingFn = (name) => {
@@ -72,7 +75,8 @@ export class MainChart {
 
         this.axisSynchroniser = new AxisSyncModifier()
         this.surface.chartModifiers.add(this.axisSynchroniser)
-        this.surface.chartModifiers.add(new SharedTimeCursorModifier(t => this.timepointChangeCallback?.(t)))
+        this.timeCursorModifier = new SharedTimeCursorModifier(t => this.timepointChangeCallback?.(t))
+        this.surface.chartModifiers.add(this.timeCursorModifier)
 
         this.selectSyncModifier = new SelectSyncModifier(geneGroupFn, genes => this.selectionChangeCallback?.(genes))
         this.surface.chartModifiers.add(this.selectSyncModifier)
@@ -121,6 +125,7 @@ export class MainChart {
 
     clear() {
         this.selectSyncModifier?.clearSelection()
+        this.timeCursorModifier?.hideCursor()
         this.tracks.forEach(({ panel }) => {
             panel.clearData()
         })
@@ -143,8 +148,14 @@ export class MainChart {
                     .filter(([species]) => speciesIds.has(species))
             ) as TimeseriesData
             panel.setData(filteredTimeseries)
-            panel.surface.zoomExtentsY()
+            // Only zoom if the panel has data to avoid NaN range errors
+            if (panel.surface.renderableSeries.asArray().length > 0) {
+                panel.surface.zoomExtentsY()
+            }
         })
+
+        // Series were recreated -- re-apply selection state so SelectSync stays consistent
+        this.selectSyncModifier?.reapplySelection()
     }
 
     setScheduleData(structure: StructureNode, segments: TimelineSegment[], metadata: TimeseriesMetadata): void {
@@ -169,6 +180,7 @@ export class MainChart {
 
     clearSimulationData(): void {
         this.selectSyncModifier?.clearSelection()
+        this.timeCursorModifier?.hideCursor()
         this.getTimeseriesPanels().forEach(({ panel }) => panel.clearData())
     }
 
@@ -192,7 +204,10 @@ export class MainChart {
 
             if (Object.keys(filteredTimeseries).length > 0) {
                 panel.appendStreamingData(filteredTimeseries)
-                panel.surface.zoomExtentsY()
+                // Only zoom if the panel has data to avoid NaN range errors
+                if (panel.surface.renderableSeries.asArray().length > 0) {
+                    panel.surface.zoomExtentsY()
+                }
             }
         })
 
@@ -201,6 +216,8 @@ export class MainChart {
             this.tracks.forEach(({ panel }) => {
                 panel.setVisibleTimeRange(0, currentTime)
             })
+            // Move the time cursor line to current simulation time
+            this.timeCursorModifier?.setCursorTime(currentTime)
         }
     }
 }

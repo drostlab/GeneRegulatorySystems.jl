@@ -3,7 +3,7 @@ import { TimeseriesPanel } from "./TimeseriesPanel";
 import type { BasePanelOptions } from "./BasePanel";
 import type { TimeseriesData } from "@/types/simulation";
 import { getGeneFromSpeciesName } from "@/types/schedule";
-import { CHART_FONT_FAMILY, CHART_FONT_SIZES, AXIS_THICKNESS_NARROW } from "../chartConstants";
+import { CHART_FONT_SIZES, AXIS_THICKNESS_NARROW } from "../chartConstants";
 
 const SWEEP_DURATION_MS = 400
 
@@ -18,7 +18,7 @@ export class CountsPanel extends TimeseriesPanel {
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Time",
             labelStyle: {fontSize: CHART_FONT_SIZES.label},
-            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY},
+            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false
@@ -30,7 +30,7 @@ export class CountsPanel extends TimeseriesPanel {
             labelFormat: ENumericFormat.Decimal,
             labelPrecision: 0,
             labelStyle: {fontSize: CHART_FONT_SIZES.label},
-            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY},
+            axisTitleStyle: {fontSize: CHART_FONT_SIZES.title, padding: {bottom: 122, left: 4, right: 242, top: 1}},
             drawMajorBands: false,
             drawMajorTickLines: false,
             drawMinorTickLines: false,

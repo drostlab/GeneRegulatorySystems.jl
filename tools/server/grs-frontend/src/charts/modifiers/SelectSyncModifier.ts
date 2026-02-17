@@ -1,4 +1,4 @@
-import { ChartModifierBase2D, EChart2DModifierType, ModifierMouseArgs, type IRenderableSeries } from "scichart"
+import { ChartModifierBase2D, EChart2DModifierType, ModifierMouseArgs, translateFromCanvasToSeriesViewRect, type IRenderableSeries } from "scichart"
 
 /** Function that maps a dataSeriesName to a group key, or null to exclude. */
 export type GroupingFn = (dataSeriesName: string) => string | null
@@ -17,11 +17,22 @@ export class SelectSyncModifier extends ChartModifierBase2D {
 
     modifierMouseUp(args: ModifierMouseArgs): void {
         super.modifierMouseUp(args)
+        if (!this.mousePoint) return
+
+        // Find which subchart was clicked (only read selection from that one
+        // to avoid stale isSelected flags on other subcharts)
+        let clickedSubChart: { renderableSeries: { asArray: () => IRenderableSeries[] } } | undefined
+        for (const sc of this.parentSurface.subCharts) {
+            const pt = translateFromCanvasToSeriesViewRect(this.mousePoint, sc.seriesViewRect)
+            if (pt) {
+                clickedSubChart = sc
+                break
+            }
+        }
 
         const currentlySelected = new Set<string>()
-
-        for (const subChart of this.parentSurface.subCharts) {
-            for (const series of subChart.renderableSeries.asArray()) {
+        if (clickedSubChart) {
+            for (const series of clickedSubChart.renderableSeries.asArray()) {
                 if (series.isSelected) {
                     const group = this.resolveGroup(series)
                     if (group) currentlySelected.add(group)
@@ -55,6 +66,13 @@ export class SelectSyncModifier extends ChartModifierBase2D {
         this.syncSelectionState(new Set())
         this.selectedGroups.clear()
         this.onSelectionChange?.([])
+    }
+
+    /** Re-apply current selection state to all series (call after series are recreated). */
+    public reapplySelection(): void {
+        if (this.selectedGroups.size === 0) return
+        console.debug(`[SelectSync] Reapplying selection: [${[...this.selectedGroups]}]`)
+        this.syncSelectionState(this.selectedGroups)
     }
 
     private resolveGroup(series: IRenderableSeries): string | null {

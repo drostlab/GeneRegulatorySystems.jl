@@ -1,6 +1,7 @@
 /** Centralised chart styling constants. */
 
-export const CHART_FONT_FAMILY = "Arial"
+
+
 
 export const CHART_FONT_SIZES = {
     label: 10,
@@ -10,7 +11,7 @@ export const CHART_FONT_SIZES = {
 
 /** Default left-axis thickness (px). Counts panel uses a narrower value. */
 export const AXIS_THICKNESS = 50
-export const AXIS_THICKNESS_NARROW = 44
+export const AXIS_THICKNESS_NARROW = 50
 
 /** Palette for colouring schedule timeline segments by model path. */
 export const SEGMENT_PALETTE = [

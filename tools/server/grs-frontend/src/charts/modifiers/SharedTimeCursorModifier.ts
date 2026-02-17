@@ -2,7 +2,7 @@ import { ChartModifierBase2D, DpiHelper, EChart2DModifierType, ECoordinateMode, 
 
 
 /** Colour for the time cursor line and label. */
-const CURSOR_COLOUR = "#666666"
+const CURSOR_COLOUR = "#2b2b2b"
 
 
 export class SharedTimeCursorModifier extends ChartModifierBase2D {
@@ -98,6 +98,11 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
         const lastVisibleChart = [...this.parentSurface.subCharts].reverse().find(sc => sc.isVisible)
 
+        // Hide all time labels first (they may be stale from a previous bottom subchart)
+        for (const label of this.timeLabels.values()) {
+            label.isHidden = true
+        }
+
         this.parentSurface.subCharts.forEach(sc => {
             const rect = sc.seriesViewRect
             if (!rect) return
@@ -126,4 +131,44 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
         // Cursor stays visible at last position
     }
 
+    /** Programmatically move the cursor to a given time value. */
+    setCursorTime(time: number): void {
+        const lastVisibleChart = [...this.parentSurface.subCharts].reverse().find(sc => sc.isVisible)
+
+        for (const label of this.timeLabels.values()) {
+            label.isHidden = true
+        }
+
+        this.parentSurface.subCharts.forEach(sc => {
+            const rect = sc.seriesViewRect
+            if (!rect) return
+
+            const line = this.xLines.get(sc.id)
+            if (!line) return
+            line.isHidden = false
+            line.x1 = time
+            line.x2 = time
+            line.y1 = 0
+            line.y2 = rect.bottom / DpiHelper.PIXEL_RATIO
+
+            if (sc === lastVisibleChart) {
+                const label = this.timeLabels.get(sc.id)
+                if (label) {
+                    label.isHidden = false
+                    label.x1 = time
+                    label.text = time.toFixed(2)
+                }
+            }
+        })
+    }
+
+    /** Hide all cursor lines and labels. */
+    hideCursor(): void {
+        for (const line of this.xLines.values()) {
+            line.isHidden = true
+        }
+        for (const label of this.timeLabels.values()) {
+            label.isHidden = true
+        }
+    }
 }

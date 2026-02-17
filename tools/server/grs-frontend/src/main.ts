@@ -7,9 +7,15 @@ import 'primeicons/primeicons.css'
 import './style.css'
 import App from './App.vue'
 import Aura from '@primeuix/themes/aura'
-import { SciChartSurface } from "scichart";
+import { EWatermarkPosition, SciChartDefaults, SciChartSurface } from "scichart";
 
 SciChartSurface.UseCommunityLicense();
+SciChartDefaults.watermarkPosition = EWatermarkPosition.TopRight
+
+SciChartDefaults.nativeFontTimeout = 10000
+SciChartDefaults.canvasFontFamily = "Montserrat"
+SciChartDefaults.useNativeText = false
+
 
 const MyPreset = definePreset(Aura, {
     semantic: {

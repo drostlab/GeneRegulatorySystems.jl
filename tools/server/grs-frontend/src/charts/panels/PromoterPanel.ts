@@ -1,10 +1,10 @@
 import { EAxisAlignment, FastBandRenderableSeries, NumericAxis, SweepAnimation, XyyDataSeries } from "scichart"
 import { TimeseriesPanel } from "./TimeseriesPanel"
 import type { BasePanelOptions } from "./BasePanel"
-import type { TimeseriesData } from "@/types/simulation"
+import type { TimeseriesData, TimeseriesMetadata } from "@/types/simulation"
 import { restructureTimeseriesByPathAndGene } from "@/types/simulation"
 import { getGeneFromSpeciesName } from "@/types/schedule"
-import { CHART_FONT_FAMILY, CHART_FONT_SIZES, AXIS_THICKNESS } from "../chartConstants"
+import { CHART_FONT_SIZES, AXIS_THICKNESS } from "../chartConstants"
 
 const SWEEP_DURATION_MS = 400
 
@@ -25,16 +25,16 @@ export class PromoterPanel extends TimeseriesPanel {
         const xAxis = new NumericAxis(this.wasmContext, {
             axisTitle: "Time",
             labelStyle: { fontSize: CHART_FONT_SIZES.label },
-            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY },
+            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false
         })
 
         const yAxis = new NumericAxis(this.wasmContext, {
-            axisTitle: "Promoter Activity",
+            axisTitle: "Promoter",
             axisAlignment: EAxisAlignment.Left,
-            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title, fontFamily: CHART_FONT_FAMILY },
+            axisTitleStyle: { fontSize: CHART_FONT_SIZES.title},
             drawMajorBands: false,
             drawMajorGridLines: false,
             drawMinorGridLines: false,

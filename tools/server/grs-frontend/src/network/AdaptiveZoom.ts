@@ -10,7 +10,6 @@
 import type { Core, EventHandler } from 'cytoscape'
 import type { UnionNetwork } from '@/types/network'
 import { getDetailElements } from './networkElements'
-import { SPECIES_TYPES } from '@/types/schedule'
 
 /** Zoom level above which species/reactions become visible. */
 const ZOOM_THRESHOLD = 3.0
@@ -101,7 +100,6 @@ export class AdaptiveZoom {
 
         this.detailVisible = true
         this.onDetailChange?.(true)
-        console.debug(`[AdaptiveZoom] Detail shown: ${newElements.length} elements added`)
     }
 
     private hideDetail(): void {
@@ -119,7 +117,6 @@ export class AdaptiveZoom {
 
         this.detailVisible = false
         this.onDetailChange?.(false)
-        console.debug('[AdaptiveZoom] Detail hidden')
     }
 
     /** Save all gene/orphan-species positions. */

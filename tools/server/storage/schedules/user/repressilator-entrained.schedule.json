@@ -23,7 +23,7 @@
         "dark_model": {"{regulation/v1}": {"$": "repressilator"}},
         "light_model": {"{regulation/v1}": {
             "$": "repressilator",
-            "reactions": [{"from": [2], "rate": 0.001, "to": []}]
+            "reactions": [{"from": [2], "rate": 0.001, "to": [1]}]
         }},
         "step": [
             {"{seed}": "${seed}-rep"},

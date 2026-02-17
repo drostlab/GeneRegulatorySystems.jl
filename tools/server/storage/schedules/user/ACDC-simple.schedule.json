@@ -10,13 +10,13 @@
                 },
                 {
                     "$": ["defaults", "gene"],
-                    "activation": [{"from": 2, "at": 2.0}],
-                    "repression": [{"from": 1, "at": 0.04}]
+                    "activation": [{"from": 2, "at": 1.0}],
+                    "repression": [{"from": 1, "at": 0.004}]
                 },
                 {
                     "$": ["defaults", "gene"],
                     "activation": [{"from": 3, "at": 2.0}],
-                    "repression": [{"from": 2, "at": 4.0}, {"from": 1, "at": 4.0}]
+                    "activation": [{"from": 2, "at": 4.0}, {"from": 1, "at": 4.0}]
                 }
             ]
         }},
