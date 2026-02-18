@@ -1,5 +1,6 @@
 import { EXyDirection, MouseWheelZoomModifier, SciChartSurface, ZoomExtentsModifier, ZoomPanModifier, SeriesSelectionModifier, type TSciChart } from "scichart"
 import { AxisSyncModifier } from "./modifiers/AxisSyncModifier"
+import { DragGuardModifier } from "./modifiers/DragGuardModifier"
 import { SelectSyncModifier, type GroupingFn } from "./modifiers/SelectSyncModifier"
 import type { BasePanel, BasePanelOptions } from "./panels/BasePanel"
 import type { TimeseriesPanel } from "./panels/TimeseriesPanel"
@@ -18,6 +19,7 @@ import { useScheduleStore } from "@/stores/scheduleStore"
 
 export type SelectionChangeCallback = (selectedGenes: string[]) => void
 export type SegmentClickCallback = (segmentId: number, modelPath: string) => void
+export type HoverChangeCallback = (modelPath: string | null) => void
 
 export class MainChart {
     private surface!: SciChartSurface
@@ -30,6 +32,7 @@ export class MainChart {
     private timepointChangeCallback?: (timepoint: number) => void
     private selectionChangeCallback?: SelectionChangeCallback
     private segmentClickCallback?: SegmentClickCallback
+    private hoverChangeCallback?: HoverChangeCallback
 
     async init(containerRef: Ref<HTMLDivElement | undefined>) {
         const { sciChartSurface, wasmContext } = await SciChartSurface.create(containerRef.value!, { theme: appTheme })
@@ -43,6 +46,7 @@ export class MainChart {
             parentSurface: this.surface,
             wasmContext: this.wasmContext,
             modifiers: [
+                { modifierClass: DragGuardModifier },
                 { modifierClass: ZoomPanModifier, args: { xyDirection: EXyDirection.XDirection } },
                 { modifierClass: MouseWheelZoomModifier, args: { xyDirection: EXyDirection.XDirection } },
                 { modifierClass: ZoomExtentsModifier },
@@ -81,6 +85,9 @@ export class MainChart {
         timelinePanel.onSegmentClick((segmentId, modelPath) => {
             this.segmentClickCallback?.(segmentId, modelPath)
         })
+        timelinePanel.onHoverChange((modelPath) => {
+            this.hoverChangeCallback?.(modelPath)
+        })
 
         console.debug(`[MainChart] Initialised with ${this.tracks.length} tracks`)
     }
@@ -95,6 +102,15 @@ export class MainChart {
 
     onSegmentClick(callback: SegmentClickCallback): void {
         this.segmentClickCallback = callback
+    }
+
+    onHoverChange(callback: HoverChangeCallback): void {
+        this.hoverChangeCallback = callback
+    }
+
+    /** Deselect any selected segment in the timeline panel. */
+    deselectSegment(): void {
+        this.getTimelinePanel().deselectSegment()
     }
 
     private getTimelinePanel(): TimelinePanel {

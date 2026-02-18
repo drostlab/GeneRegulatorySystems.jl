@@ -95,9 +95,10 @@ function layoutBranched(
     const n = node.children.length
     if (n === 0) return
     const bandHeight = (yMax - yMin) / n
+    // Assign top-to-bottom: first child gets highest y-band
     for (let i = 0; i < n; i++) {
-        const childYMin = yMin + i * bandHeight
-        const childYMax = childYMin + bandHeight
+        const childYMax = yMax - i * bandHeight
+        const childYMin = childYMax - bandHeight
         layoutNode(node.children[i]!, segmentsByPath, childYMin, childYMax, out)
     }
 }
@@ -137,8 +138,11 @@ function collectNodeRanges(
     if (node.type === 'branch') {
         const n = node.children.length
         const bandHeight = (yMax - yMin) / n
+        // Top-to-bottom: first child gets highest y-band
         for (let i = 0; i < n; i++) {
-            collectNodeRanges(node.children[i]!, yMin + i * bandHeight, yMin + (i + 1) * bandHeight, out)
+            const childYMax = yMax - i * bandHeight
+            const childYMin = childYMax - bandHeight
+            collectNodeRanges(node.children[i]!, childYMin, childYMax, out)
         }
     } else {
         // scope, sequence: children share full y-range

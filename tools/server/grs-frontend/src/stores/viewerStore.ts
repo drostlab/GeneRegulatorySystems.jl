@@ -17,9 +17,12 @@ export const useViewerStore = defineStore('viewer', () => {
     const selectedGenes = ref<string[]>([])
     const selectedSpeciesTypes = ref<SpeciesType[]>([])
     const selectedSegmentIds = ref<Set<number> | null>(null)
+    /** Model path currently hovered in the timeline panel (null when not hovering). */
+    const hoveredModelPath = ref<string | null>(null)
 
-    /** Active model path derived from current timepoint and schedule segments. */
+    /** Active model path: hovered model takes priority, else derived from current timepoint. */
     const activeModelPath = computed((): string | null => {
+        if (hoveredModelPath.value) return hoveredModelPath.value
         const scheduleStore = useScheduleStore()
         const segments = scheduleStore.segments
         if (!segments.length) return null
@@ -98,9 +101,14 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSegmentIds.value = ids
     }
 
+    function setHoveredModelPath(path: string | null): void {
+        hoveredModelPath.value = path
+    }
+
     function reset(): void {
         currentTimepoint.value = 0
         selectedSegmentIds.value = null
+        hoveredModelPath.value = null
     }
 
     return {
@@ -108,11 +116,13 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedGenes,
         selectedSpeciesTypes,
         selectedSegmentIds,
+        hoveredModelPath,
         activeModelPath,
         selectedPaths,
         proteinCountsAtTimepoint,
         maxProteinCounts,
         setTimepoint,
+        setHoveredModelPath,
         selectSegments,
         reset
     }

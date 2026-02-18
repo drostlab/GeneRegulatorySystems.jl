@@ -349,6 +349,11 @@ function _collect_segments(grs_schedule)::Tuple{Vector{TimelineSegment}, Vector{
     genes = Set{String}()
     seen_model_paths = Set{String}()
 
+    # TODO: use a custom approach to collect segments
+    # the dryrun of the schedule still has to construct all the models
+    # if I want to load a large kronecker graph, i dont care about the reaction network
+    # so I can skip building the model if I only care about the gene-level network and segments
+
     function dryrun_collector(primitive!, x, Δt; path, _...)
         label = _label(primitive!.f!.model)
         model_path = primitive!.path

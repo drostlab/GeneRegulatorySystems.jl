@@ -26,7 +26,7 @@ import Select, { type SelectChangeEvent } from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import * as scheduleService from '@/services/scheduleService'
-import { computeScheduleKey, parseScheduleKey } from '@/types/schedule'
+import { parseScheduleKey } from '@/types/schedule'
 
 const store = useScheduleStore()
 const simulationStore = useSimulationStore()
@@ -132,16 +132,15 @@ async function saveEdit() {
     
     console.assert(editor.isEditing, "saveEdit called while not editing")
 
-    // edited name: save to new user file
-    if (editor.currentName !== store.schedule.name || currentJson !== store.schedule.spec)
-        await scheduleService.uploadSchedule(currentJson, editor.currentName)
+    const hasChanges = editor.currentName !== store.schedule.name || currentJson !== store.schedule.spec
+    if (hasChanges) {
+        // Upload and use the response directly (already contains reified data)
+        const uploaded = await scheduleService.uploadSchedule(currentJson, editor.currentName)
+        store.setSchedule(uploaded)
+    }
 
-    // update the schedule list
+    // Update the schedule list
     availableScheduleKeys.value = await scheduleService.fetchAvailableSchedules()
-
-    // load the new file
-    const scheduleKey = computeScheduleKey(editor.currentName, 'user')
-    await store.loadScheduleByKey(scheduleKey)
 
     resetEditor()
 }

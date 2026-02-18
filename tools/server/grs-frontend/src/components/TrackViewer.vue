@@ -184,21 +184,43 @@ onMounted(async () => {
     })
 
     chart.onSelectionChange((selectedGenes: string[]) => {
-        console.debug(`[TrackViewer] Selection callback: [${selectedGenes}], previous: [${viewerStore.selectedGenes}]`)
+        // Skip deselect when this fires in the same event as a segment click
+        if (skipSegmentDeselect) {
+            skipSegmentDeselect = false
+        } else if (viewerStore.selectedSegmentIds) {
+            chart.deselectSegment()
+            viewerStore.selectSegments(null)
+        }
         if (selectedGenes.length === 1) {
             previousGeneSelection.value = [...viewerStore.selectedGenes]
             viewerStore.selectedGenes = [selectedGenes[0]!]
         } else if (selectedGenes.length === 0 && previousGeneSelection.value) {
-            // Restore previous selection when user clicks empty space
             console.debug(`[TrackViewer] Restoring previous selection: [${previousGeneSelection.value}]`)
             viewerStore.selectedGenes = previousGeneSelection.value
             previousGeneSelection.value = null
         }
     })
 
+    /**
+     * Flag to prevent onSelectionChange from immediately deselecting a segment
+     * that was just selected in onSegmentClick (both fire in the same event tick).
+     */
+    let skipSegmentDeselect = false
+
     chart.onSegmentClick(async (segmentId: number, _modelPath: string) => {
+        if (segmentId < 0) {
+            // Deselect: segmentId = -1 signals deselection from TimelinePanel
+            console.debug('[TrackViewer] Segment deselected')
+            viewerStore.selectSegments(null)
+            return
+        }
+        skipSegmentDeselect = true
         console.debug(`[TrackViewer] Segment click: id=${segmentId}`)
         viewerStore.selectSegments(new Set([segmentId]))
+    })
+
+    chart.onHoverChange((modelPath: string | null) => {
+        viewerStore.setHoveredModelPath(modelPath)
     })
 
     window.addEventListener('keydown', handleEscapeKey)
@@ -252,7 +274,7 @@ function clearSimulation() {
     if (simulationStore.isSimulationRunning) {
         simulationStore.cancelSimulation()
     }
-    chart.clear()
+    chart.clearSimulationData()
     simulationStore.clearResult()
     selectedTracks.value = scheduleStore.isLoaded ? ['schedule'] : []
     // Reset streaming buffer
@@ -270,6 +292,12 @@ function toggleFullscreen() {
 
 function handleEscapeKey(event: KeyboardEvent) {
     if (event.key === 'Escape') {
+        // Deselect segment selection first (also zooms back to full extent)
+        if (viewerStore.selectedSegmentIds) {
+            chart.deselectSegment()
+            viewerStore.selectSegments(null)
+            return
+        }
         if (previousGeneSelection.value) {
             viewerStore.selectedGenes = previousGeneSelection.value
             previousGeneSelection.value = null

@@ -18,23 +18,24 @@
 | File | Purpose | Key State/Actions |
 | ------ | --------- | ------------------- |
 | `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`, `isNetworkLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork`, `clearNetwork`. Spec-skip: compares new spec to current before reloading. |
-| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`. Computed: `activeModelPath` (derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint`, `maxProteinCounts`. Actions: `selectSegments` |
+| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`, `hoveredModelPath`. Computed: `activeModelPath` (hovered model takes priority, else derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint`, `maxProteinCounts`. Actions: `selectSegments`, `setHoveredModelPath` |
 | `simulationStore.ts` | Simulation results with lazy loading + streaming | State: `currentResult` (`SimulationResult | null`), `isSimulationRunning`, `isPaused`, `timeseriesCache`, `fetchedGenes`, `streamingBuffer`. Computed: `timeseries`, `progress`, `currentResultId`, `currentResultLabel`. Actions: `runSimulation`, `loadResult`, `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)`, `pauseSimulation`, `resumeSimulation`, `updateStreamSubscription(genes)` |
 
 ### Charts (SciChart)
 
 | File | Purpose |
 | ------ | --------- |
-| `MainChart.ts` | Orchestrates all panels. Creates `SeriesSyncCoordinator` with gene grouping function and passes it to panels via `BasePanelOptions`. Callbacks: `onTimepointChange`, `onSelectionChange`, `onSegmentClick`. |
+| `MainChart.ts` | Orchestrates all panels. Creates `SeriesSyncCoordinator` with gene grouping function and passes it to panels via `BasePanelOptions`. Callbacks: `onTimepointChange`, `onSelectionChange`, `onSegmentClick`, `onHoverChange`. |
 | `SeriesSyncCoordinator.ts` | Syncs hover state across subcharts by group key. Dims non-hovered series (opacity=0.3), skips null-group (segments). Invalidates parent surface after sync. Reentrancy-guarded. |
 | `panels/BasePanel.ts` | Abstract base: surface, wasmContext, coordinator, visibility, `setTimeExtent` |
 | `panels/TimeseriesPanel.ts` | Abstract: adds `metadata`, `pathTimeRanges`, abstract `setData`, `appendStreamingData`, `clearData` |
-| `panels/TimelinePanel.ts` | FastRectangleRenderableSeries for schedule segments. Path-only labels (small font). Hover tooltip shows label+path+model. Instant labels stacked at top. Click fires segment callback. |
+| `panels/TimelinePanel.ts` | FastRectangleRenderableSeries for schedule segments. Dynamic label sizing (hidden when too small). Hover tooltip with edge-aware positioning (pixel coords). Instant models: TextAnnotation with background fill and hover highlight. Click-to-select zooms x-axis to segment; click again deselects. DragGuardModifier prevents drag-release from selecting. Hover fires `onHoverChange` for network model filtering. |
 | `panels/PromoterPanel.ts` | FastBandRenderableSeries for promoter activity, positioned by `pathYRanges`. Hover dims via coordinator. Streaming: `appendStreamingData` with cursor extension for XyyDataSeries. SweepAnimation on `setData`. |
 | `panels/CountsPanel.ts` | FastLineRenderableSeries for mRNA/protein counts. Hover dims via coordinator. Streaming: `appendStreamingData` with cursor extension for XyDataSeries. SweepAnimation on `setData`. |
 | `charts/chartConstants.ts` | Centralised font family, font sizes, axis thickness, and segment palette |
 | `layout/rectangleLayout.ts` | `layoutRectangles(structure, segments, yMin, yMax)` and `collectPathYRanges` |
 | `modifiers/AxisSyncModifier.ts` | Syncs X-axis visible range across sub-charts |
+| `modifiers/DragGuardModifier.ts` | Tracks mouse delta between mouseDown/mouseMove. Exposes `isDrag` flag for click-vs-drag discrimination. Added first in modifier list. |
 | `modifiers/SelectSyncModifier.ts` | Syncs selection by group key across sub-charts. Accepts generic `GroupingFn`. Scans subcharts directly (no cache). |
 | `modifiers/SharedTimeCursorModifier.ts` | Vertical cursor line synced across sub-charts |
 | `modifiers/SubChartLayoutModifier.ts` | Vertical stacking of visible sub-charts |
@@ -59,7 +60,7 @@
 3. `NetworkDiagram` watches `scheduleStore.unionNetwork` -> `NetworkView.setNetwork()` -> renders gene-level graph -> fcose layout runs once -> sub-modules attach: `ModelFilter` hides excluded nodes for first model, `SelectionSync` + `DynamicsSync` start watching.
 4. Simulation loaded -> `simulationStore.loadResult` loads metadata only. `selectedGenes` watcher triggers `fetchGeneTimeseries(genes)` which lazily loads per-gene timeseries via `POST /simulations/{id}/timeseries`. After fetch -> `refreshSimulationData()` pushes to chart with `SweepAnimation`.
 5. Gene selection: click on series (chart) -> `viewerStore.selectedGenes` updates -> lazy fetch for new genes -> `SelectionSync` highlights in network. Click on gene node (network) -> same flow.
-6. `activeModelPath` is a computed derived from `currentTimepoint` + segments. As time cursor moves, model filter updates automatically.
+6. `activeModelPath` is a computed that prioritises `hoveredModelPath` (from timeline hover), falling back to `currentTimepoint` + segments. Hovering a timeline segment updates the network in real-time.
 7. Zoom in past threshold -> `AdaptiveZoom` adds species/reaction nodes (gene positions pinned) -> `ModelFilter.refresh()` + `SelectionSync.refresh()`.
 
 ### Simulation Streaming

@@ -141,6 +141,13 @@ export const useScheduleStore = defineStore(
             }
         }
 
+        /** Directly set a pre-loaded schedule (e.g. from upload response), avoiding a redundant server fetch. */
+        function setSchedule(loaded: Schedule): void {
+            clearNetwork()
+            schedule.value = loaded
+            console.debug(`[ScheduleStore] Set schedule directly: ${loaded.source}/${loaded.name}`)
+        }
+
         function getSpeciesForGeneId(gene: string): string[] {
             if (!schedule.value.data) return []
             return getSpeciesForGene(schedule.value.data, gene)
@@ -166,6 +173,7 @@ export const useScheduleStore = defineStore(
             modelPaths,
             loadScheduleByKey,
             loadScheduleBySpec,
+            setSchedule,
             fetchUnionNetwork,
             getSpeciesForGeneId,
             getSpeciesForSpeciesType

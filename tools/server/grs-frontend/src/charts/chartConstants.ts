@@ -15,6 +15,5 @@ export const AXIS_THICKNESS_NARROW = 23
 
 /** Palette for colouring schedule timeline segments by model path. */
 export const SEGMENT_PALETTE = [
-    "#B3D9FF", "#FFD9B3", "#B3FFD9", "#FFB3D9",
-    "#D9B3FF", "#D9FFB3", "#FFE6B3", "#B3FFE6"
+    "#d2d2d2"
 ] as const
