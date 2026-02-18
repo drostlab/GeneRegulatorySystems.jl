@@ -1,5 +1,6 @@
 /** Centralised chart styling constants. */
 
+import { getTheme } from '@/config/theme'
 
 
 
@@ -14,6 +15,9 @@ export const AXIS_THICKNESS = 23
 export const AXIS_THICKNESS_NARROW = 23
 
 /** Palette for colouring schedule timeline segments by model path. */
-export const SEGMENT_PALETTE = [
-    "#d2d2d2"
-] as const
+export function getSegmentPalette(isDark: boolean): readonly string[] {
+    return getTheme(isDark).timeline.segmentPalette
+}
+
+/** Default segment palette (light mode). Used where isDark is not available. */
+export const SEGMENT_PALETTE = getTheme(false).timeline.segmentPalette

@@ -18,7 +18,7 @@
 | File | Purpose | Key State/Actions |
 | ------ | --------- | ------------------- |
 | `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`, `isNetworkLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork`, `clearNetwork`. Spec-skip: compares new spec to current before reloading. |
-| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`, `hoveredModelPath`. Computed: `activeModelPath` (hovered model takes priority, else derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint`, `maxProteinCounts`. Actions: `selectSegments`, `setHoveredModelPath` |
+| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesTypes`, `selectedSegmentIds`, `hoveredModelPath`, `hoveredExecutionPath`. Computed: `activeModelPath` (hovered model takes priority, else derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint` (filters to hovered path or active-at-timepoint paths), `maxProteinCounts`. Actions: `selectSegments`, `setHoveredModelPath` |
 | `simulationStore.ts` | Simulation results with lazy loading + streaming | State: `currentResult` (`SimulationResult | null`), `isSimulationRunning`, `isPaused`, `timeseriesCache`, `fetchedGenes`, `streamingBuffer`. Computed: `timeseries`, `progress`, `currentResultId`, `currentResultLabel`. Actions: `runSimulation`, `loadResult`, `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)`, `pauseSimulation`, `resumeSimulation`, `updateStreamSubscription(genes)` |
 
 ### Charts (SciChart)
@@ -28,17 +28,18 @@
 | `MainChart.ts` | Orchestrates all panels. Creates `SeriesSyncCoordinator` with gene grouping function and passes it to panels via `BasePanelOptions`. Callbacks: `onTimepointChange`, `onSelectionChange`, `onSegmentClick`, `onHoverChange`. |
 | `SeriesSyncCoordinator.ts` | Syncs hover state across subcharts by group key. Dims non-hovered series (opacity=0.3), skips null-group (segments). Invalidates parent surface after sync. Reentrancy-guarded. |
 | `panels/BasePanel.ts` | Abstract base: surface, wasmContext, coordinator, visibility, `setTimeExtent` |
-| `panels/TimeseriesPanel.ts` | Abstract: adds `metadata`, `pathTimeRanges`, abstract `setData`, `appendStreamingData`, `clearData` |
-| `panels/TimelinePanel.ts` | FastRectangleRenderableSeries for schedule segments. Dynamic label sizing (hidden when too small). Hover tooltip with edge-aware positioning (pixel coords). Instant models: TextAnnotation with background fill and hover highlight. Click-to-select zooms x-axis to segment; click again deselects. DragGuardModifier prevents drag-release from selecting. Hover fires `onHoverChange` for network model filtering. |
+| `panels/TimeseriesPanel.ts` | Abstract: adds `metadata`, `pathTimeRanges`, segment boundary dashed lines (`setSegmentBoundaries`), abstract `setData`, `appendStreamingData`, `clearData` |
+| `panels/TimelinePanel.ts` | FastRectangleRenderableSeries for schedule segments. Dynamic label sizing (hidden when too small, re-evaluated on zoom via `visibleRangeChanged`). Selected segment highlighted with purple fill/stroke from theme, tracked via `restoreSelectedSeries`. Hover tooltip with edge-aware positioning (pixel coords, x-offset to avoid line overlap). Instant models: TextAnnotation with background fill and hover highlight; hover mutations batched in `suspendUpdates`/`resumeUpdates` to prevent rendering artefacts. Click-to-select zooms x-axis to segment; click again deselects. DragGuardModifier prevents drag-release from selecting. Hover fires `onHoverChange` for network model filtering. Annotations hidden when panel is hidden (isVisible override). |
 | `panels/PromoterPanel.ts` | FastBandRenderableSeries for promoter activity, positioned by `pathYRanges`. Hover dims via coordinator. Streaming: `appendStreamingData` with cursor extension for XyyDataSeries. SweepAnimation on `setData`. |
 | `panels/CountsPanel.ts` | FastLineRenderableSeries for mRNA/protein counts. Hover dims via coordinator. Streaming: `appendStreamingData` with cursor extension for XyDataSeries. SweepAnimation on `setData`. |
-| `charts/chartConstants.ts` | Centralised font family, font sizes, axis thickness, and segment palette |
+| `charts/chartConstants.ts` | Centralised font family, font sizes, axis thickness, segment palette. `getSegmentPalette(isDark)` for mode-aware palette. |
+| `charts/theme.ts` | `getSciChartTheme(isDark)` — bridge to `getTheme(isDark).sciChartTheme` |
 | `layout/rectangleLayout.ts` | `layoutRectangles(structure, segments, yMin, yMax)` and `collectPathYRanges` |
 | `modifiers/AxisSyncModifier.ts` | Syncs X-axis visible range across sub-charts |
 | `modifiers/DragGuardModifier.ts` | Tracks mouse delta between mouseDown/mouseMove. Exposes `isDrag` flag for click-vs-drag discrimination. Added first in modifier list. |
 | `modifiers/SelectSyncModifier.ts` | Syncs selection by group key across sub-charts. Accepts generic `GroupingFn`. Scans subcharts directly (no cache). |
 | `modifiers/SharedTimeCursorModifier.ts` | Vertical cursor line synced across sub-charts |
-| `modifiers/SubChartLayoutModifier.ts` | Vertical stacking of visible sub-charts |
+| `modifiers/SubChartLayoutModifier.ts` | Vertical stacking of visible sub-charts. Collapses hidden sub-charts to zero-area Rect so they don't render at stale positions. Adaptive y-axis title font scaling based on panel pixel height. |
 
 ### Network (Cytoscape)
 
@@ -52,6 +53,16 @@
 | `network/SelectionSync.ts` | Two-way sync: `viewerStore.selectedGenes` <-> Cytoscape node tap. Multi-select: click toggles gene in/out of selection. Highlights selected, dims others. |
 | `network/DynamicsSync.ts` | Watches `viewerStore.proteinCountsAtTimepoint` + `selectedGenes`. Only resizes selected genes (80-250 x 40-100); unselected stay at base size. Debounced at 16ms. |
 | `network/EdgeTooltip.ts` | Edge hover tooltip showing link kind. Lightweight DOM element positioned at cursor. |
+
+### Theming & Dark Mode
+
+| File | Purpose |
+| ------ | --------- |
+| `config/theme.ts` | Single source of truth. Palettes (RED, PURPLE, GREEN, GREY), EDGE_COLOURS (mode-independent), light/dark ThemeMode objects, `getTheme(isDark)`, `palette` export for PrimeVue preset. Each ThemeMode bundles a SciChart `IThemeProvider`. |
+| `composables/useTheme.ts` | Reactive `isDark` ref, OS-preference fallback, localStorage persistence. `toggle()`, `onThemeChange(fn)` for imperative consumers. Toggles `.app-dark` class on `<html>`. |
+| `utils/logging.ts` | Lightweight tagged logger: `getLogger(tag)` returns `{ debug, info, warn, error }`. Debug only in dev. |
+
+**Architecture:** `theme.ts` defines hex palettes once. Mode themes reference only palette entries. PrimeVue reads `palette.*` in `main.ts` preset. SciChart/Cytoscape call `getTheme(isDark)`. `useTheme` composable provides reactive state; Vue components wire `onThemeChange` to call `MainChart.applyTheme(dark)` / `NetworkView.applyTheme(dark)` for runtime switching.
 
 ### Data Flow
 
@@ -107,7 +118,7 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 
 | File | Key Types |
 | ------ | ----------- |
-| `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule` |
+| `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule`. Functions: `getPathTimeRanges`, `getSegmentBoundaryTimes`, `getActivePathsAtTime` |
 | `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` (unified; `current_time`, `max_time`, `status` includes `'paused'`), `SimulationStatus`, `getProgress()`, `getMaxTime()`, `formatResultLabel()` |
 | `types/network.ts` | `Node`, `Link`, `Network`, `UnionNetwork`, `ModelExclusions`, `linkId()`, `MODEL_NODE_KINDS` |
 
@@ -124,7 +135,7 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 
 | File | Purpose |
 | ------ | --------- |
-| `utils/colorUtils.ts` | `parseHex`, `rgbToHex`, `lerpColor`, `lighten`, `darken`, `withOpacity` |
+| `utils/colorUtils.ts` | `parseColour` (hex + HSL), `rgbToHex`, `lerpColor`, `lighten`, `darken`, `withOpacity` |
 | `utils/api.ts` | `apiFetch`, `apiFetchJson`, `apiFetchText` with retry/timeout |
 | `services/scheduleService.ts` | Schedule API: load, save, list, `fetchUnionNetwork`, `fetchNetwork`, `fetchNetworkFromSpec` |
 | `services/simulationService.ts` | Simulation API: `runSimulation`, `loadResult`, `listResults`, `fetchTimeseriesForSpecies` |

@@ -1,10 +1,13 @@
-import { SciChartJSDarkv2Theme, SciChartJSLightTheme } from 'scichart'
+/**
+ * SciChart theme accessor.
+ *
+ * Returns the IThemeProvider from the centralised theme for the current mode.
+ * Used by MainChart and BasePanel at surface creation time.
+ */
 
+import { getTheme } from '@/config/theme'
 
-// TODO: add more styiling here perhaps?
-function createTheme() {
-    const isDarkMode = document.documentElement.classList.contains('app-dark')
-    return isDarkMode ? new SciChartJSDarkv2Theme() : new SciChartJSLightTheme()
+/** Get the SciChart theme for the current mode. */
+export function getSciChartTheme(isDark: boolean) {
+    return getTheme(isDark).sciChartTheme
 }
-
-export const appTheme = createTheme()

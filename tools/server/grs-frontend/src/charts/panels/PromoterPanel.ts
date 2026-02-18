@@ -230,7 +230,7 @@ export class PromoterPanel extends TimeseriesPanel {
 
     /** Create a new XyyDataSeries + FastBandRenderableSeries for streaming. */
     private _createStreamingSeries(key: string, geneId: string): XyyDataSeries {
-        const colour = this.metadata!.gene_colours[geneId] ?? "gray"
+        const colour = this.metadata!.gene_colours[geneId] ?? this.theme.chart.fallbackSeries
         const xyyData = new XyyDataSeries(this.wasmContext, {
             isSorted: true,
             containsNaN: false,

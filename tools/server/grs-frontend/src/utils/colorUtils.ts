@@ -1,9 +1,9 @@
 /**
- * Modern colour utilities using CSS color-mix where possible
+ * Colour utilities (hex-based)
  */
 
 /**
- * Parse hex colour to RGB components
+ * Parse a hex colour string to RGB components.
  */
 export function parseHex(hex: string): { r: number; g: number; b: number } {
     const clean = hex.replace('#', '')

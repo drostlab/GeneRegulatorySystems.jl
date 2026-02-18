@@ -1,9 +1,17 @@
 /**
  * Network visualization configuration
- * 
- * Defines colours, sizes, and styling for different node/edge types.
- * Separated from rendering logic to allow easy customization.
+ *
+ * Defines sizes and styling for different node/edge types.
+ * Colours are imported from the centralised theme.
  */
+
+import {
+    EDGE_COLOURS,
+    EDGE_COLOUR_FALLBACK,
+    getTheme,
+} from './theme'
+
+export { EDGE_COLOURS }
 
 export interface EdgeStyleConfig {
     colour: string
@@ -18,55 +26,45 @@ export interface NodeStyleConfig {
 }
 
 /**
- * Edge colour configuration by kind
- */
-export const EDGE_COLOURS: Record<string, string> = {
-    activation: '#787878',
-    repression: '#e16868',
-    proteolysis: '#FF7F00',
-    substrate: '#999999',
-    product: '#666666',
-    next: '#4DAF4A',
-    alternative: '#984EA3'
-}
-
-/**
  * Edge style configuration by kind
  */
 export const EDGE_STYLES: Record<string, EdgeStyleConfig> = {
     activation: {
-        colour: EDGE_COLOURS.activation,
+        colour: EDGE_COLOURS.activation!,
         width: 2
     },
     repression: {
-        colour: EDGE_COLOURS.repression,
+        colour: EDGE_COLOURS.repression!,
         width: 2
     },
     proteolysis: {
-        colour: EDGE_COLOURS.proteolysis,
+        colour: EDGE_COLOURS.proteolysis!,
         width: 2
     },
     substrate: {
-        colour: EDGE_COLOURS.substrate,
+        colour: EDGE_COLOURS.substrate!,
         width: 1,
         style: 'dashed'
     },
     product: {
-        colour: EDGE_COLOURS.product,
+        colour: EDGE_COLOURS.product!,
         width: 1,
         style: 'dashed'
     }
 }
 
 /**
- * Node style defaults
+ * Node style defaults (uses light theme as the baseline).
  */
-export const NODE_DEFAULTS = {
-    colour: '#999999',
-    borderWidth: 2,
-    borderColour: '#333',
-    fontSize: 10,
-    fontFamily: 'Montserrat'
+export function getNodeDefaults(isDark = false) {
+    const t = getTheme(isDark)
+    return {
+        colour: t.network.nodeFallback,
+        borderWidth: 2,
+        borderColour: t.network.nodeBorder,
+        fontSize: 10,
+        fontFamily: 'Montserrat',
+    }
 }
 
 /**
@@ -83,7 +81,7 @@ export const NODE_SIZES: Record<string, { width: number; height: number }> = {
  * Get edge colour by kind
  */
 export function getEdgeColour(kind: string): string {
-    return EDGE_COLOURS[kind] || EDGE_COLOURS.substrate
+    return EDGE_COLOURS[kind] || EDGE_COLOUR_FALLBACK
 }
 
 /**
@@ -91,7 +89,7 @@ export function getEdgeColour(kind: string): string {
  */
 export function getEdgeStyle(kind: string): EdgeStyleConfig {
     return EDGE_STYLES[kind] || {
-        colour: EDGE_COLOURS.substrate,
+        colour: EDGE_COLOUR_FALLBACK,
         width: 1
     }
 }

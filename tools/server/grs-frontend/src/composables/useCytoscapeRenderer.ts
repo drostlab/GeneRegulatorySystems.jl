@@ -7,7 +7,7 @@ import { lighten } from '@/utils/colorUtils'
 import {
     getEdgeColour,
     shouldShowEdgeLabel,
-    NODE_DEFAULTS,
+    getNodeDefaults,
     NODE_SIZES
 } from '@/config/networkVisualization'
 
@@ -57,8 +57,9 @@ export function convertToElements(network: Network, geneColours: Record<string, 
 }
 
 function getNodeColour(node: any, geneColours: Record<string, string>): string {
+    const defaults = getNodeDefaults()
     if (node.kind === 'gene') {
-        const base = geneColours[node.name] || NODE_DEFAULTS.colour
+        const base = geneColours[node.name] || defaults.colour
         return lighten(base, 0.4)
     }
     
@@ -66,7 +67,7 @@ function getNodeColour(node: any, geneColours: Record<string, string>): string {
         return geneColours[node.parent]
     }
     
-    return NODE_DEFAULTS.colour
+    return defaults.colour
 }
 
 function formatLinkLabel(link: any): string {
@@ -81,6 +82,7 @@ function formatLinkLabel(link: any): string {
  * Cytoscape style definitions
  */
 export function getDefaultStyles(): any[] {
+    const defaults = getNodeDefaults()
     return [
         {
             selector: 'node',
@@ -88,10 +90,10 @@ export function getDefaultStyles(): any[] {
                 'content': 'data(label)',
                 'text-valign': 'bottom',
                 'text-halign': 'center',
-                'font-size': NODE_DEFAULTS.fontSize,
-                'font-family': NODE_DEFAULTS.fontFamily,
-                'border-width': NODE_DEFAULTS.borderWidth,
-                'border-color': NODE_DEFAULTS.borderColour,
+                'font-size': defaults.fontSize,
+                'font-family': defaults.fontFamily,
+                'border-width': defaults.borderWidth,
+                'border-color': defaults.borderColour,
                 'background-color': 'data(colour)'
             }
         },

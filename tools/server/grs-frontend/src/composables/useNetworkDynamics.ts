@@ -6,6 +6,7 @@ import { ref, watch, type Ref } from 'vue'
 import type { Core } from 'cytoscape'
 import { useViewerStore } from '@/stores/viewerStore'
 import { lerpColor } from '@/utils/colorUtils'
+import { getTheme } from '@/config/theme'
 
 export function useNetworkDynamics(cy: Ref<Core | null>) {
     const viewerStore = useViewerStore()
@@ -26,7 +27,7 @@ export function useNetworkDynamics(cy: Ref<Core | null>) {
             const maxValue = maxValues[id] ?? 1
             const normalised = Math.min(1, value / maxValue)
 
-            const baseColour = node.data('colour') || '#999999'
+            const baseColour = node.data('colour') || getTheme(false).network.nodeFallback
             const colour = lerpColor('#FFFFFF', baseColour, normalised)
             const opacity = 0.4 + 0.6 * normalised
 

@@ -14,18 +14,17 @@
  *   - `.loop`: self-loop edge styling
  */
 
+import {
+    EDGE_COLOURS as THEME_EDGE_COLOURS,
+    EDGE_COLOUR_FALLBACK,
+    DIM_OPACITY as THEME_DIM_OPACITY,
+    getTheme,
+} from '@/config/theme'
+
 const FONT_FAMILY = 'Montserrat'
 
-/** Edge colours by link kind. */
-export const EDGE_COLOURS: Record<string, string> = {
-    activation: '#777e78',
-    repression: '#e16868',
-    proteolysis: '#ffa54a',
-    substrate: '#999999',
-    product: '#666666',
-    next: '#4DAF4A',
-    alternative: '#984EA3',
-}
+/** Edge colours re-exported from theme for backward compat. */
+export const EDGE_COLOURS = THEME_EDGE_COLOURS
 
 /** Gene node base dimensions (scaled by protein count). */
 export const GENE_BASE = { width: 120, height: 50 }
@@ -43,10 +42,10 @@ export const ORPHAN_SPECIES_SIZE = { width: GENE_BASE.width * 0.7, height: GENE_
 export const REACTION_SIZE = 3
 
 /** Opacity for dimmed (unselected / excluded) elements. */
-export const DIM_OPACITY = 0.28
+export const DIM_OPACITY = THEME_DIM_OPACITY
 
 export function getEdgeColour(kind: string): string {
-    return EDGE_COLOURS[kind] ?? '#999999'
+    return EDGE_COLOURS[kind] ?? EDGE_COLOUR_FALLBACK
 }
 
 export function shouldShowEdgeLabel(_kind: string): boolean {
@@ -56,7 +55,8 @@ export function shouldShowEdgeLabel(_kind: string): boolean {
 /**
  * Default Cytoscape stylesheet.
  */
-export function buildStylesheet(): any[] {
+export function buildStylesheet(isDark = false): any[] {
+    const t = getTheme(isDark)
     return [
         // -- base node --
         {
@@ -68,7 +68,7 @@ export function buildStylesheet(): any[] {
                 'font-size': 3,
                 'font-family': FONT_FAMILY,
                 'border-width': 1.5,
-                'border-color': '#333',
+                'border-color': t.network.nodeBorder,
                 'background-color': 'data(colour)',
                 'text-wrap': 'ellipsis' as any,
                 'text-max-width': '120px',
@@ -128,7 +128,7 @@ export function buildStylesheet(): any[] {
                 'height': REACTION_SIZE,
                 'label': '',
                 'border-width': 0,
-                'background-color': '#888',
+                'background-color': t.network.reactionBg,
             } as any,
         },
         // -- excluded (hidden by ModelFilter) --
@@ -156,7 +156,7 @@ export function buildStylesheet(): any[] {
             selector: 'node.highlighted',
             style: {
                 'border-width': 3,
-                'border-color': '#000000',
+                'border-color': t.network.highlightBorder,
                 'z-index': 10,
             } as any,
         },
@@ -172,11 +172,11 @@ export function buildStylesheet(): any[] {
                 'curve-style': 'bezier',
                 'font-size': 7,
                 'font-family': FONT_FAMILY,
-                'color': '#555',
+                'color': t.network.edgeLabelText,
                 'edge-distances': 'node-position',
                 'text-rotation': 'autorotate' as any,
                 'text-margin-y': -8,
-                'text-background-color': '#fff',
+                'text-background-color': t.network.edgeLabelBg,
                 'text-background-opacity': 0.7,
                 'text-background-padding': '2px',
                 'z-index': 109,

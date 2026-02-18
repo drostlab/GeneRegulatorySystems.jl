@@ -3,12 +3,14 @@ import { ref, onMounted, watch, onBeforeUnmount, computed } from 'vue'
 import { useScheduleStore } from '@/stores/scheduleStore'
 import { useViewerStore } from '@/stores/viewerStore'
 import { NetworkView } from '@/network/NetworkView'
+import { useTheme } from '@/composables/useTheme'
 import ProgressSpinner from 'primevue/progressspinner'
 
 const containerRef = ref<HTMLDivElement>()
 const scheduleStore = useScheduleStore()
 const viewerStore = useViewerStore()
 const networkView = new NetworkView()
+const { isDark, onThemeChange } = useTheme()
 
 /** Label for the active model shown in the bottom-left overlay. */
 const activeModelLabel = computed(() => {
@@ -24,7 +26,8 @@ const activeModelLabel = computed(() => {
 })
 
 onMounted(() => {
-    networkView.init(containerRef)
+    networkView.init(containerRef, isDark.value)
+    onThemeChange((dark) => networkView.applyTheme(dark))
 
     // Render when union network arrives
     if (scheduleStore.unionNetwork) {

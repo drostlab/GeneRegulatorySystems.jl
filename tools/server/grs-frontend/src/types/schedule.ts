@@ -108,6 +108,30 @@ export function getPathTimeRanges(segments: TimelineSegment[]): Map<string, { fr
     return ranges
 }
 
+/** Return the set of execution paths that are active (have a segment covering) at time t. */
+export function getActivePathsAtTime(segments: TimelineSegment[], t: number): Set<string> {
+    const active = new Set<string>()
+    for (const seg of segments) {
+        if (seg.from <= t && t <= seg.to) {
+            active.add(seg.execution_path)
+        }
+    }
+    return active
+}
+
+/** Internal boundary times between consecutive segments (excludes global start/end). */
+export function getSegmentBoundaryTimes(segments: TimelineSegment[]): number[] {
+    if (segments.length === 0) return []
+    const times = new Set<number>()
+    for (const seg of segments) {
+        times.add(seg.from)
+        times.add(seg.to)
+    }
+    const sorted = [...times].sort((a, b) => a - b)
+    // Exclude the global start and end
+    return sorted.slice(1, -1)
+}
+
 export function extractPaths(segments: TimelineSegment[]): string[] {
     const paths: string[] = []
     const seen = new Set<string>()

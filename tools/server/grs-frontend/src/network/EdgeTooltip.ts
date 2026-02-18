@@ -2,6 +2,7 @@
  * Edge tooltip: shows the edge kind on hover via a lightweight DOM tooltip.
  */
 import type { Core, EventHandler } from 'cytoscape'
+import { getTheme } from '@/config/theme'
 
 const TOOLTIP_ID = 'cy-edge-tooltip'
 
@@ -59,8 +60,8 @@ export class EdgeTooltip {
             position: 'absolute',
             display: 'none',
             padding: '3px 8px',
-            background: '#333',
-            color: '#fff',
+            background: getTheme(false).chart.tooltipBg,
+            color: getTheme(false).chart.tooltipFg,
             borderRadius: '4px',
             fontSize: '11px',
             fontFamily: 'Montserrat, sans-serif',

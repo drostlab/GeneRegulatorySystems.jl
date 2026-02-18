@@ -21,15 +21,6 @@
   --border-radius-sm: 3px;
   --border-radius-md: 8px;
   --border-radius-lg: 16px;
-
-  /* Changing the Success color globally */
-  --p-success-color: #6b1262;
-  --p-success-background: #2f0642;
-  
-  /* Changing the Danger color globally */
-  --p-danger-color: #ef4444;
-  --p-danger-background: #fee2e2;
-
 }
 
 * {
@@ -204,7 +195,7 @@ html, body, #app {
   gap: var(--spacing-xl);
   padding: var(--spacing-2xl);
   border-radius: 12px;
-  background: white;
+  background: var(--p-surface-card);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
@@ -233,4 +224,20 @@ html, body, #app {
   line-height: 1;
   display: inline-block;
   white-space: nowrap;
+}
+
+/* ========================================================================
+   Dark Mode Overrides
+   ======================================================================== */
+
+.app-dark .disabled-overlay {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-dark .loading-overlay {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.app-dark .loading-card {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
 }

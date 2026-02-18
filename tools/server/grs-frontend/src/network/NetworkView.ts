@@ -20,6 +20,7 @@ import fcose from 'cytoscape-fcose'
 
 import { convertGeneElements } from './networkElements'
 import { buildStylesheet } from './networkStyles'
+import { getTheme } from '@/config/theme'
 import { AdaptiveZoom } from './AdaptiveZoom'
 import { ModelFilter } from './ModelFilter'
 import { SelectionSync } from './SelectionSync'
@@ -32,6 +33,7 @@ cytoscape.use(fcose)
 export class NetworkView {
     private cy: Core | null = null
     private container: HTMLDivElement | null = null
+    private isDark = false
 
     private adaptiveZoom = new AdaptiveZoom()
     private modelFilter = new ModelFilter()
@@ -44,9 +46,10 @@ export class NetworkView {
      * Initialise the cytoscape container.
      * Does not render anything until setNetwork() is called.
      */
-    init(containerRef: Ref<HTMLDivElement | undefined>): void {
+    init(containerRef: Ref<HTMLDivElement | undefined>, isDark = false): void {
         if (!containerRef.value) return
         this.container = containerRef.value
+        this.isDark = isDark
         this.applyContainerBackground()
     }
 
@@ -65,7 +68,7 @@ export class NetworkView {
             container: this.container,
             elements,
             wheelSensitivity: 0.1,
-            style: buildStylesheet(),
+            style: buildStylesheet(this.isDark),
             layout: { name: 'preset' },
             userPanningEnabled: true,
             userZoomingEnabled: true,
@@ -82,6 +85,15 @@ export class NetworkView {
         this.destroyModules()
         this.destroyCytoscape()
         this.container = null
+    }
+
+    /** Re-apply theme on dark-mode toggle. */
+    applyTheme(isDark: boolean): void {
+        this.isDark = isDark
+        this.applyContainerBackground()
+        if (this.cy) {
+            this.cy.style(buildStylesheet(isDark))
+        }
     }
 
     // ========================================================================
@@ -133,6 +145,11 @@ export class NetworkView {
             this.edgeTooltip.attach(this.cy)
             this.nodeTooltip.attach(this.cy)
 
+            // Double-click on background resets zoom and pan
+            this.cy.on('dbltap', (evt) => {
+                if (evt.target === this.cy) this.cy!.fit(undefined, 50)
+            })
+
             // When detail visibility changes, refresh model filter + selection
             this.adaptiveZoom.onDetailChange = (_visible: boolean) => {
                 this.modelFilter.refresh()
@@ -162,8 +179,9 @@ export class NetworkView {
 
     private applyContainerBackground(): void {
         if (!this.container) return
+        const t = getTheme(this.isDark)
         this.container.style.backgroundImage =
-            'radial-gradient(circle, #d0d0d0 1px, transparent 1px)'
+            'radial-gradient(circle, ' + t.network.dotGrid + ' 1px, transparent 1px)'
         this.container.style.backgroundSize = '30px 30px'
     }
 }

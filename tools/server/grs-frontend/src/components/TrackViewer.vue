@@ -17,10 +17,12 @@ import OverlayPanel from 'primevue/overlaypanel'
 import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
 import { MainChart } from '@/charts/MainChart'
+import { useTheme } from '@/composables/useTheme'
 
 const simulationStore = useSimulationStore()
 const scheduleStore = useScheduleStore()
 const viewerStore = useViewerStore()
+const { isDark, onThemeChange } = useTheme()
 
 const DEFAULT_SELECTED_GENES_COUNT = 5
 
@@ -176,8 +178,9 @@ async function loadResults() {
 
 onMounted(async () => {
     loadResults()
-    await chart.init(containerRef)
+    await chart.init(containerRef, isDark.value)
     chart.setVisibleTracks(['schedule'])
+    onThemeChange((dark) => chart.applyTheme(dark))
 
     chart.onTimepointChange((timepoint: number) => {
         viewerStore.setTimepoint(timepoint)
@@ -219,8 +222,8 @@ onMounted(async () => {
         viewerStore.selectSegments(new Set([segmentId]))
     })
 
-    chart.onHoverChange((modelPath: string | null) => {
-        viewerStore.setHoveredModelPath(modelPath)
+    chart.onHoverChange((modelPath: string | null, executionPath: string | null) => {
+        viewerStore.setHoveredModelPath(modelPath, executionPath)
     })
 
     window.addEventListener('keydown', handleEscapeKey)
@@ -737,7 +740,7 @@ function _scheduleStreamingFlush(): void {
 }
 
 .custom-gene-chip {
-    color: white;
+    color: #3f3f46; /* GREY[700] */
     padding: var(--spacing-sm) var(--spacing-sm);
     border-radius: var(--border-radius-lg);
     font-size: var(--font-size-xs);

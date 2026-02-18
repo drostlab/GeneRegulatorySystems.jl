@@ -8,9 +8,10 @@ import './style.css'
 import App from './App.vue'
 import Aura from '@primeuix/themes/aura'
 import { EWatermarkPosition, SciChartDefaults, SciChartSurface } from "scichart";
+import { palette } from './config/theme'
 
 SciChartSurface.UseCommunityLicense();
-SciChartDefaults.watermarkPosition = EWatermarkPosition.TopRight
+SciChartDefaults.watermarkPosition = EWatermarkPosition.BottomLeft
 
 SciChartDefaults.nativeFontTimeout = 10000
 SciChartDefaults.canvasFontFamily = "Montserrat"
@@ -32,19 +33,7 @@ const MyPreset = definePreset(Aura, {
             900: '{red.900}',
             950: '{red.950}'
         },
-        info: {
-            50:  '#f6f0f9',
-            100: '#eadcf1',
-            200: '#d4b8e3',
-            300: '#bf95d5',
-            400: '#b381cb',
-            500: '#AA79C1', // base
-            600: '#9563ac',
-            700: '#7d4e92',
-            800: '#653a78',
-            900: '#512663',
-            950: '#321942'
-        }
+        info: palette.purple
     },
     components: {
         message: {
@@ -58,9 +47,9 @@ const MyPreset = definePreset(Aura, {
             },
             dark: {
                 info: {
-                    background: '{info.300}',
-                    borderColor: '{info.400}',
-                    color: '{info.950}'
+                    background: '{info.950}',
+                    borderColor: '{info.800}',
+                    color: '{info.500}'
                 }
             }
         }

@@ -35,8 +35,8 @@ export class CountsPanel extends TimeseriesPanel {
             drawMajorTickLines: false,
             drawMinorTickLines: false,
             growBy: new NumberRange(0.01, 0.01),
-            majorGridLineStyle: { color: "#f5f5f5"},
-            minorGridLineStyle: { color: "#f5f5f5"},
+            majorGridLineStyle: { color: this.theme.chart.gridLine},
+            minorGridLineStyle: { color: this.theme.chart.gridLine},
             axisThickness: AXIS_THICKNESS_NARROW
         })
 
@@ -91,7 +91,7 @@ export class CountsPanel extends TimeseriesPanel {
                     existing.appendRange(time, counts)
                 } else {
                     // New series: create with sweep animation
-                    const colour = this.metadata.gene_colours[geneId] ?? "gray"
+                    const colour = this.metadata.gene_colours[geneId] ?? this.theme.chart.fallbackSeries
                     const xySeries = new XyDataSeries(this.wasmContext, {
                         isSorted: true,
                         containsNaN: false,
@@ -145,7 +145,7 @@ export class CountsPanel extends TimeseriesPanel {
 
     /** Create a new XyDataSeries + FastLineRenderableSeries for a streaming key. */
     private _createStreamingSeries(key: string, geneId: string): XyDataSeries {
-        const colour = this.metadata!.gene_colours[geneId] ?? "gray"
+        const colour = this.metadata!.gene_colours[geneId] ?? this.theme.chart.fallbackSeries
         const xySeries = new XyDataSeries(this.wasmContext, {
             isSorted: true,
             containsNaN: false,

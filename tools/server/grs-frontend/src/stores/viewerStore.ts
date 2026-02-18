@@ -8,7 +8,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { type SpeciesType } from '@/types'
-import { getPathsForSegmentIds, getModelPathAtTime, getGeneFromSpeciesName } from '@/types/schedule'
+import { getPathsForSegmentIds, getModelPathAtTime, getGeneFromSpeciesName, getActivePathsAtTime } from '@/types/schedule'
 import { useScheduleStore } from './scheduleStore'
 import { useSimulationStore } from './simulationStore'
 
@@ -19,6 +19,8 @@ export const useViewerStore = defineStore('viewer', () => {
     const selectedSegmentIds = ref<Set<number> | null>(null)
     /** Model path currently hovered in the timeline panel (null when not hovering). */
     const hoveredModelPath = ref<string | null>(null)
+    /** Execution path of the hovered branch (null when not hovering). */
+    const hoveredExecutionPath = ref<string | null>(null)
 
     /** Active model path: hovered model takes priority, else derived from current timepoint. */
     const activeModelPath = computed((): string | null => {
@@ -38,8 +40,9 @@ export const useViewerStore = defineStore('viewer', () => {
     })
 
     /**
-     * Protein count per gene at the current timepoint, averaged across paths.
-     * Returns Record<geneName, averageCount>.
+     * Protein count per gene at the current timepoint.
+     * If a branch is hovered, uses only that branch's path; otherwise averages
+     * across paths that are actually active at the current timepoint.
      */
     const proteinCountsAtTimepoint = computed((): Record<string, number> => {
         const simulationStore = useSimulationStore()
@@ -47,6 +50,14 @@ export const useViewerStore = defineStore('viewer', () => {
         if (!ts) return {}
 
         const t = currentTimepoint.value
+        const filterPath = hoveredExecutionPath.value
+
+        // When no specific path is hovered, restrict to paths active at t
+        const scheduleStore = useScheduleStore()
+        const activePaths = filterPath
+            ? null
+            : getActivePathsAtTime(scheduleStore.segments, t)
+
         const geneSums: Record<string, number> = {}
         const geneCounts: Record<string, number> = {}
 
@@ -55,7 +66,9 @@ export const useViewerStore = defineStore('viewer', () => {
             const gene = getGeneFromSpeciesName(species)
             if (!gene) continue
 
-            for (const series of Object.values(pathData)) {
+            for (const [path, series] of Object.entries(pathData)) {
+                if (filterPath && path !== filterPath) continue
+                if (activePaths && !activePaths.has(path)) continue
                 const value = sampleAtTime(series, t)
                 geneSums[gene] = (geneSums[gene] ?? 0) + value
                 geneCounts[gene] = (geneCounts[gene] ?? 0) + 1
@@ -101,14 +114,16 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSegmentIds.value = ids
     }
 
-    function setHoveredModelPath(path: string | null): void {
+    function setHoveredModelPath(path: string | null, executionPath: string | null = null): void {
         hoveredModelPath.value = path
+        hoveredExecutionPath.value = executionPath
     }
 
     function reset(): void {
         currentTimepoint.value = 0
         selectedSegmentIds.value = null
         hoveredModelPath.value = null
+        hoveredExecutionPath.value = null
     }
 
     return {

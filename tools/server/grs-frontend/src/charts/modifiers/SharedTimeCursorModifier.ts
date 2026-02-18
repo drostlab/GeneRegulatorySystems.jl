@@ -1,8 +1,5 @@
 import { ChartModifierBase2D, EChart2DModifierType, ECoordinateMode, EHorizontalAnchorPoint, EVerticalAnchorPoint, LineAnnotation, ModifierMouseArgs, TextAnnotation, Thickness, translateFromCanvasToSeriesViewRect, type ISciChartSubSurface } from "scichart"
-
-
-/** Colour for the time cursor line and label. */
-const CURSOR_COLOUR = "#2b2b2b"
+import { getTheme } from "@/config/theme"
 
 
 export class SharedTimeCursorModifier extends ChartModifierBase2D {
@@ -10,17 +7,20 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
     private xLines = new Map<string, LineAnnotation>()
     private activeLabel: { subChartId: string; annotation: TextAnnotation } | null = null
     private onTimeChanged?: (t: number) => void
+    private isDark: boolean
 
-    constructor(callback?: (t: number) => void) {
+    constructor(isDark: boolean, callback?: (t: number) => void) {
         super()
+        this.isDark = isDark
         this.onTimeChanged = callback
     }
 
     onAttachSubSurface(subChart: ISciChartSubSurface): void {
+        const t = getTheme(this.isDark)
         const line = new LineAnnotation({
             xCoordinateMode: ECoordinateMode.DataValue,
             yCoordinateMode: ECoordinateMode.Relative,
-            stroke: CURSOR_COLOUR,
+            stroke: t.chart.cursor,
             strokeThickness: 3,
             isHidden: true
         })
@@ -57,6 +57,19 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
     /** Programmatically move the cursor to a given time value. */
     setCursorTime(time: number): void {
         this._showCursorAt(time)
+    }
+
+    /** Re-apply theme colours to cursor lines and label. */
+    applyColorTheme(isDark: boolean): void {
+        this.isDark = isDark
+        const t = getTheme(isDark)
+        for (const line of this.xLines.values()) {
+            line.stroke = t.chart.cursor
+        }
+        if (this.activeLabel) {
+            this.activeLabel.annotation.textColor = t.chart.cursorText
+            this.activeLabel.annotation.background = t.chart.cursor
+        }
     }
 
     /** Called when subchart visibility changes, to move the label to the new bottom chart. */
@@ -131,6 +144,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
 
     /** Create a new label on the given subchart. */
     private _createLabelOn(subChart: ISciChartSubSurface, time: number): void {
+        const t = getTheme(this.isDark)
         const label = new TextAnnotation({
             xCoordinateMode: ECoordinateMode.DataValue,
             yCoordinateMode: ECoordinateMode.Relative,
@@ -139,8 +153,8 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
             verticalAnchorPoint: EVerticalAnchorPoint.Bottom,
             horizontalAnchorPoint: EHorizontalAnchorPoint.Center,
             fontSize: 8,
-            textColor: "#FFFFFF",
-            background: CURSOR_COLOUR,
+            textColor: t.chart.cursorText,
+            background: t.chart.cursor,
             opacity: 1.0,
             padding: new Thickness(3, 2, 3, 2),
             text: time.toFixed(2)

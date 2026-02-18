@@ -304,7 +304,8 @@ end
 
 _label(wrapped::Models.Wrapped) = _label(Models.describe(wrapped.definition))
 _label(label::Models.Label) = label.label
-_label(model::Models.Instant) = repr(model)
+# TODO: add describe method to instant models?
+_label(model::Models.Instant) = replace(repr(model), string(typeof(model)) => string(nameof(typeof(model))); count=1)
 _label(::Models.EmptyDescription) = ""
 _label(x) = _type_label(x)
 

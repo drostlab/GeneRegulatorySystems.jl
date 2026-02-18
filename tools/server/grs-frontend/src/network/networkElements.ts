@@ -8,6 +8,7 @@ import type { UnionNetwork, Node, Link } from '@/types/network'
 import { MODEL_NODE_KINDS, MACHINERY_SPECIES, linkId } from '@/types/network'
 import { lighten } from '@/utils/colorUtils'
 import { getEdgeColour, shouldShowEdgeLabel } from './networkStyles'
+import { getTheme } from '@/config/theme'
 
 /** Kinds that are only shown in detailed (zoomed-in) view. */
 const DETAIL_KINDS = new Set(['species', 'reaction'])
@@ -162,14 +163,15 @@ function linkElement(link: Link): cytoscape.ElementDefinition {
 }
 
 function getNodeColour(node: Node, geneColours: Record<string, string>): string {
+    const fallback = getTheme(false).network.nodeFallback
     if (node.kind === 'gene') {
-        const base = geneColours[node.name] ?? '#999999'
+        const base = geneColours[node.name] ?? fallback
         return lighten(base, 0.4)
     }
     if (node.parent && geneColours[node.parent]) {
         return geneColours[node.parent]!
     }
-    return '#999999'
+    return fallback
 }
 
 function formatLinkLabel(link: Link): string {

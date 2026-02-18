@@ -2,6 +2,7 @@
  * Node tooltip: shows the full node name on hover via a lightweight DOM tooltip.
  */
 import type { Core, EventHandler } from 'cytoscape'
+import { getTheme } from '@/config/theme'
 
 const TOOLTIP_ID = 'cy-node-tooltip'
 
@@ -59,8 +60,8 @@ export class NodeTooltip {
             position: 'absolute',
             display: 'none',
             padding: '4px 10px',
-            background: '#333',
-            color: '#fff',
+            background: getTheme(false).chart.tooltipBg,
+            color: getTheme(false).chart.tooltipFg,
             borderRadius: '4px',
             fontSize: '12px',
             fontFamily: 'Montserrat, sans-serif',

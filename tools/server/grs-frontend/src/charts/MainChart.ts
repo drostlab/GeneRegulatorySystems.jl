@@ -5,21 +5,22 @@ import { SelectSyncModifier, type GroupingFn } from "./modifiers/SelectSyncModif
 import type { BasePanel, BasePanelOptions } from "./panels/BasePanel"
 import type { TimeseriesPanel } from "./panels/TimeseriesPanel"
 import type { Ref } from "vue"
-import { appTheme } from "./theme"
+import { getSciChartTheme } from "./theme"
+import { getTheme } from "@/config/theme"
 import { TimelinePanel } from "./panels/TimelinePanel"
 import { PromoterPanel } from "./panels/PromoterPanel"
 import { CountsPanel } from "./panels/CountsPanel"
 import { SubChartLayoutModifier } from "./modifiers/SubChartLayoutModifier"
 import { SharedTimeCursorModifier } from "./modifiers/SharedTimeCursorModifier"
 import { collectPathYRanges } from "./layout/rectangleLayout"
-import { getPathTimeRanges } from "@/types/schedule"
+import { getPathTimeRanges, getSegmentBoundaryTimes } from "@/types/schedule"
 import type { StructureNode, TimelineSegment, TimeseriesData, TimeseriesMetadata } from "@/types"
 import { type SpeciesType } from "@/types/schedule"
 import { useScheduleStore } from "@/stores/scheduleStore"
 
 export type SelectionChangeCallback = (selectedGenes: string[]) => void
 export type SegmentClickCallback = (segmentId: number, modelPath: string) => void
-export type HoverChangeCallback = (modelPath: string | null) => void
+export type HoverChangeCallback = (modelPath: string | null, executionPath: string | null) => void
 
 export class MainChart {
     private surface!: SciChartSurface
@@ -34,8 +35,8 @@ export class MainChart {
     private segmentClickCallback?: SegmentClickCallback
     private hoverChangeCallback?: HoverChangeCallback
 
-    async init(containerRef: Ref<HTMLDivElement | undefined>) {
-        const { sciChartSurface, wasmContext } = await SciChartSurface.create(containerRef.value!, { theme: appTheme })
+    async init(containerRef: Ref<HTMLDivElement | undefined>, isDark: boolean) {
+        const { sciChartSurface, wasmContext } = await SciChartSurface.create(containerRef.value!, { theme: getSciChartTheme(isDark) })
 
         this.surface = sciChartSurface
         this.wasmContext = wasmContext
@@ -45,6 +46,7 @@ export class MainChart {
         const options: BasePanelOptions = {
             parentSurface: this.surface,
             wasmContext: this.wasmContext,
+            isDark,
             modifiers: [
                 { modifierClass: DragGuardModifier },
                 { modifierClass: ZoomPanModifier, args: { xyDirection: EXyDirection.XDirection } },
@@ -68,7 +70,7 @@ export class MainChart {
 
         this.axisSynchroniser = new AxisSyncModifier()
         this.surface.chartModifiers.add(this.axisSynchroniser)
-        this.timeCursorModifier = new SharedTimeCursorModifier(t => this.timepointChangeCallback?.(t))
+        this.timeCursorModifier = new SharedTimeCursorModifier(isDark, t => this.timepointChangeCallback?.(t))
         this.surface.chartModifiers.add(this.timeCursorModifier)
 
         /** Groups timeseries by gene ID (prefix before ':'); excludes segment rectangles. */
@@ -85,8 +87,8 @@ export class MainChart {
         timelinePanel.onSegmentClick((segmentId, modelPath) => {
             this.segmentClickCallback?.(segmentId, modelPath)
         })
-        timelinePanel.onHoverChange((modelPath) => {
-            this.hoverChangeCallback?.(modelPath)
+        timelinePanel.onHoverChange((modelPath, executionPath) => {
+            this.hoverChangeCallback?.(modelPath, executionPath)
         })
 
         console.debug(`[MainChart] Initialised with ${this.tracks.length} tracks`)
@@ -148,6 +150,15 @@ export class MainChart {
         this.surface?.delete()
     }
 
+    /** Re-apply the SciChart theme on dark-mode toggle. */
+    applyTheme(isDark: boolean): void {
+        this.surface.applyTheme(getTheme(isDark).sciChartTheme)
+        for (const { panel } of this.tracks) {
+            panel.applyTheme(isDark)
+        }
+        this.timeCursorModifier.applyColorTheme(isDark)
+    }
+
     setSimulationData(timeseries: TimeseriesData): void {
         const scheduleStore = useScheduleStore()
         const timeseriesPanels = this.getTimeseriesPanels()
@@ -180,10 +191,12 @@ export class MainChart {
         promoterPanel.setPathYRanges(pathYRanges)
 
         const pathTimeRanges = getPathTimeRanges(segments)
+        const boundaryTimes = getSegmentBoundaryTimes(segments)
         const timeseriesPanels = this.getTimeseriesPanels()
         timeseriesPanels.forEach(({ panel }) => {
             panel.setMetadata(metadata)
             panel.setPathTimeRanges(pathTimeRanges)
+            panel.setSegmentBoundaries(boundaryTimes)
         })
         this.tracks.forEach(({ panel }) => {
             panel.setTimeExtent(metadata.time_extent.min, metadata.time_extent.max)
