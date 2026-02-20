@@ -75,6 +75,7 @@ export abstract class BasePanel {
 
     dispose(): void {
         this.clearData()
-        this.surface.delete()
+        // Sub-surface deletion is handled by the parent SciChartSurface.delete() cascade;
+        // calling delete() here as well causes a double-deletion warning from SciChart.
     }
 }

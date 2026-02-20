@@ -186,7 +186,7 @@ export class MainChart {
         const timelinePanel = this.getTimelinePanel()
         timelinePanel.setScheduleData(structure, segments)
         this.timeCursorModifier.bringToFront()
-        const pathYRanges = collectPathYRanges(structure)
+        const pathYRanges = collectPathYRanges(structure, 0, 1, segments)
         const promoterPanel = this.getPromoterPanel()
         promoterPanel.setPathYRanges(pathYRanges)
 

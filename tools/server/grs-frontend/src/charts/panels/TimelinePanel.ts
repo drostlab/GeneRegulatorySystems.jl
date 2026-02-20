@@ -461,7 +461,6 @@ export class TimelinePanel extends BasePanel {
         if (!this.isVisible) return
         const h = this.subchartHeightPx()
         if (h === 0) return
-        console.debug(`[TimelinePanel] updateLabelSizes: subchartH=${h}px rectLabels=${this.labelRectMap.size} instantLabels=${this.instantLabelSliceMap.size}`)
         for (const [label, rect] of this.labelRectMap) {
             const fits = this.labelFits(rect)
             label.isHidden = !fits
