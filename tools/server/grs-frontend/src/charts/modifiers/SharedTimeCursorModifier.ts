@@ -83,6 +83,20 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
         this._deleteLabel()
     }
 
+    /**
+     * Re-order cursor lines to the end of each subchart's annotation collection
+     * so they render above all data annotations.
+     * Call this after new annotations are added (e.g. after setScheduleData).
+     */
+    bringToFront(): void {
+        for (const sc of this.parentSurface.subCharts) {
+            const line = this.xLines.get(sc.id)
+            if (!line) continue
+            sc.annotations.remove(line)
+            sc.annotations.add(line)
+        }
+    }
+
     // ---- internals ----
 
     private _lastTime = 0

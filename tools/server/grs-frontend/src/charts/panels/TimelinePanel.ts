@@ -11,7 +11,7 @@ import { layoutRectangles, type LayoutRectangle } from "../layout/rectangleLayou
 import type { StructureNode, TimelineSegment } from "@/types/schedule"
 import { setSvgAnnotationVisible, setSvgAnnotationsVisible } from "../svgAnnotationVisibility"
 import { withOpacity } from "@/utils/colorUtils"
-import { CHART_FONT_SIZES, AXIS_THICKNESS, SEGMENT_PALETTE } from "../chartConstants"
+import { CHART_FONT_SIZES, AXIS_THICKNESS } from "../chartConstants"
 import { DragGuardModifier } from "../modifiers/DragGuardModifier"
 
 /** Minimum pixel width/height below which a rectangle label is hidden. */
@@ -19,13 +19,15 @@ const MIN_LABEL_PX_WIDTH = 80
 const MIN_LABEL_PX_HEIGHT = 2
 
 /** Instant model line thickness (normal / hovered). */
-const INSTANT_LINE_THICKNESS = 1.5
-const INSTANT_LINE_THICKNESS_HOVER = 2.5
+const INSTANT_LINE_THICKNESS = 4.0
+const INSTANT_LINE_THICKNESS_HOVER = 4.0/** Pixel offset shifting the instant label box right of its line. */
+const INSTANT_LABEL_X_SHIFT = 1
+/** Rectangle segment fill opacities (mode-independent). */
+const RECT_FILL_OPACITY = 0.6
+const RECT_FILL_OPACITY_HOVER = 0.8
 
 /** Rectangle segment styling. */
 const RECT_STROKE_THICKNESS = 2.0
-const RECT_OPACITY_NORMAL = 0.6
-const RECT_OPACITY_HOVER = 0.85
 
 export type SegmentClickCallback = (segmentId: number, modelPath: string) => void
 export type HoverChangeCallback = (modelPath: string | null, executionPath: string | null) => void
@@ -39,6 +41,8 @@ export class TimelinePanel extends BasePanel {
     private selectedSegmentId: number | null = null
     /** Full time extent for zoom-to-fit on deselect. */
     private fullTimeExtent: { min: number; max: number } | null = null
+    /** Visible range captured just before selection zoom — restored on deselect. */
+    private preSelectionTimeRange: { min: number; max: number } | null = null
     /** Stored rectangles for selection lookup. */
     private rectangles: LayoutRectangle[] = []
     /** Currently hovered model path. */
@@ -49,11 +53,14 @@ export class TimelinePanel extends BasePanel {
     private tooltipAnnotation: TextAnnotation | null = null
     /** Map from rectangle label annotation to its source rectangle (for adaptive visibility). */
     private labelRectMap = new Map<TextAnnotation, LayoutRectangle>()
+    /** Map from segmentId to its label annotation (for hover/select colour updates). */
+    private segmentLabelMap = new Map<number, TextAnnotation>()
     /** Map from instant label annotation to its slice height in data coords. */
     private instantLabelSliceMap = new Map<TextAnnotation, number>()
-    /** Currently selected FastRectangleRenderableSeries and its original palette colour. */
+    /** Base fill colour for all segment rectangles (theme-aware; updated on theme switch). */
+    private segmentColour = ''
+    /** Currently selected FastRectangleRenderableSeries. */
     private selectedRectSeries: FastRectangleRenderableSeries | null = null
-    private selectedRectOriginalColour: string | null = null
     private readonly onParentResized = () => requestAnimationFrame(() => this.updateLabelSizes())
     /** True while an instant label is hovered — suppresses rect hover to prevent jitter. */
     private isHoveringInstant = false
@@ -81,7 +88,7 @@ export class TimelinePanel extends BasePanel {
         })
 
         const yAxis = new NumericAxis(this.wasmContext, {
-            axisTitle: "Schedule Timeline",
+            axisTitle: "Schedule",
             axisAlignment: EAxisAlignment.Left,
             axisTitleStyle: { fontSize: CHART_FONT_SIZES.title },
             drawMajorBands: false,
@@ -129,13 +136,14 @@ export class TimelinePanel extends BasePanel {
     /** Re-apply theme colours to all annotations, series strokes, and tooltip. */
     override applyTheme(isDark: boolean): void {
         super.applyTheme(isDark)
+        const tl = this.theme.timeline
         for (const ann of this.dataAnnotations) {
             if (ann instanceof LineAnnotation) {
-                ann.stroke = this.theme.timeline.instantLine
+                ann.stroke = tl.instant.normal.line
             } else if (ann instanceof TextAnnotation) {
                 if (ann.background) {
-                    ann.textColor = this.theme.timeline.instantText
-                    ann.background = this.theme.timeline.instantBg
+                    ann.textColor = tl.instant.normal.text
+                    ann.background = tl.instant.normal.bg
                 } else {
                     ann.textColor = this.theme.text.muted
                 }
@@ -145,15 +153,17 @@ export class TimelinePanel extends BasePanel {
             this.tooltipAnnotation.textColor = this.theme.chart.tooltipFg
             this.tooltipAnnotation.background = this.theme.chart.tooltipBg
         }
+        this.segmentColour = tl.rect.colour
         for (const rs of this.surface.renderableSeries.asArray()) {
             if (rs instanceof FastRectangleRenderableSeries) {
-                rs.stroke = this.theme.timeline.rectStroke
+                if (rs === this.selectedRectSeries) {
+                    rs.fill = withOpacity(tl.rect.selected.fill, RECT_FILL_OPACITY_HOVER)
+                    rs.stroke = tl.rect.selected.stroke
+                } else {
+                    rs.fill = withOpacity(this.segmentColour, RECT_FILL_OPACITY)
+                    rs.stroke = tl.rect.normal.stroke
+                }
             }
-        }
-        // Refresh selected series colours with new theme
-        if (this.selectedRectSeries && this.selectedRectOriginalColour) {
-            this.selectedRectSeries.fill = withOpacity(this.theme.timeline.selectedFill, RECT_OPACITY_HOVER)
-            this.selectedRectSeries.stroke = this.theme.timeline.selectedStroke
         }
     }
 
@@ -163,6 +173,7 @@ export class TimelinePanel extends BasePanel {
         this.tooltipAnnotation = null
         this.labelRectMap.clear()
         this.instantLabelSliceMap.clear()
+        this.segmentLabelMap.clear()
         this.surface.renderableSeries.clear()
         this.restoreSelectedSeries()
         this.selectedSegmentId = null
@@ -176,12 +187,12 @@ export class TimelinePanel extends BasePanel {
             yAxis.visibleRangeLimit = new NumberRange(0, 1)
         }
 
-        const palette = buildSegmentPalette(this.rectangles)
+        this.segmentColour = this.theme.timeline.rect.colour
         const instantsByXAndBand = groupInstantsByXAndBand(this.rectangles)
 
         for (const rect of this.rectangles) {
             if (!rect.isInstant) {
-                this.addRectangleSeries(rect, palette.get(rect.segmentId)!)
+                this.addRectangleSeries(rect)
             }
         }
 
@@ -199,15 +210,15 @@ export class TimelinePanel extends BasePanel {
         this.fullTimeExtent = { min: minTime, max: maxTime }
     }
 
-    /** Deselect current segment and zoom back to full extent. */
+    /** Deselect current segment and restore the zoom state that was active before selection. */
     deselectSegment(): void {
         if (this.selectedSegmentId === null) return
         console.debug('[TimelinePanel] Deselecting segment')
         this.restoreSelectedSeries()
         this.selectedSegmentId = null
-        if (this.fullTimeExtent) {
-            this.setVisibleTimeRange(this.fullTimeExtent.min, this.fullTimeExtent.max)
-        }
+        const range = this.preSelectionTimeRange ?? this.fullTimeExtent
+        if (range) this.setVisibleTimeRange(range.min, range.max)
+        this.preSelectionTimeRange = null
         this.segmentClickCallback?.(-1, '')
     }
 
@@ -218,7 +229,7 @@ export class TimelinePanel extends BasePanel {
 
     // ── Rectangle segments ──────────────────────────────────────────────
 
-    private addRectangleSeries(rect: LayoutRectangle, colour: string): void {
+    private addRectangleSeries(rect: LayoutRectangle): void {
         const dataSeries = new XyxyDataSeries(this.wasmContext, {
             dataSeriesName: `segment:${rect.segmentId}`,
             isSorted: true,
@@ -230,8 +241,8 @@ export class TimelinePanel extends BasePanel {
 
         const rectSeries = new FastRectangleRenderableSeries(this.wasmContext, {
             dataSeries,
-            stroke: this.theme.timeline.rectStroke,
-            fill: withOpacity(colour, RECT_OPACITY_NORMAL),
+            stroke: this.theme.timeline.rect.normal.stroke,
+            fill: withOpacity(this.segmentColour, RECT_FILL_OPACITY),
             strokeThickness: RECT_STROKE_THICKNESS,
             columnXMode: EColumnMode.StartEnd,
             columnYMode: EColumnYMode.TopBottom,
@@ -240,7 +251,10 @@ export class TimelinePanel extends BasePanel {
                 const rs = source as FastRectangleRenderableSeries
                 // Don't override selection colours on hover
                 if (this.selectedSegmentId !== segmentId) {
-                    rs.fill = withOpacity(colour, hovered ? RECT_OPACITY_HOVER : RECT_OPACITY_NORMAL)
+                    rs.fill = withOpacity(this.segmentColour, hovered ? RECT_FILL_OPACITY_HOVER : RECT_FILL_OPACITY)
+                    rs.stroke = hovered ? this.theme.timeline.rect.hover.stroke : this.theme.timeline.rect.normal.stroke
+                    const lbl = this.segmentLabelMap.get(segmentId)
+                    if (lbl) lbl.textColor = hovered ? this.theme.timeline.rect.hover.text : this.theme.timeline.rect.normal.text
                 }
                 // Suppress rect hover events while an instant annotation is hovered
                 if (this.isHoveringInstant) return
@@ -264,12 +278,15 @@ export class TimelinePanel extends BasePanel {
                 this.restoreSelectedSeries()
                 const rs = source as FastRectangleRenderableSeries
                 this.selectedRectSeries = rs
-                this.selectedRectOriginalColour = colour
-                rs.fill = withOpacity(this.theme.timeline.selectedFill, RECT_OPACITY_HOVER)
-                rs.stroke = this.theme.timeline.selectedStroke
+                rs.fill = withOpacity(this.theme.timeline.rect.selected.fill, RECT_FILL_OPACITY_HOVER)
+                rs.stroke = this.theme.timeline.rect.selected.stroke
                 rs.strokeThickness = RECT_STROKE_THICKNESS * 1.5
+                const lbl = this.segmentLabelMap.get(segmentId)
+                if (lbl) lbl.textColor = this.theme.timeline.rect.selected.text
 
                 console.debug(`[TimelinePanel] Segment selected: id=${segmentId} model=${modelPath}`)
+                const xRange = this.surface.xAxes.get(0)?.visibleRange
+                this.preSelectionTimeRange = xRange ? { min: xRange.min, max: xRange.max } : null
                 this.selectedSegmentId = segmentId
                 this.zoomToSegment(rect)
                 this.segmentClickCallback?.(segmentId, modelPath)
@@ -291,13 +308,14 @@ export class TimelinePanel extends BasePanel {
             y1: midY,
             text: rect.executionPath,
             fontSize,
-            textColor: this.theme.text.muted,
+            textColor: this.theme.timeline.rect.normal.text,
             horizontalAnchorPoint: EHorizontalAnchorPoint.Center,
             verticalAnchorPoint: EVerticalAnchorPoint.Center,
             isHidden: !this.labelFits(rect)
         })
         this.addDataAnnotation(label)
         this.labelRectMap.set(label, rect)
+        this.segmentLabelMap.set(rect.segmentId, label)
     }
 
     // ── Instant model groups ────────────────────────────────────────────
@@ -310,7 +328,7 @@ export class TimelinePanel extends BasePanel {
 
         const line = new LineAnnotation({
             x1: x, x2: x, y1: yMin, y2: yMax,
-            stroke: this.theme.timeline.instantLine,
+            stroke: this.theme.timeline.instant.normal.line,
             strokeThickness: INSTANT_LINE_THICKNESS,
         })
         this.addDataAnnotation(line)
@@ -345,20 +363,21 @@ export class TimelinePanel extends BasePanel {
             y1: yCenter,
             text: executionPath,
             fontSize,
-            textColor: this.theme.timeline.instantText,
-            background: this.theme.timeline.instantBg,
+            textColor: this.theme.timeline.instant.normal.text,
+            background: this.theme.timeline.instant.normal.bg,
             horizontalAnchorPoint: EHorizontalAnchorPoint.Left,
             verticalAnchorPoint: EVerticalAnchorPoint.Center,
+            xCoordShift: INSTANT_LABEL_X_SHIFT,
             padding: new Thickness(3, 6, 3, 9),
             onHover: (args) => {
                 const hovered = args.isHovered
                 console.debug(`[TimelinePanel] Instant label hover: hovered=${hovered} model=${modelPath}`)
                 // Batch all property mutations to prevent rendering artefacts
                 this.surface.suspendUpdates()
-                line.stroke = hovered ? this.theme.timeline.instantLineHover : this.theme.timeline.instantLine
+                line.stroke = hovered ? this.theme.timeline.instant.hover.line : this.theme.timeline.instant.normal.line
                 line.strokeThickness = hovered ? INSTANT_LINE_THICKNESS_HOVER : INSTANT_LINE_THICKNESS
-                text.background = hovered ? this.theme.timeline.instantBgHover : this.theme.timeline.instantBg
-                text.textColor = hovered ? this.theme.timeline.instantTextHover : this.theme.timeline.instantText
+                text.background = hovered ? this.theme.timeline.instant.hover.bg : this.theme.timeline.instant.normal.bg
+                text.textColor = hovered ? this.theme.timeline.instant.hover.text : this.theme.timeline.instant.normal.text
                 if (hovered) {
                     const xOffset = this.computeTooltipXOffset()
                     this.showTooltipAt(x + xOffset, yCenter - sliceHeight / 2, tooltipText)
@@ -472,13 +491,17 @@ export class TimelinePanel extends BasePanel {
 
     /** Restore the previously selected rectangle to its normal style. */
     private restoreSelectedSeries(): void {
-        if (this.selectedRectSeries && this.selectedRectOriginalColour) {
-            this.selectedRectSeries.fill = withOpacity(this.selectedRectOriginalColour, RECT_OPACITY_NORMAL)
-            this.selectedRectSeries.stroke = this.theme.timeline.rectStroke
+        if (this.selectedRectSeries) {
+            this.selectedRectSeries.fill = withOpacity(this.segmentColour, RECT_FILL_OPACITY)
+            this.selectedRectSeries.stroke = this.theme.timeline.rect.normal.stroke
             this.selectedRectSeries.strokeThickness = RECT_STROKE_THICKNESS
         }
+        // Restore label colour on the previously selected segment
+        if (this.selectedSegmentId !== null) {
+            const lbl = this.segmentLabelMap.get(this.selectedSegmentId)
+            if (lbl) lbl.textColor = this.theme.timeline.rect.normal.text
+        }
         this.selectedRectSeries = null
-        this.selectedRectOriginalColour = null
     }
 
     /** Pixel height of this subchart, or 0 if not yet laid out. */
@@ -544,24 +567,6 @@ export class TimelinePanel extends BasePanel {
 }
 
 // ── Pure helpers ─────────────────────────────────────────────────────────
-
-function buildSegmentPalette(rectangles: LayoutRectangle[]): Map<number, string> {
-    const palette = new Map<number, string>()
-    const pathColours = new Map<string, string>()
-    let colourIndex = 0
-
-    for (const rect of rectangles) {
-        if (rect.isInstant || palette.has(rect.segmentId)) continue
-        let colour = pathColours.get(rect.modelPath)
-        if (!colour) {
-            colour = SEGMENT_PALETTE[colourIndex % SEGMENT_PALETTE.length]!
-            pathColours.set(rect.modelPath, colour)
-            colourIndex++
-        }
-        palette.set(rect.segmentId, colour)
-    }
-    return palette
-}
 
 /** Group instants by (x, y-band) so branches get separate lines. */
 function groupInstantsByXAndBand(rectangles: LayoutRectangle[]): Map<string, LayoutRectangle[]> {

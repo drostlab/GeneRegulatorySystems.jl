@@ -454,7 +454,7 @@ function _structure_node(spec::List, bindings::Dict{Symbol, Any}, path::String, 
         push!(children, child)
     end
 
-    node_type = branch ? :branch : :sequence
+    node_type = (branch || any(_subtree_has_branch, children)) ? :branch : :sequence
     return StructureNode(type = node_type, execution_path = path, children = children)
 end
 
@@ -477,8 +477,14 @@ function _structure_node(spec::Each, bindings::Dict{Symbol, Any}, path::String, 
         push!(children, child)
     end
 
-    node_type = branch ? :branch : :sequence
+    node_type = (branch || any(_subtree_has_branch, children)) ? :branch : :sequence
     return StructureNode(type = node_type, execution_path = path, children = children)
+end
+
+"""True if this node or any descendant has type :branch."""
+function _subtree_has_branch(node::StructureNode)::Bool
+    node.type == :branch && return true
+    any(_subtree_has_branch, node.children)
 end
 
 function _structure_node(spec::Template, bindings::Dict{Symbol, Any}, path::String, branch::Bool)::StructureNode

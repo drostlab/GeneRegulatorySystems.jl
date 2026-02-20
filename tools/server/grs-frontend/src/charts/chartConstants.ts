@@ -20,4 +20,3 @@ export function getSegmentPalette(isDark: boolean): readonly string[] {
 }
 
 /** Default segment palette (light mode). Used where isDark is not available. */
-export const SEGMENT_PALETTE = getTheme(false).timeline.segmentPalette

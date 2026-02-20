@@ -91,7 +91,8 @@ watch(() => scheduleStore.unionNetwork, (network) => {
     position: absolute;
     bottom: 8px;
     left: 8px;
-    background: rgba(255, 255, 255, 0.85);
+    background: var(--p-surface-card);
+    border: 1px solid var(--p-surface-border);
     border-radius: 4px;
     padding: 4px 8px;
     font-family: Montserrat, sans-serif;
@@ -102,7 +103,7 @@ watch(() => scheduleStore.unionNetwork, (network) => {
 .model-label-name {
     font-size: 12px;
     font-weight: 600;
-    color: #333;
+    color: var(--p-text-color);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -110,7 +111,7 @@ watch(() => scheduleStore.unionNetwork, (network) => {
 
 .model-label-path {
     font-size: 10px;
-    color: #777;
+    color: var(--p-text-muted-color);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

@@ -22,6 +22,9 @@ export function layoutRectangles(
     const rectangles: LayoutRectangle[] = []
     layoutNode(structure, segmentsByPath, yMin, yMax, rectangles)
     console.debug(`[rectangleLayout] ${segments.length} segments -> ${rectangles.length} rectangles`)
+    for (const r of rectangles) {
+        console.debug(`[rectangleLayout]  id=${r.segmentId} path=${r.executionPath} x=[${r.x1},${r.x2}] y=[${r.y1.toFixed(3)},${r.y2.toFixed(3)}]`)
+    }
     return rectangles
 }
 
@@ -38,6 +41,17 @@ function groupSegmentsByPath(segments: TimelineSegment[]): Map<string, TimelineS
     return map
 }
 
+/**
+ * Returns true if this node or any descendant is a branch node.
+ * A sequence whose children contain branches effectively runs in parallel
+ * (the Branched state gets unwrapped to the stem on each outer iteration),
+ * so it must be laid out like a branch.
+ */
+function subtreeHasBranch(node: StructureNode): boolean {
+    if (node.type === 'branch') return true
+    return node.children.some(subtreeHasBranch)
+}
+
 function layoutNode(
     node: StructureNode,
     segmentsByPath: Map<string, TimelineSegment[]>,
@@ -52,10 +66,10 @@ function layoutNode(
 
     if (node.children.length === 0) return
 
-    if (node.type === 'branch') {
+    if (node.type === 'branch' || (node.type === 'sequence' && node.children.some(subtreeHasBranch))) {
         layoutBranched(node, segmentsByPath, yMin, yMax, out)
     } else {
-        // scope, sequence: children share the full y-range
+        // scope, sequence (no branch descendants): children share the full y-range
         for (const child of node.children) {
             layoutNode(child, segmentsByPath, yMin, yMax, out)
         }
@@ -135,7 +149,7 @@ function collectNodeRanges(
     }
     if (node.children.length === 0) return
 
-    if (node.type === 'branch') {
+    if (node.type === 'branch' || (node.type === 'sequence' && node.children.some(subtreeHasBranch))) {
         const n = node.children.length
         const bandHeight = (yMax - yMin) / n
         // Top-to-bottom: first child gets highest y-band
@@ -145,7 +159,7 @@ function collectNodeRanges(
             collectNodeRanges(node.children[i]!, childYMin, childYMax, out)
         }
     } else {
-        // scope, sequence: children share full y-range
+        // scope, sequence (no branch descendants): children share full y-range
         for (const child of node.children) {
             collectNodeRanges(child, yMin, yMax, out)
         }

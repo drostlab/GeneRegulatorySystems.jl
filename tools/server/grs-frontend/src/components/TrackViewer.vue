@@ -48,6 +48,16 @@ const isFirstTimeseriesFetch = computed(() =>
     simulationStore.isFetchingTimeseries && simulationStore.fetchedGenes.size === 0
 )
 
+/** Determine which loading overlay to show with priority (only one shown at a time). */
+const activeLoadingState = computed(() => {
+    // Priority order: schedule > timeseries > result > preparing
+    if (isScheduleLoading.value) return 'schedule'
+    if (isFirstTimeseriesFetch.value) return 'timeseries'
+    if (simulationStore.isLoadingResult) return 'result'
+    if (simulationStore.isPreparingSimulation) return 'preparing'
+    return null
+})
+
 const trackOptions = computed(() => {
     const options: Array<{ label: string; value: string }> = []
     
@@ -408,7 +418,7 @@ function _scheduleStreamingFlush(): void {
 
 
 <template>
-    <Teleport to="body" :disabled="!isFullscreen">
+    <Teleport to="#app" :disabled="!isFullscreen">
         <div class="simulation-viewer" :class="{ 'fullscreen-mode': isFullscreen }">
         <div class="card-header">
             <div class="card-header-row">
@@ -565,7 +575,6 @@ function _scheduleStreamingFlush(): void {
                         icon="pi pi-times"
                         :disabled="isScheduleLoading"
                         size="small"
-                        severity="danger"
                         text
                         @click="clearSimulation"
                         title="Clear loaded simulation"
@@ -593,32 +602,16 @@ function _scheduleStreamingFlush(): void {
             </div>
         </div>
 
-        <!-- Overlays cover entire viewer (header + chart) -->
-        <div v-if="isScheduleLoading" class="loading-overlay">
+        <!-- Single loading overlay - shows only the highest priority loading state -->
+        <div v-if="activeLoadingState" class="loading-overlay">
             <div class="loading-card">
                 <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
-                <div class="loading-text">Loading schedule...</div>
-            </div>
-        </div>
-
-        <div v-if="simulationStore.isLoadingResult" class="loading-overlay">
-            <div class="loading-card">
-                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
-                <div class="loading-text">Loading result...</div>
-            </div>
-        </div>
-
-        <div v-if="isFirstTimeseriesFetch" class="loading-overlay">
-            <div class="loading-card">
-                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
-                <div class="loading-text">Loading timeseries...</div>
-            </div>
-        </div>
-
-        <div v-if="simulationStore.isPreparingSimulation" class="loading-overlay">
-            <div class="loading-card">
-                <ProgressSpinner style="width: 50px; height: 50px" stroke-width="3" />
-                <div class="loading-text">Preparing simulation...</div>
+                <div class="loading-text">
+                    <span v-if="activeLoadingState === 'schedule'">Loading schedule...</span>
+                    <span v-else-if="activeLoadingState === 'timeseries'">Loading timeseries...</span>
+                    <span v-else-if="activeLoadingState === 'result'">Loading result...</span>
+                    <span v-else-if="activeLoadingState === 'preparing'">Preparing simulation...</span>
+                </div>
             </div>
         </div>
         </div>
@@ -634,6 +627,14 @@ function _scheduleStreamingFlush(): void {
 [data-pc-section="root"][role="dialog"],
 [data-pc-name="overlaypanel"] {
     z-index: 10000 !important;
+}
+
+/* Fullscreen header colours: CSS vars don't resolve after teleport, use Aura palette values */
+.simulation-viewer.fullscreen-mode .card-header {
+    background: #f8fafc; /* Aura slate.50 = surface-ground light */
+}
+.app-dark .simulation-viewer.fullscreen-mode .card-header {
+    background: #09090b; /* Aura zinc.950 = surface-ground dark */
 }
 </style>
 
@@ -658,7 +659,7 @@ function _scheduleStreamingFlush(): void {
 
 .card-header {
     background: var(--p-surface-ground);
-    z-index: 10;
+    z-index: 100;
     position: relative;
 }
 
@@ -726,10 +727,7 @@ function _scheduleStreamingFlush(): void {
     background: var(--p-surface-ground);
 }
 
-.simulation-viewer.fullscreen-mode .card-header {
-    background: var(--p-surface-0);
-    border-bottom: 1px solid var(--p-surface-border);
-}
+
 
 /* Gene-specific chip styling (dynamic colors) */
 .chip-container {

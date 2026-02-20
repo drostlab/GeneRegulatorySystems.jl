@@ -32,14 +32,14 @@ export const RED = {
     50:  '#fef2f2',
     100: '#fee2e2',
     200: '#fecaca',
-    300: '#fca5a5',
-    400: '#f87171',
-    500: '#ef4444',
-    600: '#dc2626',
-    700: '#b91c1c',
-    800: '#991b1b',
-    900: '#7f1d1d',
-    950: '#450a0a',
+    300: '#fb9b9b',
+    400: '#f37d7d',
+    500: '#e87c7c',
+    600: '#ca6d6d',
+    700: '#9e6060',
+    800: '#5a3737',
+    900: '#3e2727',
+    950: '#030202',
 } as const
 
 /** Julia-inspired purple — used as PrimeVue info. H=280, S tapers with L. */
@@ -47,14 +47,14 @@ export const PURPLE = {
     50:  '#f6f1f8',
     100: '#ebe0f0',
     200: '#d6c2e0',
-    300: '#c1a4d0',
-    400: '#ac88bf',
-    500: '#976cac',
-    600: '#7f5794',
-    700: '#664875',
-    800: '#4d3857',
-    900: '#34273a',
-    950: '#201924',
+    300: '#c4acd1',
+    400: '#b3a3bd',
+    500: '#9a7ea8',
+    600: '#887792',
+    700: '#685a6f',
+    800: '#524657',
+    900: '#342d37',
+    950: '#201c22',
 } as const
 
 /** Julia-inspired green — used as PrimeVue success / run button. Aura green. */
@@ -143,23 +143,25 @@ export interface ThemeMode {
     }
     /** Timeline panel. */
     timeline: {
-        instantLine: string
-        instantLineHover: string
-        instantBg: string
-        instantBgHover: string
-        instantText: string
-        instantTextHover: string
-        rectStroke: string
-        selectedFill: string
-        selectedStroke: string
+        instant: {
+            normal: { line: string; bg: string; text: string }
+            hover:  { line: string; bg: string; text: string }
+        }
+        rect: {
+            colour:   string
+            normal:   { stroke: string; text: string }
+            hover:    { stroke: string; text: string }
+            selected: { fill: string; stroke: string; text: string }
+        }
         segmentBoundary: string
-        segmentPalette: readonly string[]
     }
     /** Network diagram. */
     network: {
         reactionBg: string
         highlightBorder: string
         edgeLabelText: string
+        /** Label text colour for species/reaction-level edges (substrate, product). */
+        speciesEdgeLabelText: string
         edgeLabelBg: string
         dotGrid: string
         nodeBorder: string
@@ -189,26 +191,27 @@ const light: ThemeMode = {
         fallbackSeries: GREY[400],
     },
     timeline: {
-        instantLine:      GREY[400],
-        instantLineHover: PURPLE[600],
-        instantBg:        GREY[100],
-        instantBgHover:   PURPLE[100],
-        instantText:      GREY[600],
-        instantTextHover: PURPLE[800],
-        rectStroke:       GREY[400],
-        selectedFill:    PURPLE[200],
-        selectedStroke:  PURPLE[600],
+        instant: {
+            normal: { line: GREY[50],   bg: GREY[50],   text: GREY[600]   },
+            hover:  { line: PURPLE[200], bg: PURPLE[200], text: GREY[950] },
+        },
+        rect: {
+            colour:   GREY[200],
+            normal:   { stroke: GREY[300], text: GREY[500] },
+            hover:    { stroke: GREY[400], text: GREY[700] },
+            selected: { fill: PURPLE[200], stroke: GREY[300], text: GREY[900] },
+        },
         segmentBoundary: GREY[300],
-        segmentPalette:  [GREY[300]],
     },
     network: {
-        reactionBg:      GREY[400],
-        highlightBorder: GREY[950],
-        edgeLabelText:   GREY[600],
-        edgeLabelBg:     GREY[0],
-        dotGrid:         GREY[300],
-        nodeBorder:      GREY[800],
-        nodeFallback:    GREY[400],
+        reactionBg:           GREY[400],
+        highlightBorder:      GREY[950],
+        edgeLabelText:        GREY[600],
+        speciesEdgeLabelText: GREY[600],
+        edgeLabelBg:          GREY[0],
+        dotGrid:              GREY[300],
+        nodeBorder:           GREY[800],
+        nodeFallback:         GREY[400],
     },
     sciChartTheme: new SciChartJSLightTheme(),
 }
@@ -233,26 +236,27 @@ const dark: ThemeMode = {
         fallbackSeries: GREY[500],
     },
     timeline: {
-        instantLine:      GREY[500],
-        instantLineHover: PURPLE[400],
-        instantBg:        GREY[800],
-        instantBgHover:   PURPLE[950],
-        instantText:      GREY[400],
-        instantTextHover: PURPLE[200],
-        rectStroke:       GREY[600],
-        selectedFill:    PURPLE[800],
-        selectedStroke:  PURPLE[400],
+        instant: {
+            normal: { line: GREY[500],   bg: GREY[800],    text: GREY[300]   },
+            hover:  { line: PURPLE[500], bg: PURPLE[500],  text: GREY[50] },
+        },
+        rect: {
+            colour:   GREY[700],
+            normal:   { stroke: GREY[600], text: GREY[400] },
+            hover:    { stroke: GREY[400], text: GREY[200] },
+            selected: { fill: PURPLE[800], stroke: PURPLE[400], text: GREY[50] },
+        },
         segmentBoundary: GREY[700],
-        segmentPalette:  [GREY[700]],
     },
     network: {
-        reactionBg:      GREY[500],
-        highlightBorder: GREY[50],
-        edgeLabelText:   GREY[100],
-        edgeLabelBg:     GREY[800],
-        dotGrid:         GREY[800],
-        nodeBorder:      GREY[800],
-        nodeFallback:    GREY[500],
+        reactionBg:           GREY[500],
+        highlightBorder:      GREY[950],
+        edgeLabelText:        GREY[100],
+        speciesEdgeLabelText: GREY[800],
+        edgeLabelBg:          GREY[800],
+        dotGrid:              GREY[800],
+        nodeBorder:           GREY[800],
+        nodeFallback:         GREY[500],
     },
     sciChartTheme: new SciChartJSDarkv2Theme(),
 }

@@ -185,7 +185,7 @@ export class MainChart {
         console.debug(`[MainChart] setScheduleData: ${segments.length} segments, structure type: ${structure.type}`)
         const timelinePanel = this.getTimelinePanel()
         timelinePanel.setScheduleData(structure, segments)
-
+        this.timeCursorModifier.bringToFront()
         const pathYRanges = collectPathYRanges(structure)
         const promoterPanel = this.getPromoterPanel()
         promoterPanel.setPathYRanges(pathYRanges)

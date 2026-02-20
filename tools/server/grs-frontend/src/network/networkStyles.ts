@@ -210,6 +210,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'target-arrow-shape': 'none',
                 'text-margin-y': -1,
                 'text-background-opacity': 0,
+                'color': t.network.speciesEdgeLabelText,
             } as any,
         },
 
@@ -223,6 +224,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'control-point-step-size': 4,
                 'text-margin-y': -1,
                 'text-background-opacity': 0,
+                'color': t.network.speciesEdgeLabelText,
             } as any,
         },
         {
