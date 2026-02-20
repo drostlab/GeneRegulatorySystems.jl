@@ -21,6 +21,7 @@ export function useMonacoEditor(
     onContentChange?: (content: string) => void
 ) {
     const editor = shallowRef<any>(null)
+    const scopeDecorationIds = shallowRef<string[]>([])
 
     /**
      * Define custom Atom One themes
@@ -190,6 +191,75 @@ export function useMonacoEditor(
     }
 
     /**
+     * Highlight a range (by character offsets) in the editor.
+     * Pass `scroll = true` to reveal the range in the centre of the viewport.
+     * Replaces any previously set scope highlight.
+     */
+    function highlightScope(startOffset: number, endOffset: number, scroll = false): void {
+        if (!editor.value) return
+        const model = editor.value.getModel()
+        if (!model) return
+
+        const startPos = model.getPositionAt(startOffset)
+        const endPos = model.getPositionAt(endOffset)
+        const cls = 'scope-highlight'
+        const decorations: any[] = []
+
+        if (startPos.lineNumber === endPos.lineNumber) {
+            // Single line — exact range only
+            decorations.push({
+                range: {
+                    startLineNumber: startPos.lineNumber, startColumn: startPos.column,
+                    endLineNumber: endPos.lineNumber, endColumn: endPos.column,
+                },
+                options: { className: cls },
+            })
+        } else {
+            // First line — exact start, extends to right edge via CSS ::after
+            decorations.push({
+                range: {
+                    startLineNumber: startPos.lineNumber, startColumn: startPos.column,
+                    endLineNumber: startPos.lineNumber, endColumn: model.getLineMaxColumn(startPos.lineNumber),
+                },
+                options: { className: `${cls}-first` },
+            })
+            // Middle lines — full width
+            if (endPos.lineNumber - startPos.lineNumber > 1) {
+                decorations.push({
+                    range: {
+                        startLineNumber: startPos.lineNumber + 1, startColumn: 1,
+                        endLineNumber: endPos.lineNumber - 1, endColumn: 1,
+                    },
+                    options: { className: cls, isWholeLine: true },
+                })
+            }
+            // Last line — start of line to exact end position
+            decorations.push({
+                range: {
+                    startLineNumber: endPos.lineNumber, startColumn: 1,
+                    endLineNumber: endPos.lineNumber, endColumn: endPos.column,
+                },
+                options: { className: cls },
+            })
+        }
+
+        scopeDecorationIds.value = editor.value.deltaDecorations(scopeDecorationIds.value, decorations)
+
+        if (scroll) {
+            editor.value.revealRangeInCenter({
+                startLineNumber: startPos.lineNumber, startColumn: startPos.column,
+                endLineNumber: endPos.lineNumber, endColumn: endPos.column,
+            })
+        }
+    }
+
+    /** Remove the current scope highlight decoration. */
+    function clearScopeHighlight(): void {
+        if (!editor.value) return
+        scopeDecorationIds.value = editor.value.deltaDecorations(scopeDecorationIds.value, [])
+    }
+
+    /**
      * Cleanup: disconnect observers and dispose editor
      */
     function dispose() {
@@ -208,6 +278,8 @@ export function useMonacoEditor(
         setValue,
         getContent,
         updateOptions,
+        highlightScope,
+        clearScopeHighlight,
         dispose
     }
 }

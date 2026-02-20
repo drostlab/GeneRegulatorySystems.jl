@@ -15,6 +15,8 @@ export interface TimelineSegment {
     id: number
     execution_path: string
     model_path: string
+    /** JSONPath segments (string | 0-based index) for locating the model definition in the source JSON. */
+    json_path: (string | number)[]
     from: number
     to: number
     label: string

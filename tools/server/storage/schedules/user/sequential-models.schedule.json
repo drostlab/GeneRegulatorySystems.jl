@@ -1,5 +1,6 @@
 {
     "label": "sequential-model-switch",
+    "seed": "123",
     "step": [
         {
             "label": "phase-1-three-gene-network",

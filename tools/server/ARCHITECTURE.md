@@ -5,7 +5,7 @@
 | File | Purpose | Key Exports |
 | ------ | --------- | ------------- |
 | `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `POST /schedules/union-network`, `POST /schedules/network`, `POST /simulations/{id}/timeseries` (filtered), simulation run/results |
-| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network`. Internal: `_gene_names` (lightweight dispatch-based gene extraction without building networks), `_spec_bindings`/`_spec_seed` (handle both Dict and Vector specs), `_validate_spec` (Dict and Vector overloads), `_label`/`_type_label` (label extraction with fallback for unlabelled models) |
+| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network`. Internal: `model_path_to_json_path` (converts internal model_path string to a JSONPath segment array for source highlighting), `_gene_names` (lightweight dispatch-based gene extraction without building networks), `_spec_bindings`/`_spec_seed` (handle both Dict and Vector specs), `_validate_spec` (Dict and Vector overloads), `_label`/`_type_label` (label extraction with fallback for unlabelled models) |
 | `src/schedule_storage.jl` | Schedule file persistence (examples/user/snapshot) | `list_schedules`, `load_schedule`, `save_schedule` |
 | `src/simulation.jl` | Simulation execution and result management | `run_simulation`, `load_result`, `list_results`, `load_timeseries_for_species` |
 | `src/simulation_controller.jl` | Live simulation lifecycle (pause/resume, WS streaming, gene subscriptions) | `SimulationController`, `check_pause!`, `pause!`, `resume!`, `subscribe_genes!`, `send_progress`, `send_timeseries`, `send_status` |
@@ -118,7 +118,7 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 
 | File | Key Types |
 | ------ | ----------- |
-| `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule`. Functions: `getPathTimeRanges`, `getSegmentBoundaryTimes`, `getActivePathsAtTime` |
+| `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, json_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule`. Functions: `getPathTimeRanges`, `getSegmentBoundaryTimes`, `getActivePathsAtTime` |
 | `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` (unified; `current_time`, `max_time`, `status` includes `'paused'`), `SimulationStatus`, `getProgress()`, `getMaxTime()`, `formatResultLabel()` |
 | `types/network.ts` | `Node`, `Link`, `Network`, `UnionNetwork`, `ModelExclusions`, `linkId()`, `MODEL_NODE_KINDS` |
 
@@ -129,13 +129,14 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 | `App.vue` | 3-panel splitter layout |
 | `TrackViewer.vue` | Toolbar (run/load/gene filter/track settings) + MainChart + fullscreen |
 | `NetworkDiagram.vue` | Cytoscape graph via `NetworkView`. Model label overlay (bottom-left). Watches `scheduleStore.unionNetwork`. |
-| `ScheduleEditor.vue` | Schedule dropdown + Monaco JSON editor + validation |
+| `ScheduleEditor.vue` | Schedule dropdown + Monaco JSON editor + validation. Watches `viewerStore.hoveredModelPath` and `selectedSegmentIds`; resolves the corresponding `json_path` from loaded segments via `findRangeForJsonPath`, then calls `highlightScope`/`clearScopeHighlight` to highlight and optionally scroll to the active scope in the editor. |
 
 ### Utils and Services
 
 | File | Purpose |
 | ------ | --------- |
 | `utils/colorUtils.ts` | `parseColour` (hex + HSL), `rgbToHex`, `lerpColor`, `lighten`, `darken`, `withOpacity` |
+| `utils/jsonPathUtils.ts` | `findRangeForJsonPath(text, path)` — resolves a `(string|number)[]` JSONPath (as produced by the backend's `model_path_to_json_path`) to `{ startOffset, endOffset }` inside a JSON string using `jsonc-parser` |
 | `utils/api.ts` | `apiFetch`, `apiFetchJson`, `apiFetchText` with retry/timeout |
 | `services/scheduleService.ts` | Schedule API: load, save, list, `fetchUnionNetwork`, `fetchNetwork`, `fetchNetworkFromSpec` |
 | `services/simulationService.ts` | Simulation API: `runSimulation`, `loadResult`, `listResults`, `fetchTimeseriesForSpecies` |
@@ -145,3 +146,4 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 | File | Purpose |
 | ------ | --------- |
 | `composables/useSimulationStream.ts` | WebSocket connection for live simulation streaming. Singleton via `getSimulationStream()`. Functions: `connect`, `disconnect`, `subscribe(species)`, `pause`, `resume`, `track(id, callbacks)`, `untrack`. Callbacks: `ProgressCallback`, `TimeseriesCallback`, `StatusCallback`. Auto-reconnect on disconnect. |
+| `composables/useMonacoEditor.ts` | Monaco editor lifecycle: `init`, `setValue`, `getContent`, `updateOptions`, `dispose`. Scope highlighting: `highlightScope(startOffset, endOffset, scroll?)` adds a decoration (`scope-highlight` + `scope-highlight-gutter` CSS classes) and optionally scrolls; `clearScopeHighlight()` removes it. |

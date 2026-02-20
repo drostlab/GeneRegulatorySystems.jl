@@ -20,7 +20,9 @@
 import { ref, reactive, onMounted, computed, watch, onBeforeUnmount} from 'vue'
 import { useScheduleStore } from '@/stores/scheduleStore'
 import { useSimulationStore } from '@/stores/simulationStore'
+import { useViewerStore } from '@/stores/viewerStore'
 import { useMonacoEditor } from '@/composables/useMonacoEditor'
+import { findRangeForJsonPath } from '@/utils/jsonPathUtils'
 import Button from 'primevue/button'
 import Select, { type SelectChangeEvent } from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -30,6 +32,7 @@ import { parseScheduleKey } from '@/types/schedule'
 
 const store = useScheduleStore()
 const simulationStore = useSimulationStore()
+const viewerStore = useViewerStore()
 
 const isLoading = computed(() => store.isLoading)
 
@@ -44,7 +47,7 @@ const editor = reactive<EditorState>({
 })
 
 // Monaco editor 
-const { init: initMonaco, setValue: setCurrentJson, getContent: getCurrentJson, updateOptions: updateOptionsMonaco, dispose: disposeMonaco } = useMonacoEditor(
+const { init: initMonaco, setValue: setCurrentJson, getContent: getCurrentJson, updateOptions: updateOptionsMonaco, highlightScope, clearScopeHighlight, dispose: disposeMonaco } = useMonacoEditor(
     'schedule-editor-monaco'
 )
 
@@ -152,6 +155,31 @@ function cancelEdit() {
 function cancelScheduleNameEdit() {
     editor.currentName = store.schedule.name
 }
+
+// ============================================================================
+// Scope highlight: sync Monaco editor with timeline hover / selection
+// ============================================================================
+
+/**
+ * Resolve the json_path to highlight from the active model path.
+ * Mirrors the same computed used by NetworkDiagram / ModelFilter.
+ */
+const activeHighlightPath = computed((): (string | number)[] | null => {
+    // Only highlight when something is explicitly hovered — never for timepoint fallback.
+    if (!viewerStore.hoveredModelPath) return null
+    const seg = store.segments.find(s => s.model_path === viewerStore.activeModelPath)
+    return seg?.json_path ?? null
+})
+
+watch(activeHighlightPath, (path) => {
+    if (!path) {
+        clearScopeHighlight()
+        return
+    }
+    const range = findRangeForJsonPath(getCurrentJson(), path)
+    if (!range) return
+    highlightScope(range.startOffset, range.endOffset, true)
+})
 
 onMounted(async () => {
     try {
@@ -382,5 +410,27 @@ onBeforeUnmount(() =>
 .editor-container.editor-editing {
     border: 2px solid var(--p-primary-color);
     background: var(--p-primary-50);
+}
+
+/* Monaco scope highlight — must be global (decorations are injected outside Vue's scoped context) */
+:global(.scope-highlight),
+:global(.scope-highlight-first) {
+    background-color: color-mix(in srgb, var(--p-primary-color) 10%, transparent);
+}
+/* First line: extends from the start character to the right edge of the editor
+   via a ::after pseudo-element clipped by Monaco's overflow:hidden container. */
+:global(.scope-highlight-first) {
+    display: inline-block !important;
+    position: relative;
+}
+:global(.scope-highlight-first::after) {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 100%;
+    width: 100vw;
+    background-color: color-mix(in srgb, var(--p-primary-color) 10%, transparent);
+    pointer-events: none;
 }
 </style>

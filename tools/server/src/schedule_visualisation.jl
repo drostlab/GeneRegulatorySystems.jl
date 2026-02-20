@@ -66,6 +66,7 @@ Single execution segment from a dryrun pass.
 - `id`: auto-increment unique identifier
 - `execution_path`: dryrun `path` kwarg (not unique for repeating scopes)
 - `model_path`: `primitive!.path` (spec location, used for network loading)
+- `json_path`: JSONPath segments for locating the model definition in the source JSON
 - `from`/`to`: time range (from == to for instant models)
 - `label`: human-readable model label
 """
@@ -73,6 +74,7 @@ Single execution segment from a dryrun pass.
     id::Int
     execution_path::String
     model_path::String
+    json_path::Vector{Any}
     from::Float64
     to::Float64
     label::String
@@ -274,6 +276,55 @@ function extract_union_network(spec_string::String, segments::Vector{TimelineSeg
     )
 end
 
+# ============================================================================
+# Internal: model_path → JSONPath conversion
+# ============================================================================
+
+"""
+    model_path_to_json_path(model_path) -> Vector{Any}
+
+Convert an internal model_path string (e.g. `"+-1.do"`) to a JSONPath segment
+array suitable for use with `jsonc-parser`'s `findNodeAtLocation`.
+
+Encoding rules:
+- `+` or `/`  → descend into the `"step"` key (scope entry)
+- `-`          → list separator, no JSON descent
+- digits       → 0-based array index (Julia paths are 1-based)
+- `.name`      → descend into binding key `name`
+"""
+function model_path_to_json_path(model_path::String)::Vector{Any}
+    result = Any[]
+    chars = collect(model_path)
+    n = length(chars)
+    i = 1
+    while i <= n
+        c = chars[i]
+        if c == '+' || c == '/'
+            push!(result, "step")
+            i += 1
+        elseif c == '-'
+            i += 1  # list separator — no JSON key descent
+        elseif c == '.'
+            j = i + 1
+            while j <= n && chars[j] ∉ ('+', '/', '-', '.')
+                j += 1
+            end
+            push!(result, String(chars[i+1:j-1]))
+            i = j
+        elseif isdigit(c)
+            j = i
+            while j <= n && isdigit(chars[j])
+                j += 1
+            end
+            push!(result, parse(Int, String(chars[i:j-1])) - 1)  # 0-based
+            i = j
+        else
+            i += 1
+        end
+    end
+    return result
+end
+
 function _unique_model_paths(segments::Vector{TimelineSegment})::Vector{String}
     seen = Set{String}()
     paths = String[]
@@ -362,6 +413,7 @@ function _collect_segments(grs_schedule)::Tuple{Vector{TimelineSegment}, Vector{
             id = next_id[],
             execution_path = path,
             model_path = model_path,
+            json_path = model_path_to_json_path(model_path),
             from = x.t,
             to = x.t + (isfinite(Δt) ? Δt : 0.0),
             label = label,
@@ -401,6 +453,7 @@ function _merge_contiguous_segments(segments::Vector{TimelineSegment})::Vector{T
                 id = current.id,
                 execution_path = current.execution_path,
                 model_path = current.model_path,
+                json_path = current.json_path,
                 from = current.from,
                 to = seg.to,
                 label = current.label,
@@ -416,6 +469,7 @@ function _merge_contiguous_segments(segments::Vector{TimelineSegment})::Vector{T
         id = i,
         execution_path = seg.execution_path,
         model_path = seg.model_path,
+        json_path = seg.json_path,
         from = seg.from,
         to = seg.to,
         label = seg.label
