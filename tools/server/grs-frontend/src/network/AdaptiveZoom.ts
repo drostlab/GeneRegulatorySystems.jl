@@ -1,38 +1,85 @@
 /**
- * Adaptive zoom: shows/hides species and reaction nodes based on zoom level.
+ * Adaptive zoom: toggles between gene-level and species-level views.
  *
- * Below the threshold, only gene nodes (and orphan species) are visible.
- * Above, species + reactions are added as compound children of gene nodes,
- * positioned in a circle inside their parent gene.
+ * Below the zoom threshold, the gene view is shown:
+ *   - Gene nodes, orphan species, and gene-scope + resolved-all edges.
+ * Above the threshold, the species view is added:
+ *   - Species/reaction nodes as compound children of genes,
+ *     species-scope + all-scope edges at actual endpoints.
+ *   - Gene-scope edges are removed, all-scope edges are swapped
+ *     from gene-resolved endpoints to species-level endpoints.
+ *   - Regulatory edges get `.species-view` class (thin, no label).
+ *   - Gene nodes get `.compound-parent` class (transparent bg).
+ *   - A scoped fcose layout runs on species/reaction nodes (genes locked).
  *
- * Saves and restores gene positions to prevent layout shifts on toggle.
+ * Gene positions are saved/restored across transitions to prevent
+ * compound layout shifts.
  */
 import type { Core, EventHandler } from 'cytoscape'
 import type { UnionNetwork } from '@/types/network'
-import { getDetailElements } from './networkElements'
+import { getGeneViewElements, getSpeciesViewElements } from './networkElements'
+import logging from '@/utils/logging'
+
+const log = logging.getLogger('AdaptiveZoom')
 
 /** Zoom level above which species/reactions become visible. */
-const ZOOM_THRESHOLD = 3.0
+const ZOOM_THRESHOLD = 2.0
 
-/** Reduced debounce for responsive zoom interaction. */
+/** Debounce for zoom event handling. */
 const DEBOUNCE_MS = 50
+
+/** Regulatory edge kinds that get thinned in species view. */
+const REGULATORY_KINDS = new Set(['activation', 'repression', 'proteolysis'])
+
+/** Known cascade species types — pinned during layout refinement. */
+const CASCADE_SPECIES = new Set([
+    'active', 'inactive', 'elongations', 'premrnas', 'mrnas', 'proteins',
+])
+
+/** Hardcoded zigzag offsets for known cascade species (relative to gene centre). */
+const SPECIES_OFFSETS: Record<string, { x: number; y: number }> = {
+    active:      { x: -30, y: -15 },
+    inactive:    { x: -30, y:  15 },
+    elongations: { x: -15, y:  15 },
+    premrnas:    { x:   0, y: -15 },
+    mrnas:       { x:  15, y:  15 },
+    proteins:    { x:  30, y: -15 },
+}
 
 export class AdaptiveZoom {
     private cy: Core | null = null
     private network: UnionNetwork | null = null
     private geneColours: Record<string, string> = {}
     private detailVisible = false
+    private manualOverride = false
     private timeout: ReturnType<typeof setTimeout> | null = null
     private handler: EventHandler | null = null
 
-    /** Callback fired when detail visibility changes (for external modules to refresh). */
+    /** Precomputed element sets for fast toggling. */
+    private geneViewEdges: cytoscape.ElementDefinition[] = []
+    private speciesViewElements: cytoscape.ElementDefinition[] = []
+
+    /** Callback fired when detail visibility changes. */
     onDetailChange: ((visible: boolean) => void) | null = null
 
+    /**
+     * Attach to a Cytoscape instance and start monitoring zoom.
+     *
+     * Precomputes both gene-view and species-view element sets for
+     * fast toggling without re-running element generation.
+     *
+     * @param cy - Cytoscape core instance
+     * @param network - union network data from backend
+     * @param geneColours - gene name to colour mapping
+     */
     attach(cy: Core, network: UnionNetwork, geneColours: Record<string, string>): void {
         this.cy = cy
         this.network = network
         this.geneColours = geneColours
         this.detailVisible = false
+
+        // Precompute elements for both views
+        this.precomputeElements()
 
         this.handler = () => this.scheduleCheck()
         cy.on('zoom', this.handler)
@@ -49,11 +96,57 @@ export class AdaptiveZoom {
         this.handler = null
         this.cy = null
         this.network = null
+        this.geneViewEdges = []
+        this.speciesViewElements = []
+        this.manualOverride = false
     }
 
     get isDetailVisible(): boolean {
         return this.detailVisible
     }
+
+    /**
+     * Manually toggle between gene and species views.
+     * Sets manualOverride so auto-zoom doesn't immediately undo the toggle.
+     * Override clears on the next zoom crossing so natural zooming resumes.
+     */
+    toggleDetail(): void {
+        if (!this.cy || !this.network) return
+        this.manualOverride = true
+        if (this.detailVisible) {
+            this.hideDetail()
+        } else {
+            this.showDetail()
+        }
+    }
+
+    // ========================================================================
+    // Precomputation
+    // ========================================================================
+
+    /**
+     * Precompute element sets for both zoom levels.
+     * Gene-view edges are stored separately for removal/re-adding on toggle.
+     */
+    private precomputeElements(): void {
+        if (!this.network) return
+
+        // Gene-view: extract only edges (nodes are already in the graph)
+        const geneView = getGeneViewElements(this.network, this.geneColours)
+        this.geneViewEdges = geneView.filter(e => e.data.source !== undefined)
+
+        // Species-view: all nodes + edges
+        this.speciesViewElements = getSpeciesViewElements(this.network, this.geneColours)
+
+        log.debug(
+            `Precomputed: ${this.geneViewEdges.length} gene edges, ` +
+            `${this.speciesViewElements.length} species elements`,
+        )
+    }
+
+    // ========================================================================
+    // Zoom handling
+    // ========================================================================
 
     private scheduleCheck(): void {
         if (this.timeout) clearTimeout(this.timeout)
@@ -65,6 +158,17 @@ export class AdaptiveZoom {
         if (!cy || !this.network) return
 
         const shouldShow = cy.zoom() > ZOOM_THRESHOLD
+
+        // After a manual toggle, suppress until zoom crosses back to the
+        // matching side (so the immediate zoom event doesn't undo the toggle).
+        if (this.manualOverride) {
+            if (shouldShow === this.detailVisible) {
+                // Zoom now agrees with the manual state — resume auto-switching
+                this.manualOverride = false
+            }
+            return
+        }
+
         if (shouldShow === this.detailVisible) return
 
         if (shouldShow) {
@@ -74,52 +178,125 @@ export class AdaptiveZoom {
         }
     }
 
+    // ========================================================================
+    // View transitions
+    // ========================================================================
+
+    /**
+     * Transition to species-level view.
+     *
+     * 1. Save gene positions
+     * 2. Remove gene-scope edges
+     * 3. Add species nodes + species-scope + all-scope edges
+     * 4. Seed child positions (using saved gene centres — before batch end!)
+     * 5. Tag regulatory edges with .species-view, genes with .compound-parent
+     * 6. Run per-gene fcose refinement on free (non-cascade) nodes
+     */
     private showDetail(): void {
         const cy = this.cy!
-        const elements = getDetailElements(this.network!, this.geneColours)
-        if (elements.length === 0) return
+        if (this.speciesViewElements.length === 0) return
 
-        // Save gene positions before adding children (which changes compound layout)
         const genePositions = this.saveGenePositions()
 
-        // Filter out elements already present in graph
-        const existing = new Set(cy.elements().map((e: any) => e.id()))
-        const newElements = elements.filter(e => !existing.has(e.data.id as string))
-        if (newElements.length === 0) return
-
         cy.startBatch()
-        cy.add(newElements)
 
-        // Restore gene positions (compound parent auto-sizing may have shifted them)
-        this.restoreGenePositions(genePositions)
+        // Remove gene-view edges
+        const geneEdgeIds = new Set(this.geneViewEdges.map(e => e.data.id as string))
+        cy.edges().forEach((edge: any) => {
+            if (geneEdgeIds.has(edge.id())) edge.remove()
+        })
 
-        // Position children inside their gene parents
-        this.positionCompoundChildren()
+        // Add species-view elements, skipping already-present ones
+        const existing = new Set(cy.elements().map((e: any) => e.id()))
+        const newElements = this.speciesViewElements.filter(
+            e => !existing.has(e.data.id as string),
+        )
+        if (newElements.length > 0) {
+            cy.add(newElements)
+        }
+
+        // Seed children at known positions BEFORE ending batch.
+        // This is critical: once children exist, gene becomes a compound node
+        // whose position is derived from children. We must place children at
+        // the saved gene centre so the compound doesn't drift.
+        this.seedChildPositions(genePositions)
+
+        // Tag gene nodes as compound parents (transparent bg via stylesheet)
+        cy.nodes('.gene').addClass('compound-parent')
+
+        // Tag regulatory edges with species-view class (thin, no label)
+        cy.edges().forEach((edge: any) => {
+            if (REGULATORY_KINDS.has(edge.data('kind'))) {
+                edge.addClass('species-view')
+            }
+        })
 
         cy.endBatch()
 
-        this.detailVisible = true
-        this.onDetailChange?.(true)
+        // Run per-gene physics refinement for non-cascade nodes
+        this.runSpeciesLayout(() => {
+            this.detailVisible = true
+            log.debug('Switched to species view')
+            this.onDetailChange?.(true)
+        })
     }
 
+    /**
+     * Transition back to gene-level view.
+     *
+     * 1. Save gene positions
+     * 2. Remove species/reaction nodes + species-view edges
+     * 3. Remove .species-view and .compound-parent classes
+     * 4. Re-add gene-scope edges
+     * 5. Restore gene positions
+     */
     private hideDetail(): void {
         const cy = this.cy!
 
-        // Save gene positions before removing children
         const genePositions = this.saveGenePositions()
 
         cy.startBatch()
+
+        // Remove species/reaction nodes (cascade removes connected edges)
         cy.nodes('.species, .reaction').remove()
 
-        // Restore gene positions
+        // Remove any remaining species-view edges
+        const speciesEdgeIds = new Set(
+            this.speciesViewElements
+                .filter(e => e.data.source !== undefined)
+                .map(e => e.data.id as string),
+        )
+        cy.edges().forEach((edge: any) => {
+            if (speciesEdgeIds.has(edge.id())) edge.remove()
+        })
+
+        // Re-add gene-view edges
+        const existingAfter = new Set(cy.elements().map((e: any) => e.id()))
+        const geneEdges = this.geneViewEdges.filter(
+            e => !existingAfter.has(e.data.id as string),
+        )
+        if (geneEdges.length > 0) {
+            cy.add(geneEdges)
+        }
+
+        // Remove view-specific CSS classes
+        cy.nodes('.gene').removeClass('compound-parent')
+        cy.edges().removeClass('species-view')
+
         this.restoreGenePositions(genePositions)
+
         cy.endBatch()
 
         this.detailVisible = false
+        log.debug('Switched to gene view')
         this.onDetailChange?.(false)
     }
 
-    /** Save all gene/orphan-species positions. */
+    // ========================================================================
+    // Position helpers
+    // ========================================================================
+
+    /** Save positions of all gene and orphan-species nodes. */
     private saveGenePositions(): Map<string, { x: number; y: number }> {
         const positions = new Map<string, { x: number; y: number }>()
         this.cy!.nodes('.gene, .orphan-species').forEach((n: any) => {
@@ -140,92 +317,181 @@ export class AdaptiveZoom {
     }
 
     /**
-     * Position compound children inside their gene parents.
-     * Species nodes get hardcoded positions following the cascade:
-     *   active -> elongations -> premrnas -> mrnas -> proteins
-     * Reaction nodes are placed at the centroid of their connected species.
+     * Per-gene physics refinement.
+     *
+     * For each visible gene, collect its children + intra-gene edges and run
+     * a short fcose pass.  Known cascade species (active, elongations, etc.)
+     * are pinned via fixedNodeConstraint; only unknown/custom species and
+     * reactions are free to move.  This keeps the zigzag cascade stable while
+     * letting extra nodes (e.g. homodimers) find good positions.
+     *
+     * @param onDone - callback when all per-gene layouts complete
      */
-    private positionCompoundChildren(): void {
+    private runSpeciesLayout(onDone: () => void): void {
         const cy = this.cy!
 
-        // Hardcoded relative offsets for each species type in a zig-zag cascade
-        const speciesOffsets: Record<string, { x: number; y: number }> = {
-            active:      { x: -30, y: -15 },
-            elongations: { x: -15, y:  15 },
-            premrnas:    { x:   0, y: -15 },
-            mrnas:       { x:  15, y:  15 },
-            proteins:    { x:  30, y: -15 },
+        // Only lay out genes in/near the viewport
+        const ext = cy.extent()
+        const pad = 200
+        const visibleGenes = cy.nodes('.gene').filter((gene: any) => {
+            const pos = gene.position()
+            return pos.x >= ext.x1 - pad && pos.x <= ext.x2 + pad
+                && pos.y >= ext.y1 - pad && pos.y <= ext.y2 + pad
+        })
+
+        if (visibleGenes.empty()) {
+            onDone()
+            return
         }
+
+        let remaining = visibleGenes.length
+        const done = () => {
+            remaining--
+            if (remaining <= 0) onDone()
+        }
+
+        visibleGenes.forEach((gene: any) => {
+            const children = gene.children()
+            if (children.empty()) {
+                done()
+                return
+            }
+
+            // Collect intra-gene edges (both endpoints are children of this gene)
+            const childIds = new Set<string>()
+            children.forEach((c: any) => childIds.add(c.id()))
+            const intraEdges = cy.edges().filter((edge: any) => {
+                return childIds.has(edge.data('source')) && childIds.has(edge.data('target'))
+            })
+
+            // Pin known cascade species at their current (seeded) positions
+            const fixedConstraints: Array<{ nodeId: string; position: { x: number; y: number } }> = []
+            children.forEach((child: any) => {
+                const speciesType = child.data('species_type') as string | undefined
+                if (speciesType && CASCADE_SPECIES.has(speciesType)) {
+                    const pos = child.position()
+                    fixedConstraints.push({ nodeId: child.id(), position: { x: pos.x, y: pos.y } })
+                }
+            })
+
+            const elements = children.merge(intraEdges)
+
+            const layout = elements.layout({
+                name: 'fcose',
+                quality: 'default',
+                randomize: false,
+                animate: false,
+                fit: false,
+                fixedNodeConstraint: fixedConstraints.length > 0 ? fixedConstraints : undefined,
+                nodeRepulsion: 600,
+                idealEdgeLength: 12,
+                edgeElasticity: 0.5,
+                numIter: 100,
+                gravity: 1.5,
+                gravityRange: 1.0,
+                tile: false,
+                packComponents: false,
+            } as any)
+
+            layout.one('layoutstop', done)
+            layout.run()
+        })
+
+        // Handle orphan reactions (no gene parent) — nudge near neighbours
+        cy.nodes('.reaction').forEach((node: any) => {
+            if (node.data('parent')) return
+            const neighbours = node.neighborhood('node')
+            if (neighbours.empty()) return
+            const nPos = neighbours.first().position()
+            node.position({ x: nPos.x + 15, y: nPos.y + 10 })
+        })
+    }
+
+    /**
+     * Seed species/reaction children at deterministic positions relative to
+     * their gene's saved centre.
+     *
+     * Known cascade species get hardcoded zigzag offsets:
+     *   active -> elongations -> premrnas -> mrnas -> proteins
+     * Reactions are placed at the centroid of their connected species.
+     * Unknown species get small offsets below the cascade.
+     *
+     * Uses savedPositions (not gene.position()) because once children exist
+     * the gene becomes a compound node whose position is derived from children.
+     *
+     * @param savedPositions - gene positions captured before children were added
+     */
+    private seedChildPositions(savedPositions: Map<string, { x: number; y: number }>): void {
+        const cy = this.cy!
 
         cy.nodes('.gene').forEach((gene: any) => {
             const children = gene.children()
             if (children.empty()) return
 
-            const center = gene.position()
+            const center = savedPositions.get(gene.id())
+            if (!center) return
+
+            let unknownIndex = 0
 
             // First pass: position species nodes
             children.forEach((child: any) => {
                 if (child.data('kind') !== 'species') return
                 const speciesType = child.data('species_type') as string | undefined
-                const offset = speciesOffsets[speciesType ?? '']
+                const offset = speciesType ? SPECIES_OFFSETS[speciesType] : undefined
                 if (offset) {
-                    child.position({
-                        x: center.x + offset.x,
-                        y: center.y + offset.y,
-                    })
+                    child.position({ x: center.x + offset.x, y: center.y + offset.y })
+                } else {
+                    // Unknown species: arrange in a row below the cascade
+                    const xOff = -20 + unknownIndex * 15
+                    child.position({ x: center.x + xOff, y: center.y + 25 })
+                    unknownIndex++
                 }
             })
 
-            // Second pass: position reaction nodes at centroid of connected neighbours
+            // Second pass: position reactions at centroid of connected species
             children.forEach((child: any) => {
                 if (child.data('kind') !== 'reaction') return
-                const pos = computeNeighbourCentroid(child, center)
-                child.position(pos)
+                const neighbours = child.neighborhood('node')
+                if (neighbours.empty()) {
+                    child.position({ x: center.x, y: center.y + 15 })
+                    return
+                }
+
+                let sumX = 0, sumY = 0, count = 0
+                neighbours.forEach((n: any) => {
+                    const pos = n.position()
+                    sumX += pos.x
+                    sumY += pos.y
+                    count++
+                })
+
+                if (count === 1) {
+                    // Single neighbour: offset perpendicular to avoid overlap
+                    const nPos = neighbours.first().position()
+                    const dx = nPos.x - center.x
+                    const dy = nPos.y - center.y
+                    const dist = Math.sqrt(dx * dx + dy * dy)
+                    if (dist > 0.1) {
+                        child.position({
+                            x: nPos.x - (dy / dist) * 8,
+                            y: nPos.y + (dx / dist) * 8,
+                        })
+                    } else {
+                        child.position({ x: nPos.x + 5, y: nPos.y })
+                    }
+                } else {
+                    child.position({ x: sumX / count, y: sumY / count })
+                }
             })
         })
+
+        // Orphan reactions: place near first connected neighbour
+        cy.nodes('.reaction').forEach((node: any) => {
+            if (node.data('parent')) return
+            const neighbours = node.neighborhood('node')
+            if (neighbours.empty()) return
+            const nPos = neighbours.first().position()
+            node.position({ x: nPos.x + 15, y: nPos.y + 10 })
+        })
     }
-}
-
-/**
- * Compute the centroid of a node's connected neighbours.
- * Falls back to the parent centre if no positioned neighbours are found.
- * For single-neighbour reactions, offsets perpendicular to avoid overlap.
- */
-function computeNeighbourCentroid(
-    node: any,
-    fallback: { x: number; y: number },
-): { x: number; y: number } {
-    const neighbours = node.neighborhood('node')
-    if (neighbours.empty()) return { x: fallback.x, y: fallback.y + 15 }
-
-    let sumX = 0
-    let sumY = 0
-    let count = 0
-
-    neighbours.forEach((n: any) => {
-        const pos = n.position()
-        sumX += pos.x
-        sumY += pos.y
-        count++
-    })
-
-    if (count === 0) return { x: fallback.x, y: fallback.y + 15 }
-
-    const cx = sumX / count
-    const cy = sumY / count
-
-    // Single neighbour: offset away from it so the reaction isn't on top of the species
-    if (count === 1) {
-        const nPos = neighbours.first().position()
-        const dx = cx - fallback.x
-        const dy = cy - fallback.y
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist > 0.1) {
-            // Place perpendicular to the direction from centre to neighbour
-            return { x: cx - (dy / dist) * 20, y: cy + (dx / dist) * 20 }
-        }
-        return { x: cx + 10, y: cy }
-    }
-
-    return { x: cx, y: cy }
 }

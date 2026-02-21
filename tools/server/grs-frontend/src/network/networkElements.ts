@@ -1,107 +1,228 @@
 /**
  * Converts a UnionNetwork into Cytoscape element definitions.
  *
+ * Two view levels:
+ * - Gene view (zoomed out): gene nodes, orphan species, and edges with
+ *   scope 'all' (endpoints resolved to gene parents) or scope 'gene'.
+ * - Species view (zoomed in): child species/reactions, orphan reactions,
+ *   and edges with scope 'all' (actual endpoints) or scope 'species'.
+ *
  * Filters out model-level container nodes and machinery species.
- * Species with a gene parent get cytoscape `parent` set for compound nodes.
  */
 import type { UnionNetwork, Node, Link } from '@/types/network'
 import { MODEL_NODE_KINDS, MACHINERY_SPECIES, linkId } from '@/types/network'
-import { lighten } from '@/utils/colorUtils'
 import { getEdgeColour, shouldShowEdgeLabel } from './networkStyles'
 import { getTheme } from '@/config/theme'
+import logging from '@/utils/logging'
 
-/** Kinds that are only shown in detailed (zoomed-in) view. */
+const log = logging.getLogger('networkElements')
+
+/** Kinds that only appear in the species (zoomed-in) view. */
 const DETAIL_KINDS = new Set(['species', 'reaction'])
 
+// ============================================================================
+// Public API
+// ============================================================================
+
 /**
- * Gene-level elements: gene nodes, orphan species, and inter-gene edges.
- * Used for the default (zoomed-out) view.
+ * Gene-level elements for the zoomed-out view.
+ *
+ * Includes gene nodes, orphan species, and edges scoped 'all' or 'gene'.
+ * For 'all'-scoped edges, endpoints are resolved to their gene parent.
+ *
+ * @param network - the union network from the backend
+ * @param geneColours - mapping of gene name to hex colour
+ * @returns Cytoscape element definitions for the gene view
  */
-export function convertGeneElements(
+export function getGeneViewElements(
     network: UnionNetwork,
     geneColours: Record<string, string>,
 ): cytoscape.ElementDefinition[] {
     const elements: cytoscape.ElementDefinition[] = []
     const geneNames = buildGeneNameSet(network)
+    const nodeParentMap = buildNodeParentMap(network, geneNames)
 
+    // Nodes: genes + orphan species (skip all reactions and gene-parented species)
     for (const node of network.nodes) {
         if (MODEL_NODE_KINDS.has(node.kind)) continue
-        if (DETAIL_KINDS.has(node.kind)) continue
         if (isMachinery(node)) continue
+        if (node.kind === 'reaction') continue
+        if (node.kind === 'species' && hasGeneParent(node, geneNames)) continue
 
-        const el = nodeElement(node, geneColours, geneNames, false)
+        const el = buildNodeElement(node, geneColours, geneNames, false)
         if (el) elements.push(el)
     }
 
-    const emittedNodeIds = new Set(elements.map(e => e.data.id as string))
+    const geneViewNodeIds = new Set(elements.map(e => e.data.id as string))
+
+    // Edges: scope 'gene' directly, scope 'all' with parent resolution.
+    // Accumulate original link IDs per resolved edge for exclusion matching.
+    /** Accumulated info per deduplicated gene-view edge. */
+    interface GeneEdgeAccum { link: Link; from: string; to: string; originals: string[] }
+    const edgeAccum = new Map<string, GeneEdgeAccum>()
 
     for (const link of network.links) {
-        if (!emittedNodeIds.has(link.from) || !emittedNodeIds.has(link.to)) continue
-        elements.push(linkElement(link))
+        if (link.scope === 'species') continue
+
+        const resolvedFrom = link.scope === 'all'
+            ? resolveToGeneParent(link.from, nodeParentMap)
+            : link.from
+        const resolvedTo = link.scope === 'all'
+            ? resolveToGeneParent(link.to, nodeParentMap)
+            : link.to
+
+        // Skip edges whose resolved endpoints aren't in this view
+        if (!geneViewNodeIds.has(resolvedFrom) || !geneViewNodeIds.has(resolvedTo)) continue
+
+        const edgeId = `${resolvedFrom}-${link.kind}-${resolvedTo}`
+        const existing = edgeAccum.get(edgeId)
+        if (existing) {
+            existing.originals.push(linkId(link))
+        } else {
+            edgeAccum.set(edgeId, {
+                link, from: resolvedFrom, to: resolvedTo,
+                originals: [linkId(link)],
+            })
+        }
     }
 
+    for (const [edgeId, acc] of edgeAccum) {
+        elements.push(buildEdgeElement(acc.link, acc.from, acc.to, edgeId, acc.originals))
+    }
+
+    log.debug(`Gene view: ${elements.length} elements`)
     return elements
 }
 
 /**
- * Detail-level elements: species (with compound parent), reactions, and their edges.
- * Used by AdaptiveZoom when zooming in past threshold.
+ * Species-level elements for the zoomed-in view.
+ *
+ * Includes child species (as compound children of genes), child reactions,
+ * orphan reactions, and edges scoped 'all' or 'species'.
+ *
+ * @param network - the union network from the backend
+ * @param geneColours - mapping of gene name to hex colour
+ * @returns Cytoscape element definitions for the species view
  */
-export function getDetailElements(
+export function getSpeciesViewElements(
     network: UnionNetwork,
     geneColours: Record<string, string>,
 ): cytoscape.ElementDefinition[] {
     const elements: cytoscape.ElementDefinition[] = []
     const geneNames = buildGeneNameSet(network)
 
+    // Nodes: all species and reactions (parented or orphan)
     for (const node of network.nodes) {
         if (MODEL_NODE_KINDS.has(node.kind)) continue
         if (!DETAIL_KINDS.has(node.kind)) continue
         if (isMachinery(node)) continue
-        // Skip orphan species/reactions (already in gene-level view or unparented)
-        if (!hasGeneParent(node, geneNames)) continue
 
-        const el = nodeElement(node, geneColours, geneNames, true)
+        const el = buildNodeElement(node, geneColours, geneNames, true)
         if (el) elements.push(el)
     }
 
-    // All non-excluded node IDs (for edge connectivity)
+    // All non-excluded node IDs (for edge connectivity across both views)
     const allNodeIds = new Set(
         network.nodes
             .filter(n => !MODEL_NODE_KINDS.has(n.kind) && !isMachinery(n))
             .map(n => n.name),
     )
-    const detailNodeIds = new Set(elements.map(e => e.data.id as string))
+    const speciesNodeIds = new Set(elements.map(e => e.data.id as string))
 
+    // Edges: scope 'species' + scope 'all' (at actual endpoints)
     for (const link of network.links) {
+        if (link.scope === 'gene') continue
         if (!allNodeIds.has(link.from) || !allNodeIds.has(link.to)) continue
-        // Include edge only if at least one endpoint is a detail node
-        if (!detailNodeIds.has(link.from) && !detailNodeIds.has(link.to)) continue
-        elements.push(linkElement(link))
+        // Include only if at least one endpoint is a species-view node
+        if (!speciesNodeIds.has(link.from) && !speciesNodeIds.has(link.to)) continue
+
+        elements.push(buildEdgeElement(link, link.from, link.to, linkId(link)))
     }
 
+    log.debug(`Species view: ${elements.length} elements`)
     return elements
+}
+
+/**
+ * Build a map from node name to its gene parent (if any).
+ *
+ * Used by the gene view to resolve species-level edge endpoints
+ * up to their parent gene.
+ *
+ * @param network - the union network
+ * @param geneNames - set of gene node names
+ * @returns map from node name to gene parent name (or the node itself if it's a gene/orphan)
+ */
+export function buildNodeParentMap(
+    network: UnionNetwork,
+    geneNames: Set<string>,
+): Map<string, string> {
+    const parentMap = new Map<string, string>()
+    for (const node of network.nodes) {
+        if (MODEL_NODE_KINDS.has(node.kind)) continue
+        if (geneNames.has(node.name)) {
+            parentMap.set(node.name, node.name)
+        } else if (node.parent && geneNames.has(node.parent)) {
+            parentMap.set(node.name, node.parent)
+        } else {
+            // Orphan: resolves to itself
+            parentMap.set(node.name, node.name)
+        }
+    }
+    return parentMap
 }
 
 // ============================================================================
 // Internal helpers
 // ============================================================================
 
+/**
+ * Build the set of gene node names from the network.
+ * @param network - the union network
+ */
 function buildGeneNameSet(network: UnionNetwork): Set<string> {
     return new Set(
         network.nodes.filter(n => n.kind === 'gene').map(n => n.name),
     )
 }
 
+/**
+ * Check whether a node has a gene as its parent.
+ * @param node - the node to check
+ * @param geneNames - set of gene node names
+ */
 function hasGeneParent(node: Node, geneNames: Set<string>): boolean {
     return node.parent !== null && geneNames.has(node.parent)
 }
 
+/**
+ * Check whether a node represents cellular machinery (filtered out).
+ * @param node - the node to check
+ */
 function isMachinery(node: Node): boolean {
     return MACHINERY_SPECIES.has(node.name)
 }
 
-function nodeElement(
+/**
+ * Resolve a node ID to its gene parent via the parent map.
+ * Falls back to the node itself if no gene parent exists.
+ *
+ * @param nodeId - the node name to resolve
+ * @param parentMap - map from node name to gene parent
+ */
+function resolveToGeneParent(nodeId: string, parentMap: Map<string, string>): string {
+    return parentMap.get(nodeId) ?? nodeId
+}
+
+/**
+ * Build a Cytoscape node element from a backend Node.
+ *
+ * @param node - the backend node
+ * @param geneColours - gene colour mapping
+ * @param geneNames - set of gene names
+ * @param asCompoundChild - whether to set cytoscape parent for compound layout
+ */
+function buildNodeElement(
     node: Node,
     geneColours: Record<string, string>,
     geneNames: Set<string>,
@@ -111,13 +232,13 @@ function nodeElement(
     const isOrphanSpecies = node.kind === 'species' && !hasGeneParent(node, geneNames)
     const cssClass = isOrphanSpecies ? 'orphan-species' : node.kind
 
-    // Set cytoscape compound parent for species/reactions with a gene parent
+    // Compound parent for species/reactions inside a gene
     const isCompoundChild = asCompoundChild
         && (node.kind === 'species' || node.kind === 'reaction')
         && hasGeneParent(node, geneNames)
     const cytoscapeParent = isCompoundChild ? node.parent! : undefined
 
-    // Use species_type as label for species nodes, fallback to name
+    // Label: species_type for species, name otherwise
     const label = node.kind === 'species' && node.properties?.species_type
         ? String(node.properties.species_type)
         : node.name
@@ -136,37 +257,56 @@ function nodeElement(
     }
 }
 
-function linkElement(link: Link): cytoscape.ElementDefinition {
+/**
+ * Build a Cytoscape edge element from a backend Link.
+ *
+ * @param link - the backend link
+ * @param source - resolved source node ID
+ * @param target - resolved target node ID
+ * @param edgeId - unique edge identifier
+ */
+function buildEdgeElement(
+    link: Link,
+    source: string,
+    target: string,
+    edgeId: string,
+    originalLinkIds?: string[],
+): cytoscape.ElementDefinition {
     const edgeColour = getEdgeColour(link.kind)
     const label = shouldShowEdgeLabel(link.kind) ? formatLinkLabel(link) : ''
-    const isSelfLoop = link.from === link.to
+    const isSelfLoop = source === target
 
-    // Extract "at" parameter for activation/repression edges (affects weight and width)
     const at = (link.properties.at as number) ?? 1
-    // Weight: inverse of "at" so higher "at" = lower weight = tighter pull in layout
     const weight = 1 / Math.max(at, 0.1)
 
     return {
         data: {
-            id: linkId(link),
-            source: link.from,
-            target: link.to,
+            id: edgeId,
+            source,
+            target,
             kind: link.kind,
+            scope: link.scope,
             edgeColour,
             label,
             at,
             weight,
+            originalLinkIds: originalLinkIds ?? [linkId(link)],
             ...link.properties,
         },
         classes: `${link.kind}${isSelfLoop ? ' loop' : ''}`,
     }
 }
 
+/**
+ * Determine the display colour for a node.
+ *
+ * @param node - the backend node
+ * @param geneColours - gene colour mapping
+ */
 function getNodeColour(node: Node, geneColours: Record<string, string>): string {
     const fallback = getTheme(false).network.nodeFallback
     if (node.kind === 'gene') {
-        const base = geneColours[node.name] ?? fallback
-        return lighten(base, 0.4)
+        return geneColours[node.name] ?? fallback
     }
     if (node.parent && geneColours[node.parent]) {
         return geneColours[node.parent]!
@@ -174,17 +314,19 @@ function getNodeColour(node: Node, geneColours: Record<string, string>): string 
     return fallback
 }
 
+/**
+ * Format link properties as a label string.
+ * @param link - the backend link
+ */
 function formatLinkLabel(link: Link): string {
     const entries = Object.entries(link.properties ?? {})
     if (entries.length === 0) return ''
 
-    // If only one property, show just the value
     if (entries.length === 1) {
         const [key, value] = entries[0]!
         return formatPropertyValue(value, key)
     }
 
-    // Multiple properties: show key=value pairs
     const parts: string[] = []
     for (const [key, value] of entries) {
         const formatted = formatPropertyValue(value, key)
@@ -194,12 +336,13 @@ function formatLinkLabel(link: Link): string {
 }
 
 /**
- * Format a property value: integers without decimals for stoichiometry, 
- * floats with 2 decimals for others.
+ * Format a numeric or string property value for display.
+ *
+ * @param value - the property value
+ * @param key - the property key (affects formatting)
  */
 function formatPropertyValue(value: any, key: string = ''): string {
     if (typeof value === 'number') {
-        // Show stoichiometry without decimals, all other numbers with 2 decimals
         if (key === 'stoichiometry' && Number.isInteger(value)) {
             return String(value)
         }

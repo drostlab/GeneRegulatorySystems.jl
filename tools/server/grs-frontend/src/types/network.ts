@@ -9,11 +9,20 @@ export interface Node {
     properties: Record<string, any>
 }
 
+/**
+ * Edge scope determines visibility at different zoom levels.
+ * - 'all': visible at both zoom levels (endpoints resolved to gene parents when zoomed out)
+ * - 'gene': visible only when zoomed out (summary edges like 'produces')
+ * - 'species': visible only when zoomed in (substrate/product edges)
+ */
+export type LinkScope = 'all' | 'gene' | 'species'
+
 export interface Link {
     kind: string
     from: string
     to: string
     properties: Record<string, any>
+    scope: LinkScope
 }
 
 export interface Network {

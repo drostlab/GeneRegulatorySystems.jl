@@ -18,15 +18,15 @@ import cytoscape from 'cytoscape'
 // @ts-ignore
 import fcose from 'cytoscape-fcose'
 
-import { convertGeneElements } from './networkElements'
+import { getGeneViewElements } from './networkElements'
 import { buildStylesheet } from './networkStyles'
 import { getTheme } from '@/config/theme'
+import { useViewerStore } from '@/stores/viewerStore'
 import { AdaptiveZoom } from './AdaptiveZoom'
 import { ModelFilter } from './ModelFilter'
 import { SelectionSync } from './SelectionSync'
 import { DynamicsSync } from './DynamicsSync'
-import { EdgeTooltip } from './EdgeTooltip'
-import { NodeTooltip } from './NodeTooltip'
+import { createEdgeTooltip, createNodeTooltip, type Tooltip } from './Tooltip'
 
 cytoscape.use(fcose)
 
@@ -39,8 +39,16 @@ export class NetworkView {
     private modelFilter = new ModelFilter()
     private selectionSync = new SelectionSync()
     private dynamicsSync = new DynamicsSync()
-    private edgeTooltip = new EdgeTooltip()
-    private nodeTooltip = new NodeTooltip()
+    private edgeTooltip: Tooltip = createEdgeTooltip()
+    private nodeTooltip: Tooltip = createNodeTooltip()
+
+    /** External callback for detail visibility changes (zoom or manual toggle). */
+    private _onDetailChange: ((visible: boolean) => void) | null = null
+
+    /** Register a callback for detail visibility changes. */
+    set onDetailChange(cb: ((visible: boolean) => void) | null) {
+        this._onDetailChange = cb
+    }
 
     /**
      * Initialise the cytoscape container.
@@ -61,7 +69,7 @@ export class NetworkView {
 
         if (!this.container) return
 
-        const elements = convertGeneElements(network, geneColours)
+        const elements = getGeneViewElements(network, geneColours)
         console.debug(`[NetworkView] Rendering: ${elements.length} gene-level elements`)
 
         this.cy = cytoscape({
@@ -94,6 +102,16 @@ export class NetworkView {
         if (this.cy) {
             this.cy.style(buildStylesheet(isDark))
         }
+    }
+
+    /** Toggle between gene and species views manually. */
+    toggleDetail(): void {
+        this.adaptiveZoom.toggleDetail()
+    }
+
+    /** Whether species/reaction detail is currently visible. */
+    get isDetailVisible(): boolean {
+        return this.adaptiveZoom.isDetailVisible
     }
 
     // ========================================================================
@@ -145,19 +163,38 @@ export class NetworkView {
             this.edgeTooltip.attach(this.cy)
             this.nodeTooltip.attach(this.cy)
 
+            // Include orphan species in the initial selection
+            this.selectOrphanSpecies()
+
             // Double-click on background resets zoom and pan
             this.cy.on('dbltap', (evt) => {
                 if (evt.target === this.cy) this.cy!.fit(undefined, 50)
             })
 
-            // When detail visibility changes, refresh model filter + selection
-            this.adaptiveZoom.onDetailChange = (_visible: boolean) => {
+            // When detail visibility changes (zoom or toggle), sync externally
+            this.adaptiveZoom.onDetailChange = (visible: boolean) => {
                 this.modelFilter.refresh()
                 this.selectionSync.refresh()
+                this._onDetailChange?.(visible)
             }
         })
 
         layout.run()
+    }
+
+    /** Add orphan species to selectedGenes so they are visible by default. */
+    private selectOrphanSpecies(): void {
+        if (!this.cy) return
+        const orphanIds = this.cy.nodes('.orphan-species').map((n: any) => n.id())
+        if (orphanIds.length === 0) return
+
+        const viewerStore = useViewerStore()
+        const current = new Set(viewerStore.selectedGenes)
+        const newIds = orphanIds.filter((id: string) => !current.has(id))
+        if (newIds.length > 0) {
+            viewerStore.selectedGenes = [...viewerStore.selectedGenes, ...newIds]
+            console.debug(`[NetworkView] Auto-selected ${newIds.length} orphan species`)
+        }
     }
 
     private destroyModules(): void {

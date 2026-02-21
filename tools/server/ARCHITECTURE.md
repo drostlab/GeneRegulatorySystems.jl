@@ -46,19 +46,19 @@
 | File | Purpose |
 | ------ | --------- |
 | `network/NetworkView.ts` | Orchestrator. Owns Cytoscape instance, lifecycle. Creates and coordinates sub-modules. Uses `layoutstop` event (not timeout). Layout: fcose with nodeRepulsion=50000, idealEdgeLength=100, edgeElasticity=0.8, numIter=5000. |
-| `network/networkElements.ts` | `convertGeneElements(union, geneColours)` for gene-level view. `getDetailElements()` for species (with compound parent) + reactions. Filters `MODEL_NODE_KINDS` and `MACHINERY_SPECIES`. |
+| `network/networkElements.ts` | `getGeneViewElements(network, geneColours)` — gene nodes + orphan species + scope `all`/`gene` edges (resolved to gene parents via `buildNodeParentMap`). `getSpeciesViewElements(network, geneColours)` — species/reaction compound children + scope `all`/`species` edges (actual endpoints). `buildNodeParentMap(network, geneNames)` — maps node names to gene parents for generic endpoint resolution. |
 | `network/networkStyles.ts` | `buildStylesheet()` returns Cytoscape style array. `.excluded { display: none }` for ModelFilter. Compound parent selector `$node > node` for gene label positioning. Self-loop edge style. |
-| `network/AdaptiveZoom.ts` | Zoom threshold (1.2). Below: genes only. Above: adds species as compound children of genes (positioned in tight grid), reactions near neighbours. 50ms debounce. Fires `onDetailChange` callback. |
+| `network/AdaptiveZoom.ts` | Zoom threshold (1.2). Precomputes gene-view and species-view element sets on `attach()`. Below threshold: gene nodes + gene-scope edges. Above: swaps in species/reaction nodes + species-scope edges. Species positioning: known types (mRNA/protein/active) cascade below gene, unknowns circular, reactions at neighbour centroid. 50ms debounce. Fires `onDetailChange` callback. |
 | `network/ModelFilter.ts` | Watches `viewerStore.activeModelPath`. Toggles `.excluded` CSS class on nodes/edges (no add/remove, avoids conflicts with AdaptiveZoom). |
 | `network/SelectionSync.ts` | Two-way sync: `viewerStore.selectedGenes` <-> Cytoscape node tap. Multi-select: click toggles gene in/out of selection. Highlights selected, dims others. |
 | `network/DynamicsSync.ts` | Watches `viewerStore.proteinCountsAtTimepoint` + `selectedGenes`. Only resizes selected genes (80-250 x 40-100); unselected stay at base size. Debounced at 16ms. |
-| `network/EdgeTooltip.ts` | Edge hover tooltip showing link kind. Lightweight DOM element positioned at cursor. |
+| `network/Tooltip.ts` | Unified parameterised tooltip. `Tooltip` class: selector, content function, tooltip ID. Factories: `createEdgeTooltip()` (shows link kind on edge hover), `createNodeTooltip()` (shows node name/kind on node hover). Lightweight DOM element positioned at cursor. |
 
 ### Theming & Dark Mode
 
 | File | Purpose |
 | ------ | --------- |
-| `config/theme.ts` | Single source of truth. Palettes (RED, PURPLE, GREEN, GREY), EDGE_COLOURS (mode-independent), light/dark ThemeMode objects, `getTheme(isDark)`, `palette` export for PrimeVue preset. Each ThemeMode bundles a SciChart `IThemeProvider`. |
+| `config/theme.ts` | Single source of truth. Palettes (RED, PURPLE, GREEN, GREY), EDGE_COLOURS (mode-independent; includes `produces` for summary production edges), light/dark ThemeMode objects, `getTheme(isDark)`, `palette` export for PrimeVue preset. Each ThemeMode bundles a SciChart `IThemeProvider`. |
 | `composables/useTheme.ts` | Reactive `isDark` ref, OS-preference fallback, localStorage persistence. `toggle()`, `onThemeChange(fn)` for imperative consumers. Toggles `.app-dark` class on `<html>`. |
 | `utils/logging.ts` | Lightweight tagged logger: `getLogger(tag)` returns `{ debug, info, warn, error }`. Debug only in dev. |
 
@@ -68,11 +68,11 @@
 
 1. Schedule loaded -> `scheduleStore.loadScheduleByKey/Spec` -> server returns `ScheduleData` (segments, structure, genes, gene_colours, no network)
 2. `TrackViewer` watches schedule data -> `MainChart.setScheduleData` -> `TimelinePanel` computes layout rectangles -> `collectPathYRanges` passed to `PromoterPanel`. Then calls `scheduleStore.fetchUnionNetwork()` which eagerly fetches union of all models.
-3. `NetworkDiagram` watches `scheduleStore.unionNetwork` -> `NetworkView.setNetwork()` -> renders gene-level graph -> fcose layout runs once -> sub-modules attach: `ModelFilter` hides excluded nodes for first model, `SelectionSync` + `DynamicsSync` start watching.
+3. `NetworkDiagram` watches `scheduleStore.unionNetwork` -> `NetworkView.setNetwork()` -> renders gene-level graph (gene nodes + orphan species + resolved edges) -> fcose layout runs once -> sub-modules attach: `AdaptiveZoom` precomputes both view element sets, `ModelFilter` hides excluded nodes for first model, `SelectionSync` + `DynamicsSync` start watching.
 4. Simulation loaded -> `simulationStore.loadResult` loads metadata only. `selectedGenes` watcher triggers `fetchGeneTimeseries(genes)` which lazily loads per-gene timeseries via `POST /simulations/{id}/timeseries`. After fetch -> `refreshSimulationData()` pushes to chart with `SweepAnimation`.
 5. Gene selection: click on series (chart) -> `viewerStore.selectedGenes` updates -> lazy fetch for new genes -> `SelectionSync` highlights in network. Click on gene node (network) -> same flow.
 6. `activeModelPath` is a computed that prioritises `hoveredModelPath` (from timeline hover), falling back to `currentTimepoint` + segments. Hovering a timeline segment updates the network in real-time.
-7. Zoom in past threshold -> `AdaptiveZoom` adds species/reaction nodes (gene positions pinned) -> `ModelFilter.refresh()` + `SelectionSync.refresh()`.
+7. Zoom in past threshold -> `AdaptiveZoom` swaps gene-scope edges for species-scope edges and adds species/reaction compound children (gene positions pinned) -> `ModelFilter.refresh()` + `SelectionSync.refresh()`.
 
 ### Simulation Streaming
 
@@ -120,7 +120,7 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 | ------ | ----------- |
 | `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, json_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule`. Functions: `getPathTimeRanges`, `getSegmentBoundaryTimes`, `getActivePathsAtTime` |
 | `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` (unified; `current_time`, `max_time`, `status` includes `'paused'`), `SimulationStatus`, `getProgress()`, `getMaxTime()`, `formatResultLabel()` |
-| `types/network.ts` | `Node`, `Link`, `Network`, `UnionNetwork`, `ModelExclusions`, `linkId()`, `MODEL_NODE_KINDS` |
+| `types/network.ts` | `Node`, `Link` (with `scope: LinkScope`), `LinkScope` (`'all' | 'gene' | 'species'`), `Network`, `UnionNetwork`, `ModelExclusions`, `linkId()`, `MODEL_NODE_KINDS` |
 
 ### Components
 

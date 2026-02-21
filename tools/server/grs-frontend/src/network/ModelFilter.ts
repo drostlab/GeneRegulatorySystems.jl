@@ -73,8 +73,10 @@ export class ModelFilter {
         })
 
         cy.edges().forEach((edge: any) => {
-            const edgeKey = `${edge.data('source')}-${edge.data('kind')}-${edge.data('target')}`
-            edge.toggleClass('excluded', this.excludedLinks.has(edgeKey))
+            const originals: string[] = edge.data('originalLinkIds') ?? []
+            const allExcluded = originals.length > 0
+                && originals.every((id: string) => this.excludedLinks.has(id))
+            edge.toggleClass('excluded', allExcluded)
         })
 
         cy.endBatch()

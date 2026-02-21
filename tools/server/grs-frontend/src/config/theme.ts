@@ -104,6 +104,7 @@ export const EDGE_COLOURS: Record<string, string> = {
     activation:  '#787878',
     repression:  '#e16868',
     proteolysis: '#FF7F00',
+    produces:    '#4a90d9',
     substrate:   '#999999',
     product:     '#666666',
     next:        '#4DAF4A',
@@ -162,10 +163,13 @@ export interface ThemeMode {
         edgeLabelText: string
         /** Label text colour for species/reaction-level edges (substrate, product). */
         speciesEdgeLabelText: string
+        /** Line colour for species/reaction-level edges (substrate, product). */
+        speciesEdgeColour: string
         edgeLabelBg: string
         dotGrid: string
-        nodeBorder: string
         nodeFallback: string
+        /** Gene node label colour. */
+        geneLabelText: string
     }
     /** SciChart IThemeProvider instance. */
     sciChartTheme: IThemeProvider
@@ -208,10 +212,11 @@ const light: ThemeMode = {
         highlightBorder:      GREY[950],
         edgeLabelText:        GREY[600],
         speciesEdgeLabelText: GREY[600],
+        speciesEdgeColour:    GREY[500],
         edgeLabelBg:          GREY[0],
         dotGrid:              GREY[300],
-        nodeBorder:           GREY[800],
         nodeFallback:         GREY[400],
+        geneLabelText:        GREY[950],
     },
     sciChartTheme: new SciChartJSLightTheme(),
 }
@@ -253,10 +258,11 @@ const dark: ThemeMode = {
         highlightBorder:      GREY[950],
         edgeLabelText:        GREY[100],
         speciesEdgeLabelText: GREY[800],
+        speciesEdgeColour:    GREY[500],
         edgeLabelBg:          GREY[800],
         dotGrid:              GREY[800],
-        nodeBorder:           GREY[800],
         nodeFallback:         GREY[500],
+        geneLabelText:        GREY[100],
     },
     sciChartTheme: new SciChartJSDarkv2Theme(),
 }

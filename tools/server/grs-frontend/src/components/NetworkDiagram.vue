@@ -5,12 +5,19 @@ import { useViewerStore } from '@/stores/viewerStore'
 import { NetworkView } from '@/network/NetworkView'
 import { useTheme } from '@/composables/useTheme'
 import ProgressSpinner from 'primevue/progressspinner'
+import Button from 'primevue/button'
 
 const containerRef = ref<HTMLDivElement>()
 const scheduleStore = useScheduleStore()
 const viewerStore = useViewerStore()
 const networkView = new NetworkView()
 const { isDark, onThemeChange } = useTheme()
+const isDetailVisible = ref(false)
+
+// Sync isDetailVisible when zoom or toggle changes detail visibility
+networkView.onDetailChange = (visible: boolean) => {
+    isDetailVisible.value = visible
+}
 
 /** Label for the active model shown in the bottom-left overlay. */
 const activeModelLabel = computed(() => {
@@ -32,6 +39,7 @@ onMounted(() => {
     // Render when union network arrives
     if (scheduleStore.unionNetwork) {
         networkView.setNetwork(scheduleStore.unionNetwork, scheduleStore.geneColours ?? {})
+        isDetailVisible.value = networkView.isDetailVisible
     }
 })
 
@@ -41,17 +49,32 @@ onBeforeUnmount(() => {
 
 watch(() => scheduleStore.unionNetwork, (network) => {
     if (network) {
-        // New network data arrived -- replace the old graph
         networkView.setNetwork(network, scheduleStore.geneColours ?? {})
+        isDetailVisible.value = networkView.isDetailVisible
     }
-    // Don't destroy old graph when network becomes null during loading;
-    // keep it visible behind the dim overlay until replacement data arrives.
 })
+
+function toggleDetail(): void {
+    networkView.toggleDetail()
+    isDetailVisible.value = networkView.isDetailVisible
+}
 </script>
 
 <template>
     <div class="network-diagram-container">
         <div ref="containerRef" class="cytoscape-container" />
+
+        <!-- Detail toggle -->
+        <Button
+            class="detail-toggle"
+            :icon="isDetailVisible ? 'pi pi-search-minus' : 'pi pi-search-plus'"
+            v-tooltip.left="isDetailVisible ? 'Gene view' : 'Species view'"
+            severity="secondary"
+            size="small"
+            text
+            rounded
+            @click="toggleDetail"
+        />
 
         <!-- Model info overlay -->
         <div v-if="activeModelLabel" class="model-label-overlay">
@@ -85,6 +108,12 @@ watch(() => scheduleStore.unionNetwork, (network) => {
     height: 100%;
     position: absolute;
     inset: 0;
+}
+
+.detail-toggle {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
 }
 
 .model-label-overlay {
