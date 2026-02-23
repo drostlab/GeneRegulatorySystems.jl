@@ -105,8 +105,8 @@ export const EDGE_COLOURS: Record<string, string> = {
     repression:  '#e16868',
     proteolysis: '#FF7F00',
     produces:    '#4a90d9',
-    substrate:   '#bbbbbb',
-    product:     '#bbbbbb',
+    substrate:   '#eaeaea',
+    product:     '#eaeaea',
     next:        '#4DAF4A',
     alternative: '#984EA3',
 }

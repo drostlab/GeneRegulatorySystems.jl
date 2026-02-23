@@ -80,12 +80,12 @@ entity(species::SpeciesId) = let comps = species_components(species.name)
     )
 end
 
-function entity(rs::ReactionSystem)
+function entity(rs::ReactionSystem, filter_ids::Set{Symbol})
     nodes = [entity(SpeciesId(s)) for s in Catalyst.species(rs)]
     links = Link[]
 
     for rxn in Catalyst.reactions(rs)
-        _is_regulation_reaction(rxn) && continue
+        _reaction_id(rxn) in filter_ids && continue
 
         # Generate deterministic reaction ID from reactants and products
         rxn_name = _reaction_id(rxn)
@@ -108,30 +108,48 @@ function entity(rs::ReactionSystem)
 end
 
 """
-    _is_regulation_reaction(rxn) -> Bool
+    _regulatory_reaction_ids(raw_links, gene_lookup) -> Set{Symbol}
 
-Check whether a Catalyst Reaction is an activation/deactivation regulation
-reaction that should be excluded from the network graph (because the
-corresponding regulatory edges already represent this information).
+Derive the exact Catalyst reaction IDs that are implementation artifacts of
+explicit V1 regulatory links, so they can be excluded from the network graph.
 
-Detection: a reaction involves `*.active` or `*.inactive` species, but NOT
-`*.elongations`.  This filters the activation/deactivation reactions generated
-by `regulation()` while keeping the trigger reaction (`active + polymerases ->
-active + elongations`).
+Per link type:
+- activation/repression(to=B): basal deactivation + activation pair for B.
+  If B is `unique`, these are `[1]B.active->` / `->[1]B.active`.
+  If not, `[1]B.active->[1]B.inactive` / `[1]B.inactive->[1]B.active`.
+  Deduplicated by target (activation and repression share the same reactions).
+- proteolysis(from=A, to=B): `[1]A.proteins;[1]B.proteins->[1]A.proteins`.
+  Self-loop (A==B): `[2]A.proteins->[1]A.proteins`.
 """
-function _is_regulation_reaction(rxn::Reaction)::Bool
-    species_names = String[]
-    for s in rxn.substrates
-        push!(species_names, String(SpeciesId(s).name))
-    end
-    for p in rxn.products
-        push!(species_names, String(SpeciesId(p).name))
-    end
+function _regulatory_reaction_ids(raw_links, gene_lookup::Dict{Symbol})::Set{Symbol}
+    ids = Set{Symbol}()
+    targets_seen = Set{Symbol}()
 
-    has_active = any(n -> endswith(n, ".active") || endswith(n, ".inactive"), species_names)
-    has_elongations = any(n -> endswith(n, ".elongations"), species_names)
+    for lnk in raw_links
+        to = lnk.to
+        from = lnk.from
 
-    return has_active && !has_elongations
+        if lnk.kind in (:activation, :repression)
+            to in targets_seen && continue
+            push!(targets_seen, to)
+            target_gene = get(gene_lookup, to, nothing)
+            if target_gene !== nothing && target_gene.unique
+                push!(ids, Symbol("[1]$(to).active->"))
+                push!(ids, Symbol("->[1]$(to).active"))
+            else
+                push!(ids, Symbol("[1]$(to).active->[1]$(to).inactive"))
+                push!(ids, Symbol("[1]$(to).inactive->[1]$(to).active"))
+            end
+
+        elseif lnk.kind == :proteolysis
+            if from == to
+                push!(ids, Symbol("[2]$(to).proteins->[1]$(to).proteins"))
+            else
+                push!(ids, Symbol("[1]$(from).proteins;[1]$(to).proteins->[1]$(from).proteins"))
+            end
+        end
+    end
+    ids
 end
 
 """
@@ -312,8 +330,10 @@ function entity(definition::V1.Definition, f!::Wrapped; include_reactions::Bool=
                   properties=l.properties, scope=:all)
         end
 
+        gene_lookup = Dict{Symbol, V1.Gene}(g.name => g for g in definition.genes)
+        filter_ids = _regulatory_reaction_ids(raw_links, gene_lookup)
         rs = f!.model.definition
-        rs_network = entity(rs)
+        rs_network = entity(rs, filter_ids)
         gene_nodes, aux_nodes, aux_links, summary_links = _genes_from_reaction_network(rs_network)
         nodes = vcat(gene_nodes, aux_nodes)
         links = vcat(reg_links, aux_links, summary_links)
