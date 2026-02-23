@@ -195,7 +195,7 @@ html, body, #app {
   gap: var(--spacing-xl);
   padding: var(--spacing-2xl);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--p-surface-0);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
   position: relative;
   z-index: 1001;
@@ -241,6 +241,6 @@ html, body, #app {
 }
 
 .app-dark .loading-card {
-  background: #1f2937;
+  background: var(--p-surface-900);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
 }

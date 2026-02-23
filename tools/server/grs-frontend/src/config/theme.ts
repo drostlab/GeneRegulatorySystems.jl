@@ -27,52 +27,22 @@ const log = logging.getLogger('theme')
 // 1. PALETTES  (single source of hex truth)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Julia-inspired red — used as PrimeVue primary. Aura built-in red scale. */
+/** Red scale — exact Aura/Tailwind values so token refs like {red.500} resolve identically. */
 export const RED = {
     50:  '#fef2f2',
     100: '#fee2e2',
     200: '#fecaca',
-    300: '#fb9b9b',
-    400: '#f37d7d',
-    500: '#e87c7c',
-    600: '#ca6d6d',
-    700: '#9e6060',
-    800: '#5a3737',
-    900: '#3e2727',
-    950: '#030202',
+    300: '#fca5a5',
+    400: '#f87171',
+    500: '#ef4444',
+    600: '#dc2626',
+    700: '#b91c1c',
+    800: '#991b1b',
+    900: '#7f1d1d',
+    950: '#450a0a',
 } as const
 
-/** Julia-inspired purple — used as PrimeVue info. H=280, S tapers with L. */
-export const PURPLE = {
-    50:  '#f6f1f8',
-    100: '#ebe0f0',
-    200: '#d6c2e0',
-    300: '#c4acd1',
-    400: '#b3a3bd',
-    500: '#9a7ea8',
-    600: '#887792',
-    700: '#685a6f',
-    800: '#524657',
-    900: '#342d37',
-    950: '#201c22',
-} as const
-
-/** Julia-inspired green — used as PrimeVue success / run button. Aura green. */
-export const GREEN = {
-    50:  '#f0fdf4',
-    100: '#dcfce7',
-    200: '#bbf7d0',
-    300: '#86efac',
-    400: '#4ade80',
-    500: '#22c55e',
-    600: '#16a34a',
-    700: '#15803d',
-    800: '#166534',
-    900: '#14532d',
-    950: '#052e16',
-} as const
-
-/** Neutral grey scale (zinc). Surfaces, text, borders. */
+/** Neutral grey scale — exact Aura/Tailwind zinc values. */
 export const GREY = {
     0:   '#ffffff',
     50:  '#fafafa',
@@ -90,10 +60,8 @@ export const GREY = {
 
 /** Exported palette aggregation for PrimeVue definePreset. */
 export const palette = {
-    red:    RED,
-    purple: PURPLE,
-    green:  GREEN,
-    grey:   GREY,
+    red:  RED,
+    grey: GREY,
 } as const
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -101,17 +69,16 @@ export const palette = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const EDGE_COLOURS: Record<string, string> = {
-    activation:  '#787878',
+    activation:  '#7c7a81',
     repression:  '#e16868',
     proteolysis: '#FF7F00',
-    produces:    '#4a90d9',
-    substrate:   '#eaeaea',
-    product:     '#eaeaea',
+    produces:    '#7e868e',
     next:        '#4DAF4A',
     alternative: '#984EA3',
 }
 
-export const EDGE_COLOUR_FALLBACK = EDGE_COLOURS.substrate!
+/** Fallback colour for unknown edge kinds. */
+export const EDGE_COLOUR_FALLBACK = GREY[300]
 
 /** Opacity for dimmed (unselected) network elements. */
 export const DIM_OPACITY = 0.3
@@ -196,23 +163,23 @@ const light: ThemeMode = {
     },
     timeline: {
         instant: {
-            normal: { line: GREY[50],   bg: GREY[50],   text: GREY[600]   },
-            hover:  { line: PURPLE[200], bg: PURPLE[200], text: GREY[950] },
+            normal: { line: GREY[50],  bg: GREY[50],  text: GREY[600]  },
+            hover:  { line: RED[300],  bg: RED[300],  text: GREY[950]  },
         },
         rect: {
             colour:   GREY[200],
             normal:   { stroke: GREY[300], text: GREY[500] },
             hover:    { stroke: GREY[400], text: GREY[700] },
-            selected: { fill: PURPLE[200], stroke: GREY[300], text: GREY[900] },
+            selected: { fill: RED[200], stroke: GREY[300], text: GREY[900] },
         },
         segmentBoundary: GREY[300],
     },
     network: {
-        reactionBg:           GREY[300],
+        reactionBg:           GREY[400],
         highlightBorder:      GREY[950],
-        edgeLabelText:        GREY[600],
-        speciesEdgeLabelText: GREY[600],
-        speciesEdgeColour:    GREY[500],
+        edgeLabelText:        GREY[800],
+        speciesEdgeLabelText: GREY[800],
+        speciesEdgeColour:    GREY[400],
         edgeLabelBg:          GREY[0],
         dotGrid:              GREY[300],
         nodeFallback:         GREY[400],
@@ -242,14 +209,14 @@ const dark: ThemeMode = {
     },
     timeline: {
         instant: {
-            normal: { line: GREY[500],   bg: GREY[800],    text: GREY[300]   },
-            hover:  { line: PURPLE[500], bg: PURPLE[500],  text: GREY[50] },
+            normal: { line: GREY[500], bg: GREY[800], text: GREY[300] },
+            hover:  { line: RED[400],  bg: RED[400],  text: GREY[50]  },
         },
         rect: {
             colour:   GREY[700],
             normal:   { stroke: GREY[600], text: GREY[400] },
             hover:    { stroke: GREY[400], text: GREY[200] },
-            selected: { fill: PURPLE[800], stroke: PURPLE[400], text: GREY[50] },
+            selected: { fill: RED[950], stroke: RED[900], text: GREY[50] },
         },
         segmentBoundary: GREY[700],
     },
@@ -257,7 +224,7 @@ const dark: ThemeMode = {
         reactionBg:           GREY[500],
         highlightBorder:      GREY[950],
         edgeLabelText:        GREY[100],
-        speciesEdgeLabelText: GREY[800],
+        speciesEdgeLabelText: GREY[200],
         speciesEdgeColour:    GREY[500],
         edgeLabelBg:          GREY[800],
         dotGrid:              GREY[800],

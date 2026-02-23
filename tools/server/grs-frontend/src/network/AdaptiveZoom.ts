@@ -347,7 +347,11 @@ export class AdaptiveZoom {
         let remaining = visibleGenes.length
         const done = () => {
             remaining--
-            if (remaining <= 0) onDone()
+            if (remaining <= 0) {
+                // All per-gene layouts complete — now place orphan reactions
+                // against their final (post-layout) neighbour positions.
+                this.runOrphanReactionLayout(onDone)
+            }
         }
 
         visibleGenes.forEach((gene: any) => {
@@ -396,15 +400,60 @@ export class AdaptiveZoom {
             layout.one('layoutstop', done)
             layout.run()
         })
+    }
 
-        // Handle orphan reactions (no gene parent) — nudge near neighbours
-        cy.nodes('.reaction').forEach((node: any) => {
-            if (node.data('parent')) return
-            const neighbours = node.neighborhood('node')
-            if (neighbours.empty()) return
-            const nPos = neighbours.first().position()
-            node.position({ x: nPos.x + 15, y: nPos.y + 10 })
+    /**
+     * Separate physics pass for orphan reaction nodes (reactions with no gene parent).
+     * Uses relaxed spring parameters — longer ideal edge length and lower elasticity —
+     * so they spread naturally away from gene clusters. All neighbouring gene /
+     * orphan-species nodes are pinned to prevent pulling the main layout.
+     */
+    private runOrphanReactionLayout(onDone?: () => void): void {
+        const cy = this.cy!
+
+        const orphanReactions = cy.nodes('.reaction').filter((n: any) => !n.data('parent'))
+        if (orphanReactions.empty()) {
+            onDone?.()
+            return
+        }
+
+        // Collect the orphan reactions + all edges attached to them
+        const orphanIds = new Set<string>()
+        orphanReactions.forEach((n: any) => orphanIds.add(n.id()))
+
+        const attachedEdges = cy.edges().filter((e: any) =>
+            orphanIds.has(e.data('source')) || orphanIds.has(e.data('target'))
+        )
+
+        // Include neighbour nodes so edge lengths make sense, but pin them
+        const neighbourNodes = orphanReactions.neighborhood('node').not(orphanReactions)
+        const fixedConstraints: Array<{ nodeId: string; position: { x: number; y: number } }> = []
+        neighbourNodes.forEach((n: any) => {
+            const pos = n.position()
+            fixedConstraints.push({ nodeId: n.id(), position: { x: pos.x, y: pos.y } })
         })
+
+        const elements = orphanReactions.merge(neighbourNodes).merge(attachedEdges)
+
+        const layout = elements.layout({
+            name: 'fcose',
+            quality: 'default',
+            randomize: false,
+            animate: false,
+            fit: false,
+            fixedNodeConstraint: fixedConstraints.length > 0 ? fixedConstraints : undefined,
+            nodeRepulsion: 3000,
+            idealEdgeLength: 60,
+            edgeElasticity: 0.3,
+            numIter: 150,
+            gravity: 0.4,
+            gravityRange: 2.0,
+            tile: false,
+            packComponents: false,
+        } as any)
+
+        if (onDone) layout.one('layoutstop', onDone)
+        layout.run()
     }
 
     /**

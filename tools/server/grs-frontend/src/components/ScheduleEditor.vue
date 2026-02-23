@@ -236,6 +236,9 @@ onBeforeUnmount(() =>
                     <template #optiongroup="slotProps">
                         <div class="dropdown-option-group">{{ slotProps.option.label }}</div>
                     </template>
+                    <template #empty>
+                        <div class="dropdown-option">No available schedules</div>
+                    </template>
                 </Select>
 
                 <!-- Schedule title during edit mode -->

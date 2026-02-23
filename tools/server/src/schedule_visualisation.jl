@@ -627,7 +627,8 @@ function _generate_gene_colours(gene_names::Vector{String})::Dict{String, String
 
     seed = [colorant"white", colorant"black", colorant"crimson"]
     colors = distinguishable_colors(length(gene_names), seed, dropseed = true)
-    colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.7, hsv.v * 1.3) end for c in colors]
+    # Pastel: low saturation, high value
+    colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.5, min(hsv.v * 1.6, 1.0)) end for c in colors]
     colors = convert.(RGB, colors)
 
     return Dict(string(gene) => "#$(hex(colors[i]))" for (i, gene) in enumerate(gene_names))

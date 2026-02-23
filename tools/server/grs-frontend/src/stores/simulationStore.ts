@@ -224,6 +224,14 @@ export const useSimulationStore = defineStore(
 
                 const scheduleStore = useScheduleStore()
                 await scheduleStore.loadScheduleBySpec(result.schedule_spec, result.schedule_name)
+
+                // When the schedule was already loaded (same spec), allGenes doesn't change
+                // so the selectedGenes watcher never fires and fetchGeneTimeseries is never called.
+                // Trigger it unconditionally here; fetchGeneTimeseries deduplicates by fetchedGenes set.
+                const genes = scheduleStore.allGenes ?? []
+                if (genes.length > 0) {
+                    await fetchGeneTimeseries(genes.slice(0, DEFAULT_STREAM_GENE_COUNT))
+                }
             } finally {
                 isLoadingResult.value = false
             }

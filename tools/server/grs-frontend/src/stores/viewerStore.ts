@@ -42,8 +42,7 @@ export const useViewerStore = defineStore('viewer', () => {
 
     /**
      * Protein count per gene at the current timepoint.
-     * If a branch is hovered, uses only that branch's path; otherwise averages
-     * across paths that are actually active at the current timepoint.
+     * Priority: hovered execution path > selected segment paths > active paths at t.
      */
     const proteinCountsAtTimepoint = computed((): Record<string, number> => {
         const simulationStore = useSimulationStore()
@@ -51,13 +50,15 @@ export const useViewerStore = defineStore('viewer', () => {
         if (!ts) return {}
 
         const t = currentTimepoint.value
+        const scheduleStore = useScheduleStore()
+
+        // Priority 1: a specific branch is hovered — filter to exactly that path
         const filterPath = hoveredExecutionPath.value
 
-        // When no specific path is hovered, restrict to paths active at t
-        const scheduleStore = useScheduleStore()
-        const activePaths = filterPath
+        // Priority 2: a segment is selected — restrict to its execution paths
+        const filterPaths: Set<string> | null = filterPath
             ? null
-            : getActivePathsAtTime(scheduleStore.segments, t)
+            : selectedPaths.value ?? getActivePathsAtTime(scheduleStore.segments, t)
 
         const geneSums: Record<string, number> = {}
         const geneCounts: Record<string, number> = {}
@@ -69,7 +70,7 @@ export const useViewerStore = defineStore('viewer', () => {
 
             for (const [path, series] of Object.entries(pathData)) {
                 if (filterPath && path !== filterPath) continue
-                if (activePaths && !activePaths.has(path)) continue
+                if (filterPaths && !filterPaths.has(path)) continue
                 const value = sampleAtTime(series, t)
                 geneSums[gene] = (geneSums[gene] ?? 0) + value
                 geneCounts[gene] = (geneCounts[gene] ?? 0) + 1

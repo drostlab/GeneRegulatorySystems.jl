@@ -20,6 +20,7 @@ import {
     EDGE_COLOURS as THEME_EDGE_COLOURS,
     EDGE_COLOUR_FALLBACK,
     DIM_OPACITY as THEME_DIM_OPACITY,
+    GREY,
     getTheme,
 } from '@/config/theme'
 
@@ -75,7 +76,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'text-max-width': '120px',
             } as any,
         },
-        // -- gene node --
+        // -- gene node: label always dark (label is inside the coloured box) --
         {
             selector: 'node.gene',
             style: {
@@ -84,19 +85,22 @@ export function buildStylesheet(isDark = false): any[] {
                 'height': GENE_BASE.height,
                 'text-valign': 'center' as any,
                 'font-size': 14,
-                'color': t.network.geneLabelText,
+                'color': GREY[950],
                 'padding': '6px',
                 'min-width': `${GENE_BASE.width}px`,
                 'min-height': `${GENE_BASE.height}px`,
             } as any,
         },
-        // -- compound gene (has visible children): label above, transparent bg --
+        // -- compound gene (label above box): mode-aware colour, no ellipsis --
         {
             selector: 'node.compound-parent',
             style: {
                 'text-valign': 'top' as any,
                 'text-margin-y': -8,
                 'background-opacity': 0.25,
+                'text-wrap': 'none' as any,
+                'text-max-width': '9999px',
+                'color': t.network.geneLabelText,
             } as any,
         },
         // -- orphan species (shown at gene level, circle) --
@@ -107,6 +111,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'width': ORPHAN_SPECIES_SIZE,
                 'height': ORPHAN_SPECIES_SIZE,
                 'font-size': 8,
+                'color': t.network.speciesEdgeLabelText,
             } as any,
         },
         // -- species (child of gene compound) --
@@ -119,6 +124,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'font-size': 2,
                 'text-valign': 'bottom' as any,
                 'text-margin-y': 1,
+                'color': t.network.speciesEdgeLabelText,
             } as any,
         },
         // -- reaction (small dot with rate label) --
@@ -132,6 +138,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'font-size': 1,
                 'text-valign': 'center' as any,
                 'background-color': t.network.reactionBg,
+                'color': t.network.speciesEdgeLabelText,
             } as any,
         },
         // -- excluded (hidden by ModelFilter) --
@@ -202,13 +209,13 @@ export function buildStylesheet(isDark = false): any[] {
                 'target-arrow-shape': 'tee',
             } as any,
         },
-        // -- species-view regulatory edges: thin, no label, small arrows --
+        // -- species-view regulatory edges: visible width, smaller label --
         {
             selector: 'edge.species-view',
             style: {
-                'width': 0.5,
-                'label': '',
-                'arrow-scale': 0.3,
+                'width': 1.5,
+                'font-size': 3,
+                'arrow-scale': 0.5,
             } as any,
         },
         // -- produces (summary edges for cross-gene reaction products) --

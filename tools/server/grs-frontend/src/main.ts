@@ -9,7 +9,6 @@ import './style.css'
 import App from './App.vue'
 import Aura from '@primeuix/themes/aura'
 import { EWatermarkPosition, SciChartDefaults, SciChartSurface } from "scichart";
-import { palette } from './config/theme'
 
 SciChartSurface.UseCommunityLicense();
 SciChartDefaults.watermarkPosition = EWatermarkPosition.BottomLeft
@@ -34,26 +33,25 @@ const MyPreset = definePreset(Aura, {
             900: '{red.900}',
             950: '{red.950}'
         },
-        info: palette.purple
     },
     components: {
         message: {
-        colorScheme: {
-            light: {
-                info: {
-                    background: '{info.50}',
-                    borderColor: '{info.200}',
-                    color: '{info.700}'
-                }
-            },
-            dark: {
-                info: {
-                    background: '{neutral.900}',
-                    borderColor: '{neutral.500}',
-                    color: '{neutral.500}'
+            colorScheme: {
+                light: {
+                    info: {
+                        background: '{zinc.50}',
+                        borderColor: '{zinc.200}',
+                        color: '{zinc.700}'
+                    }
+                },
+                dark: {
+                    info: {
+                        background: '{zinc.900}',
+                        borderColor: '{zinc.600}',
+                        color: '{zinc.400}'
+                    }
                 }
             }
-        }
         }
     }
 })
