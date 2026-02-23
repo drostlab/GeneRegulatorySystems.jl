@@ -102,7 +102,7 @@ function computeYRanges(
     durationPaths.sort((a, b) => {
         const sa = pathSpans.get(a)!
         const sb = pathSpans.get(b)!
-        return sa.from - sb.from || a.localeCompare(b)
+        return sa.from - sb.from || a.localeCompare(b, undefined, { numeric: true })
     })
 
     // Greedy interval-graph colouring using actual segment-level overlap

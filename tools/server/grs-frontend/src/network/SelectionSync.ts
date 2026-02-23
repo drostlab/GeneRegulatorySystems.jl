@@ -1,10 +1,12 @@
 /**
- * Two-way selection sync between viewerStore.selectedGenes and cytoscape.
+ * Two-way selection sync between viewerStore and cytoscape.
  *
- * - viewerStore.selectedGenes changes -> highlight matching gene nodes, dim others.
- * - User taps a gene node in cytoscape -> update viewerStore.selectedGenes.
- * - Reentrancy guard prevents infinite loops.
- * - When species are visible, only highlights species whose gene is selected.
+ * Selection is split by type:
+ *   - Gene nodes           → viewerStore.selectedGenes        (drives timeseries fetching)
+ *   - Orphan-species nodes → viewerStore.selectedSpeciesNodes (future SpeciesPanel)
+ *
+ * For dimming/highlighting the network uses a local `visualSelection` that is the
+ * union of both, so all logic is uniform — no special-casing per node type.
  */
 import type { Core } from 'cytoscape'
 import { watch, type WatchStopHandle } from 'vue'
@@ -12,30 +14,31 @@ import { useViewerStore } from '@/stores/viewerStore'
 
 export class SelectionSync {
     private cy: Core | null = null
-    private stopWatch: WatchStopHandle | null = null
+    private stopWatches: WatchStopHandle[] = []
     private updating = false
+
+    /** Local mirror of the visual selection (union of genes + species nodes). */
+    private visualSelection = new Set<string>()
 
     attach(cy: Core): void {
         this.cy = cy
-
-        // Cytoscape -> store
         cy.on('tap', 'node.gene, node.orphan-species', this.onNodeTap)
 
-        // Store -> cytoscape
-        this.stopWatch = watch(
-            () => useViewerStore().selectedGenes,
-            () => this.syncFromStore(),
-            { immediate: true, deep: true },
-        )
+        const store = useViewerStore()
+        this.stopWatches = [
+            watch(() => store.selectedGenes, () => this.syncFromStore(), { immediate: true, deep: true }),
+            watch(() => store.selectedSpeciesNodes, () => this.syncFromStore(), { deep: true }),
+        ]
     }
 
     destroy(): void {
-        this.stopWatch?.()
-        this.stopWatch = null
+        this.stopWatches.forEach(s => s())
+        this.stopWatches = []
         if (this.cy) {
             this.cy.off('tap', 'node.gene, node.orphan-species', this.onNodeTap)
         }
         this.cy = null
+        this.visualSelection.clear()
     }
 
     /** Re-apply highlighting after elements change. */
@@ -52,20 +55,21 @@ export class SelectionSync {
         this.updating = true
 
         const node = evt.target
-        const viewerStore = useViewerStore()
-        const geneId = node.data('kind') === 'gene'
-            ? node.id()
-            : node.data('geneParent') ?? node.id()
+        const store = useViewerStore()
 
-        // Multi-select: toggle gene in/out of selection
-        const current = viewerStore.selectedGenes
-        const idx = current.indexOf(geneId)
-        if (idx >= 0) {
-            // Remove from selection
-            viewerStore.selectedGenes = current.filter(g => g !== geneId)
+        if (node.data('kind') === 'gene') {
+            const id = node.id()
+            const current = store.selectedGenes
+            store.selectedGenes = current.includes(id)
+                ? current.filter(g => g !== id)
+                : [...current, id]
         } else {
-            // Add to selection
-            viewerStore.selectedGenes = [...current, geneId]
+            // orphan-species: tracked by own node ID
+            const id = node.id()
+            const current = store.selectedSpeciesNodes
+            store.selectedSpeciesNodes = current.includes(id)
+                ? current.filter(s => s !== id)
+                : [...current, id]
         }
 
         this.updating = false
@@ -80,33 +84,32 @@ export class SelectionSync {
         this.updating = true
 
         const cy = this.cy
-        const viewerStore = useViewerStore()
-        const selectedGenes = viewerStore.selectedGenes
+        const store = useViewerStore()
+
+        // Rebuild local visual selection as union of both store arrays
+        this.visualSelection = new Set([
+            ...store.selectedGenes,
+            ...store.selectedSpeciesNodes,
+        ])
+        const vis = this.visualSelection
 
         cy.startBatch()
 
-        if (selectedGenes.length === 0) {
-            // No selection: remove all highlighting/dimming
+        if (vis.size === 0) {
             cy.elements().removeClass('dimmed highlighted')
         } else {
-            const selectedSet = new Set(selectedGenes)
-
             cy.nodes().forEach((node: any) => {
-                const kind = node.data('kind')
-                const geneId = kind === 'gene'
-                    ? node.id()
-                    : node.data('geneParent') ?? null
-
-                const isSelected = geneId !== null && selectedSet.has(geneId)
-                node.toggleClass('highlighted', isSelected && kind === 'gene')
+                const key = resolveSelectable(node)
+                const isSelected = key !== null && vis.has(key)
+                node.toggleClass('highlighted', isSelected && node.data('kind') === 'gene')
                 node.toggleClass('dimmed', !isSelected)
             })
 
             cy.edges().forEach((edge: any) => {
-                const sourceGene = resolveGene(cy, edge.data('source'))
-                const targetGene = resolveGene(cy, edge.data('target'))
-                const isConnected = (sourceGene !== null && selectedSet.has(sourceGene))
-                    || (targetGene !== null && selectedSet.has(targetGene))
+                const srcKey = resolveSelectable(cy.getElementById(edge.data('source')))
+                const tgtKey = resolveSelectable(cy.getElementById(edge.data('target')))
+                const isConnected = (srcKey !== null && vis.has(srcKey))
+                    || (tgtKey !== null && vis.has(tgtKey))
                 edge.toggleClass('dimmed', !isConnected)
             })
         }
@@ -116,11 +119,19 @@ export class SelectionSync {
     }
 }
 
-/** Resolve a node ID to its gene (either itself if gene, or its geneParent). */
-function resolveGene(cy: Core, nodeId: string): string | null {
-    const node = cy.getElementById(nodeId)
-    if (node.empty()) return null
-    return node.data('kind') === 'gene'
-        ? nodeId
-        : node.data('geneParent') ?? null
+/**
+ * Resolve a Cytoscape node to its selection key:
+ *   - gene node       → gene id (own id)
+ *   - child species   → gene parent id
+ *   - orphan species  → own id
+ *   - other / empty   → null
+ */
+function resolveSelectable(node: any): string | null {
+    if (!node || node.empty()) return null
+    const kind = node.data('kind')
+    if (kind === 'gene') return node.id()
+    const parent = node.data('geneParent')
+    if (parent) return parent
+    if (node.hasClass('orphan-species')) return node.id()
+    return null
 }

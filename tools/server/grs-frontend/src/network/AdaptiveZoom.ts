@@ -38,11 +38,11 @@ const CASCADE_SPECIES = new Set([
 
 /** Hardcoded zigzag offsets for known cascade species (relative to gene centre). */
 const SPECIES_OFFSETS: Record<string, { x: number; y: number }> = {
+    inactive:    { x: -45, y:  -5 },
     active:      { x: -30, y: -15 },
-    inactive:    { x: -30, y:  15 },
-    elongations: { x: -15, y:  15 },
-    premrnas:    { x:   0, y: -15 },
-    mrnas:       { x:  15, y:  15 },
+    elongations: { x: -20, y:  5 },
+    premrnas:    { x:   0, y:   15 },
+    mrnas:       { x:  25, y:  10 },
     proteins:    { x:  30, y: -15 },
 }
 
@@ -383,9 +383,9 @@ export class AdaptiveZoom {
                 animate: false,
                 fit: false,
                 fixedNodeConstraint: fixedConstraints.length > 0 ? fixedConstraints : undefined,
-                nodeRepulsion: 600,
-                idealEdgeLength: 12,
-                edgeElasticity: 0.5,
+                nodeRepulsion: 1000,
+                idealEdgeLength: 0.5,
+                edgeElasticity: 1.0,
                 numIter: 100,
                 gravity: 1.5,
                 gravityRange: 1.0,

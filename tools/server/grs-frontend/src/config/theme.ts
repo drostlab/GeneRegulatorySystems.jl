@@ -105,8 +105,8 @@ export const EDGE_COLOURS: Record<string, string> = {
     repression:  '#e16868',
     proteolysis: '#FF7F00',
     produces:    '#4a90d9',
-    substrate:   '#999999',
-    product:     '#666666',
+    substrate:   '#bbbbbb',
+    product:     '#bbbbbb',
     next:        '#4DAF4A',
     alternative: '#984EA3',
 }
@@ -208,7 +208,7 @@ const light: ThemeMode = {
         segmentBoundary: GREY[300],
     },
     network: {
-        reactionBg:           GREY[400],
+        reactionBg:           GREY[300],
         highlightBorder:      GREY[950],
         edgeLabelText:        GREY[600],
         speciesEdgeLabelText: GREY[600],

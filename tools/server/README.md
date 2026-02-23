@@ -2,6 +2,7 @@
 
 ## Running the Server
 
+You will need to install `npm`.
 To run both the backend and frontend simultaneously, use:
 
 ```bash

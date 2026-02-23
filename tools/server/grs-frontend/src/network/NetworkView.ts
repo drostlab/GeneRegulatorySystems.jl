@@ -21,7 +21,6 @@ import fcose from 'cytoscape-fcose'
 import { getGeneViewElements } from './networkElements'
 import { buildStylesheet } from './networkStyles'
 import { getTheme } from '@/config/theme'
-import { useViewerStore } from '@/stores/viewerStore'
 import { AdaptiveZoom } from './AdaptiveZoom'
 import { ModelFilter } from './ModelFilter'
 import { SelectionSync } from './SelectionSync'
@@ -163,9 +162,6 @@ export class NetworkView {
             this.edgeTooltip.attach(this.cy)
             this.nodeTooltip.attach(this.cy)
 
-            // Include orphan species in the initial selection
-            this.selectOrphanSpecies()
-
             // Double-click on background resets zoom and pan
             this.cy.on('dbltap', (evt) => {
                 if (evt.target === this.cy) this.cy!.fit(undefined, 50)
@@ -180,21 +176,6 @@ export class NetworkView {
         })
 
         layout.run()
-    }
-
-    /** Add orphan species to selectedGenes so they are visible by default. */
-    private selectOrphanSpecies(): void {
-        if (!this.cy) return
-        const orphanIds = this.cy.nodes('.orphan-species').map((n: any) => n.id())
-        if (orphanIds.length === 0) return
-
-        const viewerStore = useViewerStore()
-        const current = new Set(viewerStore.selectedGenes)
-        const newIds = orphanIds.filter((id: string) => !current.has(id))
-        if (newIds.length > 0) {
-            viewerStore.selectedGenes = [...viewerStore.selectedGenes, ...newIds]
-            console.debug(`[NetworkView] Auto-selected ${newIds.length} orphan species`)
-        }
     }
 
     private destroyModules(): void {

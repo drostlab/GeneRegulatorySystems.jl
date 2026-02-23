@@ -15,6 +15,7 @@ import { useSimulationStore } from './simulationStore'
 export const useViewerStore = defineStore('viewer', () => {
     const currentTimepoint = ref<number>(0)
     const selectedGenes = ref<string[]>([])
+    const selectedSpeciesNodes = ref<string[]>([])
     const selectedSpeciesTypes = ref<SpeciesType[]>([])
     const selectedSegmentIds = ref<Set<number> | null>(null)
     /** Model path currently hovered in the timeline panel (null when not hovering). */
@@ -121,6 +122,8 @@ export const useViewerStore = defineStore('viewer', () => {
 
     function reset(): void {
         currentTimepoint.value = 0
+        selectedGenes.value = []
+        selectedSpeciesNodes.value = []
         selectedSegmentIds.value = null
         hoveredModelPath.value = null
         hoveredExecutionPath.value = null
@@ -129,6 +132,7 @@ export const useViewerStore = defineStore('viewer', () => {
     return {
         currentTimepoint,
         selectedGenes,
+        selectedSpeciesNodes,
         selectedSpeciesTypes,
         selectedSegmentIds,
         hoveredModelPath,
