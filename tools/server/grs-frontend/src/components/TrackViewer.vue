@@ -384,16 +384,26 @@ watch(
     { deep: true }
 )
 
-// Watch streaming delta during simulation to push incremental data to chart
+// Watch streaming delta during simulation to push incremental data to chart.
+// Kept separate from the current-time watcher to avoid re-merging stale data
+// when ct changes (which would previously trigger this watcher with the old delta).
 watch(
-    () => ({ delta: simulationStore.streamingDelta, running: simulationStore.isSimulationRunning, ct: simulationStore.currentResult?.current_time }),
-    ({ delta, running, ct }) => {
-        if (!running || !delta) return
+    () => simulationStore.streamingDelta,
+    (delta) => {
+        if (!simulationStore.isSimulationRunning || !delta) return
         _mergeIntoBuffer(delta)
-        lastStreamCurrentTime = ct ?? 0
         _scheduleStreamingFlush()
-    },
-    { deep: true }
+    }
+)
+
+// Track simulation current time for x-axis range extension — no data merge.
+watch(
+    () => simulationStore.currentResult?.current_time,
+    (ct) => {
+        if (ct !== undefined && ct !== null) {
+            lastStreamCurrentTime = ct
+        }
+    }
 )
 
 function _scheduleStreamingFlush(): void {
@@ -407,6 +417,10 @@ function _scheduleStreamingFlush(): void {
         }
         const hasData = Object.keys(streamingBuffer).length > 0
         if (hasData && scheduleStore.timeseriesMetadata) {
+            const bufSummary = Object.entries(streamingBuffer).map(([sp, pd]) =>
+                `${sp}: ${Object.entries(pd).map(([p, pts]) => `${p}[${pts.length}]`).join(', ')}`
+            ).join(' | ')
+            console.debug(`[TrackViewer] flush buffer ct=${lastStreamCurrentTime.toFixed(1)}: ${bufSummary}`)
             chart.appendStreamingData(streamingBuffer, lastStreamCurrentTime)
             streamingBuffer = {}
         }

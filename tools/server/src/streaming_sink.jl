@@ -73,6 +73,7 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
 - `events_since_stream::Int`: Events accumulated since last stream
 - `pending_timeseries::Dict`: Accumulated timeseries for subscribed species since last stream
 - `frame_count::Int`: Running count of frames for progress reporting
+- `path_last_to::Dict{String, Float64}`: Last scheduled end-time of each non-instant path (gap detection)
 """
 @kwdef mutable struct StreamingSimulationSink
     location::String
@@ -87,6 +88,9 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
     events_since_stream::Int = 0
     pending_timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}} = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
     frame_count::Int = 0
+    # Gap tracking: records the last scheduled end-time of each non-instant path so that
+    # non-contiguous episodes (e.g. alternating dark/light) get a gap marker in streamed data.
+    path_last_to::Dict{String, Float64} = Dict{String, Float64}()
 end
 
 # ============================================================================
@@ -120,6 +124,31 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     channel = get!(Channel, sink.channels, into)
     count = 0
 
+    # If this non-instant path has a gap since its last episode, eagerly insert a NaN gap
+    # marker into pending_timeseries for ALL currently subscribed species.
+    # Insertion is eager (not lazy) to avoid multi-species ordering bugs: every subscribed
+    # species gets the gap immediately at episode start.
+    # Gap time = prev_end + 1e-9: just after the endpoint of the previous episode, so that
+    # digital-line hold is only 1ns wide rather than a visible flat line spanning to `from`.
+    if from != to && !isnothing(sink.controller)
+        prev_end = get(sink.path_last_to, path, NaN)
+        if !isnan(prev_end) && from > prev_end + 1e-9
+            # Place gap at prev_end + 1e-9 (just after the previous episode's end) so that
+            # digital-line hold is only 1ns wide, not a visible flat line to `from`.
+            gap_t = prev_end + 1e-9
+            for sp in sink.controller.subscribed_species
+                species_dict = get!(sink.pending_timeseries, sp) do
+                    Dict{String, Vector{Tuple{Float64, Int}}}()
+                end
+                series = get!(species_dict, path) do; Tuple{Float64, Int}[] end
+                # Guard: don't double-insert if gap was already added in this batch
+                if isempty(series) || series[end][2] != Int64(-1)
+                    push!(series, (gap_t, Int64(-1)))
+                end
+            end
+        end
+    end
+
     Models.each_event(state) do t::Float64, name::Symbol, value::Int64
         # Flush buffer if threshold reached
         if length(channel.values) >= sink.threshold
@@ -135,8 +164,11 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
         count += 1
         sink.events_since_stream += 1
 
-        # Accumulate for subscribed species streaming
-        _accumulate_subscribed(sink, name, path, t, value)
+        # Skip streaming for instant episodes (from == to): state-transfer snapshots
+        # from {add} etc. — their effect appears as a discontinuity in the adjacent segment.
+        if from != to
+            _accumulate_subscribed(sink, name, path, t, value)
+        end
 
         # Stream inside the event loop at regular event intervals
         if sink.events_since_stream >= sink.stream_event_interval
@@ -151,6 +183,11 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     # Record execution segment metadata
     push!(sink.index, (; sink.i, path, from, to, model, label, count, into, seed))
     sink.i_to_path[sink.i] = path
+
+    # Update gap tracking for non-instant episodes
+    if from != to
+        sink.path_last_to[path] = to
+    end
 
     # Stream at episode boundary if enough events accumulated
     if sink.events_since_stream >= sink.stream_event_interval
@@ -190,7 +227,8 @@ function _accumulate_subscribed(sink::StreamingSimulationSink, name::Symbol, pat
     species_dict = get!(sink.pending_timeseries, name) do
         Dict{String, Vector{Tuple{Float64, Int}}}()
     end
-    push!(get!(species_dict, path) do; Tuple{Float64, Int}[] end, (t, value))
+    series = get!(species_dict, path) do; Tuple{Float64, Int}[] end
+    push!(series, (t, value))
 end
 
 """

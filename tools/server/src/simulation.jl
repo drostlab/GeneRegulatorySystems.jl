@@ -442,63 +442,14 @@ Groups events by species → path and returns a nested dictionary where each
 path's timeseries is a sorted vector of (time, count) tuples.
 """
 function load_timeseries_from_result(result_path::String)::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
-    timeseries = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
-
     if !isdir(result_path)
         @warn "Result directory not found" result_path
-        return timeseries
+        return Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
     end
-
-    # Load path mapping and time bounds from index.arrow
-    (i_to_path, path_time_bounds) = _load_index_mapping(result_path)
-
-    # Look for events*.stream.arrow files
-    for file in readdir(result_path)
-        if startswith(file, "events") && endswith(file, ".stream.arrow")
-            events_file = joinpath(result_path, file)
-
-            events_table = Arrow.Table(events_file)
-
-            # Group events by (species_symbol, execution_path)
-            for (i, t, name, value) in zip(events_table.i, events_table.t, events_table.name, events_table.value)
-                path = get(i_to_path, i, string(i))
-                species_symbol = name  # name is already a Symbol from Arrow
-
-                if !haskey(timeseries, species_symbol)
-                    timeseries[species_symbol] = Dict{String, Vector{Tuple{Float64, Int}}}()
-                end
-                if !haskey(timeseries[species_symbol], path)
-                    timeseries[species_symbol][path] = Tuple{Float64, Int}[]
-                end
-                push!(timeseries[species_symbol][path], (t, value))
-            end
-        end
-    end
-
-    # Sort each timeseries by time
-    for species in values(timeseries)
-        for path_data in values(species)
-            sort!(path_data; by = x -> x[1])
-        end
-    end
-
-    # Add artificial final timepoint at the end of each path
-    for species_symbol in keys(timeseries)
-        for path in keys(timeseries[species_symbol])
-            if !isempty(timeseries[species_symbol][path])
-                _, max_time = get(path_time_bounds, path, (0.0, 0.0))
-                if max_time > 0.0
-                    last_time, last_count = timeseries[species_symbol][path][end]
-                    if last_time < max_time
-                        push!(timeseries[species_symbol][path], (max_time, last_count))
-                    end
-                end
-            end
-        end
-    end
-
-    @info "Converted to timeseries" result_path series_count=length(timeseries)
-    return timeseries
+    (i_to_path, i_to_from, i_to_max_time) = _load_index_mapping(result_path)
+    ts = _load_events_as_timeseries(result_path, i_to_path, i_to_max_time; i_to_from)
+    @info "Converted to timeseries" result_path series_count=length(ts)
+    return ts
 end
 
 # ============================================================================
@@ -509,108 +460,145 @@ end
     load_timeseries_for_species(result_path, species_filter) -> Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
 
 Load timeseries for only the specified species names.
-Uses the same Arrow parsing as `load_timeseries_from_result` but skips unmatched species.
 """
 function load_timeseries_for_species(
     result_path::String,
     species_filter::Set{Symbol}
 )::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
-    timeseries = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
-
     if !isdir(result_path)
         @warn "Result directory not found" result_path
-        return timeseries
+        return Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
     end
+    (i_to_path, i_to_from, i_to_max_time) = _load_index_mapping(result_path)
+    ts = _load_events_as_timeseries(result_path, i_to_path, i_to_max_time; i_to_from, species_filter)
+    @debug "Loaded filtered timeseries" result_path species_count=length(species_filter) series_count=length(ts)
+    return ts
+end
 
-    (i_to_path, path_time_bounds) = _load_index_mapping(result_path)
+"""
+    _load_events_as_timeseries(result_path, i_to_path, i_to_max_time; species_filter) -> timeseries
+
+Shared core for loading events from Arrow files into timeseries format.
+
+Groups events by (species, path, episode_i), adds an exact endpoint at the scheduled
+segment boundary (`i_to_max_time[i]`) for each episode, then flattens to (species, path).
+This avoids the path-string collision bug where repeated paths in a looping schedule
+would share a single max_time computed across all iterations.
+
+- `species_filter`: if provided, only those species are loaded.
+"""
+function _load_events_as_timeseries(
+    result_path::String,
+    i_to_path::Dict{Int, String},
+    i_to_max_time::Dict{Int, Float64};
+    i_to_from::Dict{Int, Float64} = Dict{Int, Float64}(),
+    species_filter::Union{Nothing, Set{Symbol}} = nothing
+)::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}
+    # Intermediate: (species → (path, episode_i) → points)
+    temp = Dict{Symbol, Dict{Tuple{String, Int}, Vector{Tuple{Float64, Int}}}}()
 
     for file in readdir(result_path)
-        if startswith(file, "events") && endswith(file, ".stream.arrow")
-            events_table = Arrow.Table(joinpath(result_path, file))
-            for (i, t, name, value) in zip(events_table.i, events_table.t, events_table.name, events_table.value)
-                name in species_filter || continue
-                path = get(i_to_path, i, string(i))
-                species_dict = get!(timeseries, name) do
-                    Dict{String, Vector{Tuple{Float64, Int}}}()
-                end
-                push!(get!(species_dict, path) do; Tuple{Float64, Int}[] end, (t, value))
+        startswith(file, "events") && endswith(file, ".stream.arrow") || continue
+        events_table = Arrow.Table(joinpath(result_path, file))
+        for (ep_i, t, name, value) in zip(events_table.i, events_table.t, events_table.name, events_table.value)
+            !isnothing(species_filter) && !(name in species_filter) && continue
+            # Skip instant episodes (from == to): state-transfer snapshots used by {add} etc.
+            # Their effect is already visible as a discontinuity in the adjacent simulation series.
+            get(i_to_from, ep_i, -1.0) == get(i_to_max_time, ep_i, -2.0) && continue
+            path = get(i_to_path, ep_i, string(ep_i))
+            episode_map = get!(temp, name) do
+                Dict{Tuple{String, Int}, Vector{Tuple{Float64, Int}}}()
             end
+            push!(get!(episode_map, (path, ep_i)) do; Tuple{Float64, Int}[] end, (t, value))
         end
     end
 
-    for species in values(timeseries)
-        for path_data in values(species)
-            sort!(path_data; by = first)
+    # Sort per-episode data, inject endpoint, flatten to path.
+    # Insert a gap marker (value = -1) between non-contiguous episodes sharing the same path
+    # (e.g. alternating dark/light model segments) to prevent step-function artefacts in charts.
+    timeseries = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
+    for (species, episode_map) in temp
+        path_map = get!(timeseries, species) do
+            Dict{String, Vector{Tuple{Float64, Int}}}()
         end
-    end
 
-    for species_symbol in keys(timeseries)
-        for path in keys(timeseries[species_symbol])
-            if !isempty(timeseries[species_symbol][path])
-                _, max_time = get(path_time_bounds, path, (0.0, 0.0))
-                if max_time > 0.0
-                    last_time, last_count = timeseries[species_symbol][path][end]
-                    if last_time < max_time
-                        push!(timeseries[species_symbol][path], (max_time, last_count))
+        # Group by path so we can sort by from-time and detect gaps
+        path_to_eps = Dict{String, Vector{Tuple{Float64, Float64, Vector{Tuple{Float64, Int}}}}}()
+        for ((path, ep_i), points) in episode_map
+            ep_from = get(i_to_from, ep_i, NaN)
+            ep_to   = get(i_to_max_time, ep_i, 0.0)
+            push!(get!(path_to_eps, path) do; [] end, (ep_from, ep_to, points))
+        end
+
+        for (path, eps) in path_to_eps
+            sort!(eps; by = first)  # chronological order
+            path_series = get!(path_map, path) do; Tuple{Float64, Int}[] end
+            prev_end = NaN
+
+            for (ep_from, ep_to, points) in eps
+                sort!(points; by = first)
+
+                # Gap between this episode and the previous one on the same path.
+                # Placed at prev_end + 1e-9 (just after the injected endpoint) so that
+                # digital-line rendering holds only 1ns before the NaN, not all the way
+                # to ep_from (which would draw a visible flat line across the whole gap).
+                if !isnan(prev_end) && !isnan(ep_from) && ep_from > prev_end + 1e-9
+                    push!(path_series, (prev_end + 1e-9, Int64(-1)))
+                end
+
+                # Inject endpoint at scheduled segment boundary
+                if ep_to > 0.0 && !isempty(points)
+                    last_t, last_v = points[end]
+                    if last_t < ep_to
+                        push!(points, (ep_to, last_v))
                     end
                 end
+
+                append!(path_series, points)
+                prev_end = ep_to > 0.0 ? ep_to : (isempty(points) ? prev_end : first(points[end]))
             end
         end
     end
 
-    @debug "Loaded filtered timeseries" result_path species_count=length(species_filter) series_count=length(timeseries)
+    @debug "_load_events_as_timeseries" result_path species_count=length(timeseries)
     return timeseries
 end
 
 """
-    _load_index_mapping(result_path::String)::Tuple{Dict{Int, String}, Dict{String, Tuple{Float64, Float64}}}
+    _load_index_mapping(result_path) -> (i_to_path, i_to_from, i_to_max_time)
 
-Load episode index to path mapping from index.arrow and time bounds from events.
+Load episode metadata from `index.arrow`.
 
 Returns:
-- `i_to_path::Dict{Int, String}`: Maps episode index to execution path
-- `path_time_bounds::Dict{String, Tuple{Float64, Float64}}`: Maps path to (min_time, max_time)
+- `i_to_path::Dict{Int, String}`: episode index → execution path
+- `i_to_from::Dict{Int, Float64}`: episode index → segment start time (`from` column)
+- `i_to_max_time::Dict{Int, Float64}`: episode index → scheduled segment end time (`to` column)
 
-Returns empty dicts if files not found or can't be read.
+Using the index `to` column avoids the path-string collision bug: when a looping
+schedule repeats the same structural path, all iterations share the same path string
+but have distinct episode indices with correct individual end times.
 """
-function _load_index_mapping(result_path::String)::Tuple{Dict{Int, String}, Dict{String, Tuple{Float64, Float64}}}
+function _load_index_mapping(result_path::String)::Tuple{Dict{Int, String}, Dict{Int, Float64}, Dict{Int, Float64}}
     i_to_path = Dict{Int, String}()
-    path_time_bounds = Dict{String, Tuple{Float64, Float64}}()
+    i_to_from = Dict{Int, Float64}()
+    i_to_max_time = Dict{Int, Float64}()
 
     index_file = joinpath(result_path, "index.arrow")
     if !isfile(index_file)
         @debug "No index.arrow found" result_path
-        return (i_to_path, path_time_bounds)
+        return (i_to_path, i_to_from, i_to_max_time)
     end
 
     index_table = Arrow.Table(index_file)
     for idx in eachindex(index_table.i)
-        episode_i = index_table.i[idx]
-        path = string(index_table.path[idx])
-        i_to_path[episode_i] = path
+        ep_i = index_table.i[idx]
+        i_to_path[ep_i] = string(index_table.path[idx])
+        i_to_from[ep_i] = Float64(index_table.from[idx])
+        i_to_max_time[ep_i] = Float64(index_table.to[idx])
     end
-    @debug "Loaded path mapping from index" result_path path_count=length(i_to_path)
+    @debug "Loaded index mapping" result_path episode_count=length(i_to_path)
 
-    # Extract time bounds for each path from events files
-    for file in readdir(result_path)
-        if startswith(file, "events") && endswith(file, ".stream.arrow")
-            events_file = joinpath(result_path, file)
-            events_table = Arrow.Table(events_file)
-
-            for (i, t) in zip(events_table.i, events_table.t)
-                path = get(i_to_path, i, string(i))
-                if !haskey(path_time_bounds, path)
-                    path_time_bounds[path] = (t, t)
-                else
-                    min_t, max_t = path_time_bounds[path]
-                    path_time_bounds[path] = (min(min_t, t), max(max_t, t))
-                end
-            end
-        end
-    end
-    @debug "Extracted time bounds" result_path path_count=length(path_time_bounds)
-
-    return (i_to_path, path_time_bounds)
+    return (i_to_path, i_to_from, i_to_max_time)
 end
 
 # ============================================================================
@@ -647,7 +635,7 @@ function load_frames_from_result(result_path::String)::Vector{SimulationFrame}
     end
 
     # Load path mapping and time bounds from index.arrow
-    (i_to_path, _) = _load_index_mapping(result_path)
+    (i_to_path, _, _) = _load_index_mapping(result_path)
 
     # Look for events*.stream.arrow files
     for file in readdir(result_path)

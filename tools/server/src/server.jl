@@ -173,6 +173,7 @@ end
     schedule_name::String
     schedule_spec::String
     max_time::Float64 = 0.0
+    subscribed_species::Vector{String} = String[]
 end
 
 # start a simulation run (async, streamed via WS)
@@ -190,11 +191,15 @@ end
         ws_client[]
     end
 
-    # Create simulation controller for pause/resume and gene subscriptions
+    # Create simulation controller for pause/resume and gene subscriptions.
+    # Initial subscribed_species from the request so streaming starts immediately
+    # without waiting for a separate subscribe WS message.
+    initial_species = Set(Symbol.(data.payload.subscribed_species))
     ctrl = SimulationController(
         result_path = result.path,
         simulation_id = result.id,
-        ws_client = current_ws
+        ws_client = current_ws,
+        subscribed_species = initial_species
     )
     active_controller[] = ctrl
 

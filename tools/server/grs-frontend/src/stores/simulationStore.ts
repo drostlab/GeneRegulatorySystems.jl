@@ -165,8 +165,7 @@ export const useSimulationStore = defineStore(
         }
 
         function _onTimeseries(data: TimeseriesData): void {
-            const speciesCount = Object.keys(data).length
-            console.debug(`[SimulationStore] _onTimeseries: ${speciesCount} species`)
+            console.debug(`[SimulationStore] _onTimeseries: ${Object.keys(data).length} species`)
             _mergeTimeseries(data)
             streamingDelta.value = data
         }
@@ -174,6 +173,7 @@ export const useSimulationStore = defineStore(
         function _onStatus(status: string, error?: string): void {
             console.debug(`[SimulationStore] _onStatus: status=${status} error=${error ?? 'none'} hasResult=${!!currentResult.value}`)
             if (!currentResult.value) return
+            isPreparingSimulation.value = false
             currentResult.value = {
                 ...currentResult.value,
                 status: status as SimulationResult['status'],
@@ -252,10 +252,17 @@ export const useSimulationStore = defineStore(
             const stream = getSimulationStream()
             stream.connect()
 
+            // Compute initial species to subscribe server-side so streaming starts
+            // with the first episode — avoids the late-subscribe race.
+            const allGenes = scheduleStore.allGenes ?? []
+            const initialGenes = allGenes.slice(0, DEFAULT_STREAM_GENE_COUNT)
+            const initialSpecies = initialGenes.flatMap(g => scheduleStore.getSpeciesForGeneId(g))
+
             const result = await simulationService.runSimulation(
                 scheduleStore.schedule.name,
                 scheduleStore.schedule.spec,
                 getTimeExtent(scheduleStore.segments).max,
+                initialSpecies,
             )
             currentResult.value = result
             console.debug(`[SimulationStore] runSimulation: got result id=${result.id} status=${result.status}`)
@@ -267,14 +274,24 @@ export const useSimulationStore = defineStore(
                 onStatus: _onStatus,
             })
 
-            // Subscribe default genes for live streaming
-            const allGenes = scheduleStore.allGenes ?? []
-            const defaultGenes = allGenes.slice(0, DEFAULT_STREAM_GENE_COUNT)
-            if (defaultGenes.length > 0) {
-                updateStreamSubscription(defaultGenes)
+            // Subscribe default genes for live streaming (WS subscription complements
+            // the server-side initial subscription from the run request)
+            if (initialGenes.length > 0) {
+                updateStreamSubscription(initialGenes)
             }
 
-            return result
+            // Catch fast-simulation race: if the simulation completed before track() was
+            // called, all WS messages were dropped. Poll once to get the current state.
+            const polledResult = await simulationService.loadResult(result.id)
+            currentResult.value = polledResult
+            if (polledResult.status === 'completed' || polledResult.status === 'error') {
+                console.debug(`[SimulationStore] Fast-simulation detected: already ${polledResult.status} before track()`)
+                _onStatus(polledResult.status, polledResult.error ?? undefined)
+            } else {
+                isPreparingSimulation.value = false
+            }
+
+            return polledResult
         }
 
         function pauseSimulation(): void {

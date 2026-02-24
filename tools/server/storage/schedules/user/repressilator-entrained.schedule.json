@@ -23,7 +23,7 @@
         "dark_model": {"{regulation/v1}": {"$": "repressilator"}},
         "light_model": {"{regulation/v1}": {
             "$": "repressilator",
-            "reactions": [{"from": [2], "rate": 0.001, "to": [1]}]
+            "reactions": [{"from": [2], "rate": 0.001, "to": []}]
         }},
         "step": [
             {"{seed}": "${seed}-rep"},
@@ -33,14 +33,14 @@
             }},
             {"to": 45500.0, "step": [
                 {"to": 6000.0, "do": {"$": "dark_model"}},
-                {"to": 500.0, "do": {"$": "light_model"}}
+                {"to": 1000.0, "do": {"$": "light_model"}}
             ]},
             {
                 "branch": true,
                 "each": {"length": 5},
                 "step": {"to": 45500.0, "step": [
                     {"to": 6000.0, "do": {"$": "dark_model"}},
-                    {"to": 500.0, "do": {"$": "light_model"}}
+                    {"to": 100.0, "do": {"$": "light_model"}}
                 ]}
             }
         ]

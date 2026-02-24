@@ -1,4 +1,4 @@
-import { EAxisAlignment, ENumericFormat, FastLineRenderableSeries, NumberRange, NumericAxis, SweepAnimation, XyDataSeries } from "scichart";
+import { EAxisAlignment, ELineDrawMode, ENumericFormat, FastLineRenderableSeries, NumberRange, NumericAxis, SweepAnimation, XyDataSeries } from "scichart";
 import { TimeseriesPanel } from "./TimeseriesPanel";
 import type { BasePanelOptions } from "./BasePanel";
 import type { TimeseriesData } from "@/types/simulation";
@@ -82,7 +82,8 @@ export class CountsPanel extends TimeseriesPanel {
                 const geneId = getGeneFromSpeciesName(species) ?? ""
                 const key = `${geneId}:${path}`
                 const time = series.map(pair => pair[0])
-                const counts = series.map(pair => pair[1])
+                // -1 is the gap marker inserted between non-contiguous episodes
+                const counts = series.map(pair => pair[1] === -1 ? NaN : pair[1])
 
                 const existing = this.seriesMap.get(key)
                 if (existing) {
@@ -94,7 +95,7 @@ export class CountsPanel extends TimeseriesPanel {
                     const colour = this.metadata.gene_colours[geneId] ?? this.theme.chart.fallbackSeries
                     const xySeries = new XyDataSeries(this.wasmContext, {
                         isSorted: true,
-                        containsNaN: false,
+                        containsNaN: true,
                         dataSeriesName: key
                     })
                     xySeries.appendRange(time, counts)
@@ -105,6 +106,7 @@ export class CountsPanel extends TimeseriesPanel {
                         stroke: colour,
                         strokeThickness: 1,
                         isDigitalLine: true,
+                        drawNaNAs: ELineDrawMode.DiscontinuousLine,
                         animation: new SweepAnimation({ duration: SWEEP_DURATION_MS })
                     })
                     this.surface.renderableSeries.add(lineSeries)
@@ -126,6 +128,7 @@ export class CountsPanel extends TimeseriesPanel {
                 const geneId = getGeneFromSpeciesName(species) ?? ""
                 const key = `${geneId}:${path}`
 
+                const isNew = !this.seriesMap.has(key)
                 let xySeries = this.seriesMap.get(key)
                 if (!xySeries) {
                     xySeries = this._createStreamingSeries(key, geneId)
@@ -135,8 +138,12 @@ export class CountsPanel extends TimeseriesPanel {
                 const counts: number[] = []
                 for (let i = 0; i < points.length; i++) {
                     time.push(points[i]![0])
-                    counts.push(points[i]![1])
+                    // -1 is the gap marker between non-contiguous episodes
+                    counts.push(points[i]![1] === -1 ? NaN : points[i]![1])
                 }
+                const tFirst = time[0]?.toFixed(1) ?? '-'
+                const tLast = time[time.length - 1]?.toFixed(1) ?? '-'
+                console.debug(`[CountsPanel] ${isNew ? 'CREATE' : 'APPEND'} key=${key} pts=${points.length} t=${tFirst}..${tLast} totalSeries=${this.seriesMap.size}`)
                 xySeries.appendRange(time, counts)
             }
         }
@@ -148,7 +155,7 @@ export class CountsPanel extends TimeseriesPanel {
         const colour = this.metadata!.gene_colours[geneId] ?? this.theme.chart.fallbackSeries
         const xySeries = new XyDataSeries(this.wasmContext, {
             isSorted: true,
-            containsNaN: false,
+            containsNaN: true,
             dataSeriesName: key
         })
         this.seriesMap.set(key, xySeries)
@@ -157,7 +164,8 @@ export class CountsPanel extends TimeseriesPanel {
             dataSeries: xySeries,
             stroke: colour,
             strokeThickness: 1,
-            isDigitalLine: true
+            isDigitalLine: true,
+            drawNaNAs: ELineDrawMode.DiscontinuousLine
         })
         this.surface.renderableSeries.add(lineSeries)
         return xySeries

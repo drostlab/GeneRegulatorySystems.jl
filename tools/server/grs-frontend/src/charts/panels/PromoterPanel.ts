@@ -1,4 +1,4 @@
-import { EAxisAlignment, FastBandRenderableSeries, NumericAxis, SweepAnimation, XyyDataSeries } from "scichart"
+import { EAxisAlignment, ELineDrawMode, FastBandRenderableSeries, NumericAxis, SweepAnimation, XyyDataSeries } from "scichart"
 import { TimeseriesPanel } from "./TimeseriesPanel"
 import type { BasePanelOptions } from "./BasePanel"
 import type { TimeseriesData, TimeseriesMetadata } from "@/types/simulation"
@@ -141,7 +141,7 @@ export class PromoterPanel extends TimeseriesPanel {
                     // New series: create with sweep animation
                     const xyyDataSeries = new XyyDataSeries(this.wasmContext, {
                         isSorted: true,
-                        containsNaN: false,
+                        containsNaN: true,
                         dataSeriesName: key
                     })
                     if (xData.length > 0) {
@@ -155,6 +155,7 @@ export class PromoterPanel extends TimeseriesPanel {
                         strokeThickness: 0.0,
                         fillY1: colour,
                         strokeY1: colour,
+                        drawNaNAs: ELineDrawMode.DiscontinuousLine,
                         animation: new SweepAnimation({ duration: SWEEP_DURATION_MS })
                     })
                     this.surface.renderableSeries.add(bandSeries)
@@ -177,8 +178,12 @@ export class PromoterPanel extends TimeseriesPanel {
                 const key = `${geneId}:${path}`
 
                 const params = this.bandParams.get(key)
-                if (!params) continue
+                if (!params) {
+                    console.debug(`[PromoterPanel] SKIP key=${key} (no bandParams — key not in layout)`)
+                    continue
+                }
 
+                const isNew = !this.seriesMap.has(key)
                 let xyyData = this.seriesMap.get(key)
                 if (!xyyData) {
                     xyyData = this._createStreamingSeries(key, geneId)
@@ -186,6 +191,9 @@ export class PromoterPanel extends TimeseriesPanel {
 
                 const { yCenter, bandHeight } = params
                 const { xData, yTop, yBottom } = this._buildBandArrays(points, yCenter, bandHeight)
+                const tFirst = xData[0]?.toFixed(1) ?? '-'
+                const tLast = xData[xData.length - 1]?.toFixed(1) ?? '-'
+                console.debug(`[PromoterPanel] ${isNew ? 'CREATE' : 'APPEND'} key=${key} rawPts=${points.length} bandPts=${xData.length} t=${tFirst}..${tLast}`)
                 if (xData.length > 0) {
                     xyyData.appendRange(xData, yTop, yBottom)
                 }
@@ -211,12 +219,23 @@ export class PromoterPanel extends TimeseriesPanel {
         for (let i = 0; i < series.length; i++) {
             const [time, state] = series[i]!
 
+            // -1 is the gap marker between non-contiguous episodes: emit a NaN break
+            if (state === -1) {
+                xData.push(time)
+                yTop.push(NaN)
+                yBottom.push(NaN)
+                continue
+            }
+
             if (i > 0) {
                 const prevState = series[i - 1]![1]
-                const halfHeight = 0.5 * bandHeight * prevState
-                xData.push(time)
-                yTop.push(yCenter + halfHeight)
-                yBottom.push(yCenter - halfHeight)
+                // Skip the step-duplicate if the previous point was a gap marker
+                if (prevState !== -1) {
+                    const halfHeight = 0.5 * bandHeight * prevState
+                    xData.push(time)
+                    yTop.push(yCenter + halfHeight)
+                    yBottom.push(yCenter - halfHeight)
+                }
             }
 
             const halfHeight = 0.5 * bandHeight * state
@@ -233,7 +252,7 @@ export class PromoterPanel extends TimeseriesPanel {
         const colour = this.metadata!.gene_colours[geneId] ?? this.theme.chart.fallbackSeries
         const xyyData = new XyyDataSeries(this.wasmContext, {
             isSorted: true,
-            containsNaN: false,
+            containsNaN: true,
             dataSeriesName: key
         })
         this.seriesMap.set(key, xyyData)
@@ -243,7 +262,8 @@ export class PromoterPanel extends TimeseriesPanel {
             stroke: colour,
             strokeThickness: 0.0,
             fillY1: colour,
-            strokeY1: colour
+            strokeY1: colour,
+            drawNaNAs: ELineDrawMode.DiscontinuousLine
         })
         this.surface.renderableSeries.add(bandSeries)
         return xyyData

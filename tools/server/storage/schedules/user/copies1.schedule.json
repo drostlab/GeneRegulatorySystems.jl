@@ -1,0 +1,12 @@
+{
+    "do": {"{regulation/v1}": {"genes": [
+        {"$": ["defaults", "gene"], "unique": false}
+    ]}},
+    "step": [
+        {"{add}": {"$": ["defaults", "bootstrap"]}},
+        {"to": 50000.0, "step": [
+            {"to": 10000.0}
+        ]},
+        {"to": 20000.0}
+    ]
+}

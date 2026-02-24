@@ -40,7 +40,7 @@ export async function loadResult(resultId: string): Promise<SimulationResult> {
  * The server spawns the simulation async and returns immediately with status=running.
  * Progress and timeseries arrive via WebSocket.
  */
-export async function runSimulation(scheduleName: string, scheduleJson: string, maxTime: number): Promise<SimulationResult> {
+export async function runSimulation(scheduleName: string, scheduleJson: string, maxTime: number, subscribedSpecies: string[] = []): Promise<SimulationResult> {
     const result = await apiFetchJson<SimulationResult>('/simulations/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,6 +48,7 @@ export async function runSimulation(scheduleName: string, scheduleJson: string, 
             schedule_name: scheduleName,
             schedule_spec: scheduleJson,
             max_time: maxTime,
+            subscribed_species: subscribedSpecies,
         }),
     })
 
