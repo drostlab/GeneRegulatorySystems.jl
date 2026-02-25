@@ -20,6 +20,7 @@
 
 import { type IThemeProvider, SciChartJSDarkv2Theme, SciChartJSLightTheme } from 'scichart'
 import logging from '@/utils/logging'
+import { desaturate } from '@/utils/colorUtils'
 
 const log = logging.getLogger('theme')
 
@@ -42,6 +43,21 @@ export const RED = {
     950: '#450a0a',
 } as const
 
+/** Green scale — exact Aura/Tailwind values so token refs like {green.500} resolve identically. */
+export const GREEN = {
+    50:  '#f0fdf4',
+    100: '#dcfce7',
+    200: '#bbf7d0',
+    300: '#86efac',
+    400: '#4ade80',
+    500: '#22c55e',
+    600: '#16a34a',
+    700: '#15803d',
+    800: '#166534',
+    900: '#14532d',
+    950: '#052e16',
+} as const
+
 /** Neutral grey scale — exact Aura/Tailwind zinc values. */
 export const GREY = {
     0:   '#ffffff',
@@ -60,8 +76,9 @@ export const GREY = {
 
 /** Exported palette aggregation for PrimeVue definePreset. */
 export const palette = {
-    red:  RED,
-    grey: GREY,
+    red:   RED,
+    green: GREEN,
+    grey:  GREY,
 } as const
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -69,8 +86,8 @@ export const palette = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const EDGE_COLOURS: Record<string, string> = {
-    activation:  '#7c7a81',
-    repression:  '#e16868',
+    activation:  desaturate(GREEN[400], 0.2),
+    repression:  desaturate(RED[400],   0.2),
     proteolysis: '#FF7F00',
     produces:    '#7e868e',
     next:        '#4DAF4A',

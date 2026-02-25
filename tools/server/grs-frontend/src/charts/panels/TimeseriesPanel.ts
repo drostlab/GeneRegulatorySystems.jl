@@ -30,7 +30,7 @@ export abstract class TimeseriesPanel extends BasePanel {
         for (const t of times) {
             const line = new LineAnnotation({
                 x1: t, x2: t,
-                y1: -1, y2: 2,
+                y1: 0, y2: 0,
                 yCoordinateMode: ECoordinateMode.Relative,
                 stroke: this.theme.timeline.segmentBoundary,
                 strokeThickness: 1,

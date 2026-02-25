@@ -15,6 +15,7 @@
  */
 
 import { shallowRef } from 'vue'
+import { RED, GREEN } from '@/config/theme'
 
 export function useMonacoEditor(
     containerId: string,
@@ -31,8 +32,8 @@ export function useMonacoEditor(
             base: 'vs-dark',
             inherit: true,
             rules: [
-                { token: 'string.key.json', foreground: 'e06c75' },
-                { token: 'string.value.json', foreground: '98c379' },
+                { token: 'string.key.json', foreground: RED[400].slice(1) },
+                { token: 'string.value.json', foreground: GREEN[300].slice(1) },
                 { token: 'number.json', foreground: 'd19a66' },
                 { token: 'keyword.json', foreground: 'c678dd' },
                 { token: 'comment.json', foreground: '5c6370' },
@@ -48,8 +49,8 @@ export function useMonacoEditor(
             base: 'vs',
             inherit: true,
             rules: [
-                { token: 'string.key.json', foreground: 'e45649' },
-                { token: 'string.value.json', foreground: '50a14f' },
+                { token: 'string.key.json', foreground: RED[500].slice(1) },
+                { token: 'string.value.json', foreground: GREEN[600].slice(1) },
                 { token: 'number.json', foreground: '986801' },
                 { token: 'keyword.json', foreground: 'a626a4' },
                 { token: 'comment.json', foreground: 'a0a1a7' },
