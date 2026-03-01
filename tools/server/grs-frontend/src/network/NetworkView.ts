@@ -171,6 +171,7 @@ export class NetworkView {
             this.adaptiveZoom.onDetailChange = (visible: boolean) => {
                 this.modelFilter.refresh()
                 this.selectionSync.refresh()
+                this.dynamicsSync.notifyDetailChanged(visible)
                 this._onDetailChange?.(visible)
             }
         })

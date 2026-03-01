@@ -29,11 +29,11 @@ const FONT_FAMILY = 'Montserrat'
 /** Edge colours re-exported from theme for backward compat. */
 export const EDGE_COLOURS = THEME_EDGE_COLOURS
 
-/** Gene node base dimensions (scaled by protein count). */
+/** Gene node base dimensions. */
 export const GENE_BASE = { width: 120, height: 50 }
 
-/** Min/max gene node dimensions for dynamic sizing (wider range for visibility). */
-export const GENE_SIZE_RANGE = { minW: 80, maxW: 250, minH: 40, maxH: 100 }
+/** Min/max compound-node padding for dynamic sizing in species view. */
+export const COMPOUND_PADDING_RANGE = { min: 6, max: 40 }
 
 /** Species node size (small enough to fit inside gene in tight grid). */
 export const SPECIES_SIZE = 10

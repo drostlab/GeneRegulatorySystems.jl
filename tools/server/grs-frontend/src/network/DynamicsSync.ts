@@ -2,13 +2,14 @@
  * Dynamic node sizing based on simulation protein counts.
  *
  * Watches viewerStore.proteinCountsAtTimepoint and scales gene node
- * width/height proportionally within GENE_SIZE_RANGE.
+ * padding proportionally within COMPOUND_PADDING_RANGE. Works in both
+ * gene view (non-compound) and species view (compound-parent).
  * Debounced at ~60fps.
  */
 import type { Core } from 'cytoscape'
 import { watch, type WatchStopHandle } from 'vue'
 import { useViewerStore } from '@/stores/viewerStore'
-import { GENE_BASE, GENE_SIZE_RANGE } from './networkStyles'
+import { COMPOUND_PADDING_RANGE } from './networkStyles'
 
 const DEBOUNCE_MS = 16
 
@@ -38,14 +39,17 @@ export class DynamicsSync {
         this.cy = null
     }
 
-    /** Reset all gene nodes to base size. */
+    /** Reset all gene nodes to base padding. */
     resetSizes(): void {
         if (!this.cy) return
         this.cy.startBatch()
-        this.cy.nodes('.gene').forEach((node: any) => {
-            node.style({ width: GENE_BASE.width, height: GENE_BASE.height })
-        })
+        this.cy.nodes('.gene').forEach((node: any) => node.removeStyle('padding'))
         this.cy.endBatch()
+    }
+
+    /** Called when the detail view (species/gene) changes so sizing is reapplied. */
+    notifyDetailChanged(_visible: boolean): void {
+        this.scheduleUpdate()
     }
 
     private scheduleUpdate(): void {
@@ -70,7 +74,7 @@ export class DynamicsSync {
 
             // Only dynamically size selected genes; reset unselected to base
             if (selectedSet.size > 0 && !selectedSet.has(gene)) {
-                node.style({ width: GENE_BASE.width, height: GENE_BASE.height })
+                node.removeStyle('padding')
                 return
             }
 
@@ -78,10 +82,9 @@ export class DynamicsSync {
             const maxValue = maxCounts[gene] ?? 1
             const normalised = maxValue > 0 ? Math.min(1, value / maxValue) : 0
 
-            const w = GENE_SIZE_RANGE.minW + normalised * (GENE_SIZE_RANGE.maxW - GENE_SIZE_RANGE.minW)
-            const h = GENE_SIZE_RANGE.minH + normalised * (GENE_SIZE_RANGE.maxH - GENE_SIZE_RANGE.minH)
-
-            node.style({ width: w, height: h })
+            const p = COMPOUND_PADDING_RANGE.min +
+                normalised * (COMPOUND_PADDING_RANGE.max - COMPOUND_PADDING_RANGE.min)
+            node.style({ padding: `${p}px` })
         })
         cy.endBatch()
     }
