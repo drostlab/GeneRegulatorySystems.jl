@@ -15,8 +15,8 @@
                                 [0.8, 0.6],
                                 [0.4, 0.2]
                             ],
-                            "power": 13,
-                            "expected_links_per_gene": 0.4
+                            "power": 12,
+                            "expected_links_per_gene": 1.1
                         },
                         "at": ["LogNormal", 2.0, 1.0]
                     },
@@ -26,8 +26,8 @@
                                 [0.6, 0.5],
                                 [0.4, 0.2]
                             ],
-                            "power": 13,
-                            "expected_links_per_gene": 0.4
+                            "power": 12,
+                            "expected_links_per_gene": 1.2
                         },
                         "at": ["LogNormal", 2.0, 1.0]
                     }
