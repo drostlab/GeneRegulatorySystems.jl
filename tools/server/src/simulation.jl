@@ -502,15 +502,25 @@ function _load_events_as_timeseries(
         events_table = Arrow.Table(joinpath(result_path, file))
         for (ep_i, t, name, value) in zip(events_table.i, events_table.t, events_table.name, events_table.value)
             !isnothing(species_filter) && !(name in species_filter) && continue
-            # Skip instant episodes (from == to): state-transfer snapshots used by {add} etc.
-            # Their effect is already visible as a discontinuity in the adjacent simulation series.
-            get(i_to_from, ep_i, -1.0) == get(i_to_max_time, ep_i, -2.0) && continue
             path = get(i_to_path, ep_i, string(ep_i))
             episode_map = get!(temp, name) do
                 Dict{Tuple{String, Int}, Vector{Tuple{Float64, Int}}}()
             end
             push!(get!(episode_map, (path, ep_i)) do; Tuple{Float64, Int}[] end, (t, value))
         end
+    end
+
+    # Build per-path run_predecessor lookup: for every non-snapshot index episode (f < t),
+    # record run_predecessor[path][t] = f.  This maps the END time of a run interval back
+    # to its START time.  For a snapshot episode at ep_from=T, run_predecessor[T] is the
+    # start of the bridging run episode that feeds into it.  If that start ≈ prev_end the
+    # episodes are contiguous; if not (or the key is missing), there is a real gap.
+    path_run_predecessor = Dict{String, Dict{Float64, Float64}}()
+    for ep_i in keys(i_to_path)
+        f = get(i_to_from, ep_i, NaN)
+        t = get(i_to_max_time, ep_i, NaN)
+        (isnan(f) || isnan(t) || f >= t - 1e-9) && continue   # skip snapshots (f==t) + invalid
+        get!(path_run_predecessor, i_to_path[ep_i]) do; Dict{Float64, Float64}() end[t] = f
     end
 
     # Sort per-episode data, inject endpoint, flatten to path.
@@ -535,14 +545,23 @@ function _load_events_as_timeseries(
             path_series = get!(path_map, path) do; Tuple{Float64, Int}[] end
             prev_end = NaN
 
+            run_pred = get(path_run_predecessor, path, Dict{Float64, Float64}())
+
             for (ep_from, ep_to, points) in eps
                 sort!(points; by = first)
 
-                # Gap between this episode and the previous one on the same path.
-                # Placed at prev_end + 1e-9 (just after the injected endpoint) so that
-                # digital-line rendering holds only 1ns before the NaN, not all the way
-                # to ep_from (which would draw a visible flat line across the whole gap).
-                if !isnan(prev_end) && !isnan(ep_from) && ep_from > prev_end + 1e-9
+                # Gap detection between this episode and the previous one on the same path.
+                #
+                # For step-based (snapshot) episodes each snapshot at T is preceded by a run
+                # interval (F→T) in the index.  If F ≈ prev_end the episodes are contiguous.
+                # For continuous SSA episodes there is no run interval with to=ep_from, so
+                # predecessor_from=NaN and we fall back to the plain ep_from > prev_end check.
+                #
+                # The gap sentinel is placed at prev_end+1e-9 so digital-line rendering holds
+                # just 1ns past the injected endpoint rather than drawing a flat line to ep_from.
+                predecessor_from = get(run_pred, ep_from, NaN)
+                gap_start = isnan(predecessor_from) ? ep_from : predecessor_from
+                if !isnan(prev_end) && !isnan(ep_from) && gap_start > prev_end + 1e-9
                     push!(path_series, (prev_end + 1e-9, Int64(-1)))
                 end
 

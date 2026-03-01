@@ -73,7 +73,8 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
 - `events_since_stream::Int`: Events accumulated since last stream
 - `pending_timeseries::Dict`: Accumulated timeseries for subscribed species since last stream
 - `frame_count::Int`: Running count of frames for progress reporting
-- `path_last_to::Dict{String, Float64}`: Last scheduled end-time of each non-instant path (gap detection)
+- `path_run_predecessor::Dict{String, Dict{Float64, Float64}}`: run_predecessor[path][to] = from for each non-instant episode (gap detection)
+- `path_last_to::Dict{String, Float64}`: Last covered end-time per path (gap detection)
 """
 @kwdef mutable struct StreamingSimulationSink
     location::String
@@ -88,8 +89,12 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
     events_since_stream::Int = 0
     pending_timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}} = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
     frame_count::Int = 0
-    # Gap tracking: records the last scheduled end-time of each non-instant path so that
-    # non-contiguous episodes (e.g. alternating dark/light) get a gap marker in streamed data.
+    # Gap tracking: mirrors the run_predecessor approach in _load_events_as_timeseries.
+    # path_run_predecessor[path][to] = from  for every non-instant (from < to) episode.
+    # path_last_to[path]              = last covered `to` (updated for all episodes).
+    # Together they let the gap check handle step-based schedules where snapshot episodes
+    # (from == to) would otherwise stall path_last_to.
+    path_run_predecessor::Dict{String, Dict{Float64, Float64}} = Dict{String, Dict{Float64, Float64}}()
     path_last_to::Dict{String, Float64} = Dict{String, Float64}()
 end
 
@@ -124,24 +129,23 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     channel = get!(Channel, sink.channels, into)
     count = 0
 
-    # If this non-instant path has a gap since its last episode, eagerly insert a NaN gap
-    # marker into pending_timeseries for ALL currently subscribed species.
-    # Insertion is eager (not lazy) to avoid multi-species ordering bugs: every subscribed
-    # species gets the gap immediately at episode start.
-    # Gap time = prev_end + 1e-9: just after the endpoint of the previous episode, so that
-    # digital-line hold is only 1ns wide rather than a visible flat line spanning to `from`.
-    if from != to && !isnothing(sink.controller)
+    # Eagerly insert a NaN gap marker into pending_timeseries for every subscribed species
+    # when the episode's bridging run interval starts after the last covered endpoint.
+    # Uses the same run_predecessor logic as _load_events_as_timeseries so that step-based
+    # schedules (snapshot-only episodes) are handled correctly.
+    # Insertion is eager to avoid multi-species ordering bugs.
+    if !isnothing(sink.controller)
         prev_end = get(sink.path_last_to, path, NaN)
-        if !isnan(prev_end) && from > prev_end + 1e-9
-            # Place gap at prev_end + 1e-9 (just after the previous episode's end) so that
-            # digital-line hold is only 1ns wide, not a visible flat line to `from`.
+        run_pred = get(sink.path_run_predecessor, path, Dict{Float64, Float64}())
+        predecessor_from = get(run_pred, from, NaN)
+        gap_start = isnan(predecessor_from) ? from : predecessor_from
+        if !isnan(prev_end) && gap_start > prev_end + 1e-9
             gap_t = prev_end + 1e-9
             for sp in sink.controller.subscribed_species
                 species_dict = get!(sink.pending_timeseries, sp) do
                     Dict{String, Vector{Tuple{Float64, Int}}}()
                 end
                 series = get!(species_dict, path) do; Tuple{Float64, Int}[] end
-                # Guard: don't double-insert if gap was already added in this batch
                 if isempty(series) || series[end][2] != Int64(-1)
                     push!(series, (gap_t, Int64(-1)))
                 end
@@ -164,11 +168,7 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
         count += 1
         sink.events_since_stream += 1
 
-        # Skip streaming for instant episodes (from == to): state-transfer snapshots
-        # from {add} etc. — their effect appears as a discontinuity in the adjacent segment.
-        if from != to
-            _accumulate_subscribed(sink, name, path, t, value)
-        end
+        _accumulate_subscribed(sink, name, path, t, value)
 
         # Stream inside the event loop at regular event intervals
         if sink.events_since_stream >= sink.stream_event_interval
@@ -184,10 +184,11 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     push!(sink.index, (; sink.i, path, from, to, model, label, count, into, seed))
     sink.i_to_path[sink.i] = path
 
-    # Update gap tracking for non-instant episodes
-    if from != to
-        sink.path_last_to[path] = to
+    # Update gap tracking (mirrors simulation.jl: run_predecessor for non-instant, last_to for all)
+    if from < to
+        get!(sink.path_run_predecessor, path) do; Dict{Float64, Float64}() end[to] = from
     end
+    sink.path_last_to[path] = to
 
     # Stream at episode boundary if enough events accumulated
     if sink.events_since_stream >= sink.stream_event_interval

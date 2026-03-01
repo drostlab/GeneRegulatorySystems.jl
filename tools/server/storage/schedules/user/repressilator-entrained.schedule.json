@@ -33,14 +33,14 @@
             }},
             {"to": 260000.0, "step": [
                 {"to": 60000.0, "do": {"$": "dark_model"}},
-                {"to": 5000.0, "do": {"$": "light_model"}}
+                {"to": 5000.0, "step": 10.0, "do": {"$": "light_model"}}
             ]},
             {
                 "branch": true,
-                "each": {"length": 5},
+                "each": {"length": 1},
                 "step": {"to": 260000.0, "step": [
-                    {"to": 60000.0, "do": {"$": "dark_model"}},
-                    {"to": 5000.0, "do": {"$": "light_model"}}
+                    {"to": 60000.0, "step": 10.0, "do": {"$": "dark_model"}},
+                    {"to": 5000.0, "step": 10.0, "do": {"$": "light_model"}}
                 ]}
             }
         ]
