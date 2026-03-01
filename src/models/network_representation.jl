@@ -335,12 +335,21 @@ function entity(definition::V1.Definition, f!::Wrapped; include_reactions::Bool=
         rs = f!.model.definition
         rs_network = entity(rs, filter_ids)
         gene_nodes, aux_nodes, aux_links, summary_links = _genes_from_reaction_network(rs_network)
+        gene_nodes = map(gene_nodes) do n
+            g = get(gene_lookup, n.name, nothing)
+            g === nothing && return n
+            Entity(kind=n.kind, name=n.name,
+                   properties=merge(n.properties, Dict(:base_rates => V1.representation(g.base_rates))),
+                   nodes=n.nodes, links=n.links)
+        end
         nodes = vcat(gene_nodes, aux_nodes)
         links = vcat(reg_links, aux_links, summary_links)
     else
         # Kronecker/random-diff: no species, keep gene-level regulatory links
         reg_links = [Link(; l..., scope=:all) for l in raw_links]
-        nodes = [Entity(kind=:gene, name=g.name) for g in definition.genes]
+        nodes = [Entity(kind=:gene, name=g.name,
+                        properties=Dict(:base_rates => V1.representation(g.base_rates)))
+                 for g in definition.genes]
         links = reg_links
     end
 

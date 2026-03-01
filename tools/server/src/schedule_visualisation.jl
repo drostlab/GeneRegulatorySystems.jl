@@ -11,6 +11,7 @@ using GeneRegulatorySystems
 using GeneRegulatorySystems.Models
 using GeneRegulatorySystems.Models: Wrapped, Instant, Label, Descriptions
 using GeneRegulatorySystems.Models.V1
+using GeneRegulatorySystems.Models.Plumbing
 using GeneRegulatorySystems.Models.Scheduling
 using GeneRegulatorySystems.Models.Scheduling: Primitive, Schedule as GRSSchedule
 using GeneRegulatorySystems.Models.NetworkRepresentation
@@ -355,10 +356,22 @@ end
 
 _label(wrapped::Models.Wrapped) = _label(Models.describe(wrapped.definition))
 _label(label::Models.Label) = label.label
-# TODO: add describe method to instant models?
-_label(model::Models.Instant) = replace(repr(model), string(typeof(model)) => string(nameof(typeof(model))); count=1)
 _label(::Models.EmptyDescription) = ""
 _label(x) = _type_label(x)
+
+function _label(model::Plumbing.Adjust)
+    op = try nameof(model.adjust) catch; :adjust end
+    entries = join(
+        ("  $(k): $(v)" for (k, v) in sort(collect(model.adjustment), by = first ∘ string)),
+        "\n",
+    )
+    body = "Adjust ($(op))"
+    isempty(entries) ? body : "$(body)\n$(entries)"
+end
+
+function _label(model::Plumbing.Seed)
+    "Seed\n  $(model.seed)"
+end
 
 function _label(desc::Descriptions)
     i = findfirst(d -> d isa Label, desc.descriptions)
@@ -628,7 +641,7 @@ function _generate_gene_colours(gene_names::Vector{String})::Dict{String, String
     seed = [colorant"white", colorant"black", colorant"crimson", colorant"green"]
     colors = distinguishable_colors(length(gene_names), seed, dropseed = true)
     # Pastel: low saturation, high value
-    colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.7, min(hsv.v * 1.6, 1.0)) end for c in colors]
+    colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.65, min(hsv.v * 1.8, 1.0)) end for c in colors]
     colors = convert.(RGB, colors)
 
     return Dict(string(gene) => "#$(hex(colors[i]))" for (i, gene) in enumerate(gene_names))

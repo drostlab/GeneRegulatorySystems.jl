@@ -42,7 +42,7 @@ export const SPECIES_SIZE = 10
 export const ORPHAN_SPECIES_SIZE = 30
 
 /** Reaction node size. */
-export const REACTION_SIZE = 3
+export const REACTION_SIZE = 2
 
 /** Opacity for dimmed (unselected / excluded) elements. */
 export const DIM_OPACITY = THEME_DIM_OPACITY
@@ -84,7 +84,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'width': GENE_BASE.width,
                 'height': GENE_BASE.height,
                 'text-valign': 'center' as any,
-                'font-size': 14,
+                'font-size': 16,
                 'color': GREY[950],
                 'padding': '6px',
                 'min-width': `${GENE_BASE.width}px`,
@@ -121,10 +121,10 @@ export function buildStylesheet(isDark = false): any[] {
                 'shape': 'ellipse',
                 'width': SPECIES_SIZE,
                 'height': SPECIES_SIZE,
-                'font-size': 2,
+                'font-size': 2.4,
                 'text-valign': 'bottom' as any,
                 'text-margin-y': 1,
-                'color': t.network.speciesEdgeLabelText,
+                'color': t.network.edgeLabelText,
             } as any,
         },
         // -- reaction (small dot with rate label) --
@@ -135,10 +135,14 @@ export function buildStylesheet(isDark = false): any[] {
                 'width': REACTION_SIZE,
                 'height': REACTION_SIZE,
                 'label': 'data(rate)',
-                'font-size': 1,
+                'font-size': 1.4,
                 'text-valign': 'center' as any,
+                'text-background-color': 'data(parentColour)',
+                'text-background-opacity': 0.8,
+                'text-background-padding': '0.2px',
                 'background-color': t.network.reactionBg,
-                'color': t.network.speciesEdgeLabelText,
+                'background-opacity': 0,
+                'color': t.network.edgeLabelText,
             } as any,
         },
         // -- excluded (hidden by ModelFilter) --
@@ -216,6 +220,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'width': 1.5,
                 'font-size': 3,
                 'arrow-scale': 0.5,
+                'text-opacity': 0,
             } as any,
         },
         // -- produces (summary edges for cross-gene reaction products) --
@@ -234,10 +239,10 @@ export function buildStylesheet(isDark = false): any[] {
                 'width': 0.5,
                 'line-color': t.network.speciesEdgeColour,
                 'target-arrow-color': t.network.speciesEdgeColour,
-                'font-size': 2,
+                'font-size': 1.3,
+                'arrow-scale': 0.15,
                 'curve-style': 'unbundled-bezier',
                 'control-point-step-size': 4,
-                'target-arrow-shape': 'none',
                 'text-margin-y': -1,
                 'text-background-opacity': 0,
                 'color': t.network.speciesEdgeLabelText,
@@ -249,7 +254,7 @@ export function buildStylesheet(isDark = false): any[] {
                 'width': 0.5,
                 'line-color': t.network.speciesEdgeColour,
                 'target-arrow-color': t.network.speciesEdgeColour,
-                'font-size': 2,
+                'font-size': 1.3,
                 'arrow-scale': 0.2,
                 'curve-style': 'unbundled-bezier',
                 'control-point-step-size': 4,

@@ -9,7 +9,7 @@ import {
 import { BasePanel, type BasePanelOptions } from "./BasePanel"
 import { layoutRectangles, type LayoutRectangle } from "../layout/rectangleLayout"
 import type { StructureNode, TimelineSegment } from "@/types/schedule"
-import { setSvgAnnotationVisible, setSvgAnnotationsVisible } from "../svgAnnotationVisibility"
+import { setSvgAnnotationsVisible } from "../svgAnnotationVisibility"
 import { withOpacity } from "@/utils/colorUtils"
 import { CHART_FONT_SIZES, AXIS_THICKNESS } from "../chartConstants"
 import { DragGuardModifier } from "../modifiers/DragGuardModifier"
@@ -17,17 +17,35 @@ import { DragGuardModifier } from "../modifiers/DragGuardModifier"
 /** Minimum pixel width/height below which a rectangle label is hidden. */
 const MIN_LABEL_PX_WIDTH = 80
 const MIN_LABEL_PX_HEIGHT = 2
+/** Horizontal padding subtracted from rect pixel width before text-fit comparison. */
+const LABEL_TEXT_PADDING_PX = 150
+
+/** Offscreen canvas used for measuring label text widths. */
+const _measureCtx = document.createElement('canvas').getContext('2d')!
 
 /** Instant model line thickness (normal / hovered). */
 const INSTANT_LINE_THICKNESS = 4.0
-const INSTANT_LINE_THICKNESS_HOVER = 4.0/** Pixel offset shifting the instant label box right of its line. */
+const INSTANT_LINE_THICKNESS_HOVER = 4.0
+
+/** Pixel offset shifting the instant label box right of its line. */
 const INSTANT_LABEL_X_SHIFT = 1
+
 /** Rectangle segment fill opacities (mode-independent). */
 const RECT_FILL_OPACITY = 0.6
 const RECT_FILL_OPACITY_HOVER = 0.8
 
 /** Rectangle segment styling. */
 const RECT_STROKE_THICKNESS = 2.0
+
+/** Rectangle label font size bounds and scaling. */
+const LABEL_FONT_SIZE_MIN = 6
+const LABEL_FONT_SIZE_MAX = 10
+const LABEL_FONT_SIZE_MULTIPLIER = 0.35
+
+/** Instant label font size bounds and scaling. */
+const INSTANT_FONT_SIZE_MIN = 6
+const INSTANT_FONT_SIZE_MAX = 9
+const INSTANT_FONT_SIZE_MULTIPLIER = 0.03
 
 export type SegmentClickCallback = (segmentId: number, modelPath: string) => void
 export type HoverChangeCallback = (modelPath: string | null, executionPath: string | null) => void
@@ -49,8 +67,11 @@ export class TimelinePanel extends BasePanel {
     private currentHoveredModel: string | null = null
     /** Drag guard modifier for click-vs-drag discrimination. */
     private dragGuard: DragGuardModifier | null = null
-    /** Reusable tooltip annotation for instant labels (hidden when not hovered). */
-    private tooltipAnnotation: TextAnnotation | null = null
+    /** DOM tooltip for instant label hover (consistent with network viewer tooltip style). */
+    private tooltipDiv: HTMLDivElement | null = null
+    /** Last known mouse client coordinates, updated on canvas mousemove. */
+    private lastMouseClient: { x: number; y: number } = { x: 0, y: 0 }
+    private readonly onMouseMove = (e: MouseEvent) => { this.lastMouseClient = { x: e.clientX, y: e.clientY } }
     /** Map from rectangle label annotation to its source rectangle (for adaptive visibility). */
     private labelRectMap = new Map<TextAnnotation, LayoutRectangle>()
     /** Map from segmentId to its label annotation (for hover/select colour updates). */
@@ -59,6 +80,7 @@ export class TimelinePanel extends BasePanel {
     private instantLabelSliceMap = new Map<TextAnnotation, number>()
     /** Base fill colour for all segment rectangles (theme-aware; updated on theme switch). */
     private segmentColour = ''
+
     /** Currently selected FastRectangleRenderableSeries. */
     private selectedRectSeries: FastRectangleRenderableSeries | null = null
     private readonly onParentResized = () => requestAnimationFrame(() => this.updateLabelSizes())
@@ -105,6 +127,7 @@ export class TimelinePanel extends BasePanel {
 
         xAxis.visibleRangeChanged.subscribe(() => this.updateLabelSizes())
         this.parentSurface.resized.subscribe(this.onParentResized)
+        this.parentSurface.domCanvas2D.addEventListener('mousemove', this.onMouseMove)
 
         console.debug('[TimelinePanel] Constructed')
     }
@@ -119,6 +142,8 @@ export class TimelinePanel extends BasePanel {
 
     override dispose(): void {
         this.parentSurface.resized.unsubscribe(this.onParentResized)
+        this.parentSurface.domCanvas2D.removeEventListener('mousemove', this.onMouseMove)
+        this.tooltipDiv?.remove()
         super.dispose()
     }
 
@@ -149,9 +174,9 @@ export class TimelinePanel extends BasePanel {
                 }
             }
         }
-        if (this.tooltipAnnotation) {
-            this.tooltipAnnotation.textColor = this.theme.chart.tooltipFg
-            this.tooltipAnnotation.background = this.theme.chart.tooltipBg
+        if (this.tooltipDiv) {
+            this.tooltipDiv.style.background = this.theme.chart.tooltipBg
+            this.tooltipDiv.style.color = this.theme.chart.tooltipFg
         }
         this.segmentColour = tl.rect.colour
         for (const rs of this.surface.renderableSeries.asArray()) {
@@ -170,7 +195,7 @@ export class TimelinePanel extends BasePanel {
     setScheduleData(structure: StructureNode, segments: TimelineSegment[]): LayoutRectangle[] {
         console.debug(`[TimelinePanel] setScheduleData: ${segments.length} segments`)
         this.clearOwnAnnotations()
-        this.tooltipAnnotation = null
+        if (this.tooltipDiv) this.tooltipDiv.style.display = 'none'
         this.labelRectMap.clear()
         this.instantLabelSliceMap.clear()
         this.segmentLabelMap.clear()
@@ -239,10 +264,11 @@ export class TimelinePanel extends BasePanel {
 
         const { segmentId, modelPath, executionPath } = rect
 
+        const colour = this.segmentColour
         const rectSeries = new FastRectangleRenderableSeries(this.wasmContext, {
             dataSeries,
             stroke: this.theme.timeline.rect.normal.stroke,
-            fill: withOpacity(this.segmentColour, RECT_FILL_OPACITY),
+            fill: withOpacity(colour, RECT_FILL_OPACITY),
             strokeThickness: RECT_STROKE_THICKNESS,
             columnXMode: EColumnMode.StartEnd,
             columnYMode: EColumnYMode.TopBottom,
@@ -251,7 +277,7 @@ export class TimelinePanel extends BasePanel {
                 const rs = source as FastRectangleRenderableSeries
                 // Don't override selection colours on hover
                 if (this.selectedSegmentId !== segmentId) {
-                    rs.fill = withOpacity(this.segmentColour, hovered ? RECT_FILL_OPACITY_HOVER : RECT_FILL_OPACITY)
+                    rs.fill = withOpacity(colour, hovered ? RECT_FILL_OPACITY_HOVER : RECT_FILL_OPACITY)
                     rs.stroke = hovered ? this.theme.timeline.rect.hover.stroke : this.theme.timeline.rect.normal.stroke
                     const lbl = this.segmentLabelMap.get(segmentId)
                     if (lbl) lbl.textColor = hovered ? this.theme.timeline.rect.hover.text : this.theme.timeline.rect.normal.text
@@ -306,7 +332,7 @@ export class TimelinePanel extends BasePanel {
         const label = new TextAnnotation({
             x1: midX,
             y1: midY,
-            text: rect.executionPath,
+            text: this.rectLabelFitsFullText(rect, fontSize) ? this.rectFullLabelText(rect) : rect.executionPath,
             fontSize,
             textColor: this.theme.timeline.rect.normal.text,
             horizontalAnchorPoint: EHorizontalAnchorPoint.Center,
@@ -355,13 +381,17 @@ export class TimelinePanel extends BasePanel {
         sliceHeight: number
     ): void {
         const { modelPath, executionPath, label } = rect
-        const tooltipText = `${label}\nPath: ${executionPath}\nModel: ${modelPath}`
+        const tooltipText = label 
+            ? `${label}\nt=${x.toFixed(1)}\npath=${executionPath}`
+            : `t=${x.toFixed(1)}\npath=${executionPath}`
+        // Inline label: first line of label (type name), fallback to execution path
+        const inlineText = label ? label.split('\n')[0]! : executionPath
         const fontSize = this.computeInstantFontSize(sliceHeight)
 
         const text = new TextAnnotation({
             x1: x,
             y1: yCenter,
-            text: executionPath,
+            text: inlineText,
             fontSize,
             textColor: this.theme.timeline.instant.normal.text,
             background: this.theme.timeline.instant.normal.bg,
@@ -379,14 +409,12 @@ export class TimelinePanel extends BasePanel {
                 text.background = hovered ? this.theme.timeline.instant.hover.bg : this.theme.timeline.instant.normal.bg
                 text.textColor = hovered ? this.theme.timeline.instant.hover.text : this.theme.timeline.instant.normal.text
                 if (hovered) {
-                    const xOffset = this.computeTooltipXOffset()
-                    this.showTooltipAt(x + xOffset, yCenter - sliceHeight / 2, tooltipText)
+                    this.showTooltipAt(tooltipText)
                 } else {
-                    this.hideTooltipAnnotation()
+                    this.hideTooltipDiv()
                 }
                 this.surface.resumeUpdates()
                 this.isHoveringInstant = hovered
-                this.handleHover(hovered, modelPath, executionPath)
             },
         })
         this.addDataAnnotation(text)
@@ -408,37 +436,44 @@ export class TimelinePanel extends BasePanel {
         }
     }
 
-    // ── Tooltip annotation ──────────────────────────────────────────────
+    // ── Tooltip DOM div ─────────────────────────────────────────────────
 
-    /** Show a tooltip annotation at the given data coordinates. */
-    private showTooltipAt(x: number, y: number, text: string): void {
-        if (!this.tooltipAnnotation) {
-            this.tooltipAnnotation = new TextAnnotation({
-                x1: x,
-                y1: y,
-                text,
-                fontSize: 10,
-                textColor: this.theme.chart.tooltipFg,
-                background: this.theme.chart.tooltipBg,
-                horizontalAnchorPoint: EHorizontalAnchorPoint.Left,
-                verticalAnchorPoint: EVerticalAnchorPoint.Bottom,
-                padding: new Thickness(4, 8, 4, 8),
-                isHidden: false,
-            })
-            this.surface.annotations.add(this.tooltipAnnotation)
-        } else {
-            this.tooltipAnnotation.x1 = x
-            this.tooltipAnnotation.y1 = y
-            this.tooltipAnnotation.text = text
-            this.tooltipAnnotation.isHidden = false
+    /** Show the DOM tooltip near the current mouse position. */
+    private showTooltipAt(text: string): void {
+        if (!this.tooltipDiv) {
+            this.tooltipDiv = this.createTooltipDiv()
+        }
+        this.tooltipDiv.textContent = text
+        this.tooltipDiv.style.left = `${this.lastMouseClient.x + 12}px`
+        this.tooltipDiv.style.top = `${this.lastMouseClient.y - 20}px`
+        this.tooltipDiv.style.display = 'block'
+    }
+
+    /** Hide the DOM tooltip. */
+    private hideTooltipDiv(): void {
+        if (this.tooltipDiv) {
+            this.tooltipDiv.style.display = 'none'
         }
     }
 
-    /** Hide the tooltip annotation. */
-    private hideTooltipAnnotation(): void {
-        if (this.tooltipAnnotation) {
-            this.tooltipAnnotation.isHidden = true
-        }
+    /** Create and append the tooltip div to document.body. */
+    private createTooltipDiv(): HTMLDivElement {
+        const el = document.createElement('div')
+        Object.assign(el.style, {
+            position: 'fixed',
+            display: 'none',
+            padding: '4px 10px',
+            background: this.theme.chart.tooltipBg,
+            color: this.theme.chart.tooltipFg,
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontFamily: 'Montserrat, sans-serif',
+            pointerEvents: 'none',
+            zIndex: '9999',
+            whiteSpace: 'pre',
+        })
+        document.body.appendChild(el)
+        return el
     }
 
     // ── Selection / Zoom ────────────────────────────────────────────────
@@ -465,7 +500,11 @@ export class TimelinePanel extends BasePanel {
             const fits = this.labelFits(rect)
             label.isHidden = !fits
             if (fits) {
-                label.fontSize = this.computeLabelFontSize(rect)
+                const fontSize = this.computeLabelFontSize(rect)
+                label.fontSize = fontSize
+                label.text = this.rectLabelFitsFullText(rect, fontSize)
+                    ? this.rectFullLabelText(rect)
+                    : rect.executionPath
             }
         }
         for (const [label, sliceHeight] of this.instantLabelSliceMap) {
@@ -479,9 +518,7 @@ export class TimelinePanel extends BasePanel {
      */
     private setAnnotationsVisible(visible: boolean): void {
         setSvgAnnotationsVisible(this.dataAnnotations, visible)
-        if (this.tooltipAnnotation) {
-            setSvgAnnotationVisible(this.tooltipAnnotation, false)
-        }
+        if (!visible) this.hideTooltipDiv()
         // Also hide/show renderable series (rectangles) via opacity
         for (const rs of this.surface.renderableSeries.asArray()) {
             rs.opacity = visible ? 1 : 0
@@ -513,20 +550,14 @@ export class TimelinePanel extends BasePanel {
         try { return this.surface.getSubChartRect().width } catch { return 0 }
     }
 
-    /** X-axis offset for tooltip positioning (1% of current visible range). */
-    private computeTooltipXOffset(): number {
-        const xRange = this.surface.xAxes.get(0)?.visibleRange
-        return xRange ? (xRange.max - xRange.min) * 0.01 : 0
-    }
-
     /** Compute font size relative to the rectangle's estimated pixel height. */
     private computeLabelFontSize(rect: LayoutRectangle): number {
         const yAxis = this.surface.yAxes.get(0)
-        if (!yAxis) return 6
+        if (!yAxis) return LABEL_FONT_SIZE_MIN
         const yRange = yAxis.visibleRange
         const pxPerUnitY = this.subchartHeightPx() / (yRange.max - yRange.min)
         const rectPxHeight = (rect.y2 - rect.y1) * pxPerUnitY
-        return Math.round(Math.max(6, Math.min(12, rectPxHeight * 0.35)))
+        return Math.round(Math.max(LABEL_FONT_SIZE_MIN, Math.min(LABEL_FONT_SIZE_MAX, rectPxHeight * LABEL_FONT_SIZE_MULTIPLIER)))
     }
 
     /** Whether a text label fits inside a rectangle at the current zoom. */
@@ -543,10 +574,30 @@ export class TimelinePanel extends BasePanel {
         return rectPxWidth >= MIN_LABEL_PX_WIDTH && rectPxHeight >= MIN_LABEL_PX_HEIGHT
     }
 
+    /** Full label text including model path in brackets. */
+    private rectFullLabelText(rect: LayoutRectangle): string {
+        return rect.label ? `${rect.label} (${rect.executionPath})` : rect.executionPath
+    }
+
+    /**
+     * Whether the full label text fits inside the rectangle at current zoom.
+     * Uses canvas measureText for an accurate character-width comparison.
+     */
+    private rectLabelFitsFullText(rect: LayoutRectangle, fontSize: number): boolean {
+        const xAxis = this.surface.xAxes.get(0)
+        if (!xAxis) return true
+        const xRange = xAxis.visibleRange
+        const pxPerUnitX = this.subchartWidthPx() / (xRange.max - xRange.min)
+        const rectPxWidth = (rect.x2 - rect.x1) * pxPerUnitX
+        _measureCtx.font = `${fontSize}px Montserrat, sans-serif`
+        const textPx = _measureCtx.measureText(this.rectFullLabelText(rect)).width
+        return textPx <= rectPxWidth - LABEL_TEXT_PADDING_PX
+    }
+
     /** Compute font size for instant labels relative to their vertical slice. */
     private computeInstantFontSize(sliceHeight: number): number {
         const slicePx = sliceHeight * this.subchartHeightPx()
-        return Math.round(Math.max(6, Math.min(11, slicePx * 0.03)))
+        return Math.round(Math.max(INSTANT_FONT_SIZE_MIN, Math.min(INSTANT_FONT_SIZE_MAX, slicePx * INSTANT_FONT_SIZE_MULTIPLIER)))
     }
 
     // ── Annotation lifecycle ────────────────────────────────────────────

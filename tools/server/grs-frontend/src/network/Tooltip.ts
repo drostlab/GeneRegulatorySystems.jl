@@ -93,9 +93,7 @@ export class Tooltip {
             fontFamily: 'Montserrat, sans-serif',
             pointerEvents: 'none',
             zIndex: '9999',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            whiteSpace: 'pre',
         })
 
         const container = this.cy?.container()
@@ -119,11 +117,19 @@ export function createEdgeTooltip(): Tooltip {
     )
 }
 
-/** Node tooltip: shows the full node name on hover. */
+/** Node tooltip: shows the full node name on hover, plus base rates for gene nodes. */
 export function createNodeTooltip(): Tooltip {
     return new Tooltip(
         'node',
-        (node: any) => node.data('id') ?? 'unknown',
+        (node: any) => {
+            const id: string = node.data('id') ?? 'unknown'
+            const baseRates: Record<string, number> | undefined = node.data('base_rates')
+            if (!baseRates) return id
+            const rateLines = Object.entries(baseRates)
+                .map(([k, v]) => `  ${k}: ${v}`)
+                .join('\n')
+            return `${id}\n${rateLines}`
+        },
         'cy-node-tooltip',
     )
 }

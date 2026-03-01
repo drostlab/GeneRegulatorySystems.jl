@@ -13,6 +13,7 @@ import type { UnionNetwork, Node, Link } from '@/types/network'
 import { MODEL_NODE_KINDS, MACHINERY_SPECIES, linkId } from '@/types/network'
 import { getEdgeColour, shouldShowEdgeLabel } from './networkStyles'
 import { getTheme } from '@/config/theme'
+import { lighten } from '@/utils/colorUtils'
 import logging from '@/utils/logging'
 
 const log = logging.getLogger('networkElements')
@@ -243,6 +244,11 @@ function buildNodeElement(
         ? String(node.properties.species_type)
         : node.name
 
+    // Parent colour for reaction label backgrounds (lightened)
+    const parentColour = node.parent && node.parent in geneColours
+        ? lighten(geneColours[node.parent], 0.5)
+        : colour
+
     return {
         data: {
             id: node.name,
@@ -251,6 +257,7 @@ function buildNodeElement(
             parent: cytoscapeParent,
             geneParent: node.parent,
             colour,
+            parentColour,
             ...node.properties,
         },
         classes: cssClass,

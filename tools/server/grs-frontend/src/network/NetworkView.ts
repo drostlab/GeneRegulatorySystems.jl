@@ -125,7 +125,7 @@ export class NetworkView {
             quality: 'proof',
             randomize: true,
             animate: true,
-            animationDuration: 1500,
+            animationDuration: 1000,
             fit: true,
             padding: 50,
             nodeDimensionsIncludeLabels: true,

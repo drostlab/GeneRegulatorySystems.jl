@@ -19,15 +19,16 @@ networkView.onDetailChange = (visible: boolean) => {
     isDetailVisible.value = visible
 }
 
-/** Label for the active model shown in the bottom-left overlay. */
+/** Label for the active model shown in the bottom-left overlay.
+ * Rect hover changes the active model (branch switching); instant hover does not. */
 const activeModelLabel = computed(() => {
     const modelPath = viewerStore.activeModelPath
     if (!modelPath) return null
-
     const segments = scheduleStore.segments
     const seg = segments.find(s => s.model_path === modelPath && s.from !== s.to)
+    if (!seg) return null
     return {
-        label: seg?.label ?? modelPath,
+        label: seg.label || modelPath,
         path: modelPath,
     }
 })

@@ -11,7 +11,7 @@ import Aura from '@primeuix/themes/aura'
 import { EWatermarkPosition, SciChartDefaults, SciChartSurface } from "scichart";
 
 SciChartSurface.UseCommunityLicense();
-SciChartDefaults.watermarkPosition = EWatermarkPosition.BottomLeft
+SciChartDefaults.watermarkPosition = EWatermarkPosition.BottomRight
 
 SciChartDefaults.nativeFontTimeout = 10000
 SciChartDefaults.canvasFontFamily = "Montserrat"

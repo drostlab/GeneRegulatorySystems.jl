@@ -31,15 +31,15 @@
                 "$": ["defaults", "bootstrap"],
                 "1.proteins": 100
             }},
-            {"to": 260000.0, "step": [
-                {"to": 60000.0, "do": {"$": "dark_model"}},
+            {"to": 130000.0, "step": [
+                {"to": 30000.0, "do": {"$": "dark_model"}},
                 {"to": 5000.0, "step": 10.0, "do": {"$": "light_model"}}
             ]},
             {
                 "branch": true,
-                "each": {"length": 1},
-                "step": {"to": 260000.0, "step": [
-                    {"to": 60000.0, "step": 10.0, "do": {"$": "dark_model"}},
+                "each": {"length": 3},
+                "step": {"to": 130000.0, "step": [
+                    {"to": 30000.0, "step": 10.0, "do": {"$": "dark_model"}},
                     {"to": 5000.0, "step": 10.0, "do": {"$": "light_model"}}
                 ]}
             }
