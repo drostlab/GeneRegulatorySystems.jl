@@ -166,8 +166,8 @@ function cancelScheduleNameEdit() {
  */
 const activeHighlightPath = computed((): (string | number)[] | null => {
     // Only highlight when something is explicitly hovered — never for timepoint fallback.
-    if (!viewerStore.hoveredModelPath) return null
-    const seg = store.segments.find(s => s.model_path === viewerStore.activeModelPath)
+    if (!viewerStore.editorHighlightModelPath) return null
+    const seg = store.segments.find(s => s.model_path === viewerStore.editorHighlightModelPath)
     return seg?.json_path ?? null
 })
 

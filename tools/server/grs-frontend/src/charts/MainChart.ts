@@ -34,6 +34,7 @@ export class MainChart {
     private selectionChangeCallback?: SelectionChangeCallback
     private segmentClickCallback?: SegmentClickCallback
     private hoverChangeCallback?: HoverChangeCallback
+    private instantHoverChangeCallback?: (path: string | null) => void
 
     async init(containerRef: Ref<HTMLDivElement | undefined>, isDark: boolean) {
         const { sciChartSurface, wasmContext } = await SciChartSurface.create(containerRef.value!, { theme: getSciChartTheme(isDark) })
@@ -90,6 +91,9 @@ export class MainChart {
         timelinePanel.onHoverChange((modelPath, executionPath) => {
             this.hoverChangeCallback?.(modelPath, executionPath)
         })
+        timelinePanel.onInstantHoverChange((modelPath) => {
+            this.instantHoverChangeCallback?.(modelPath)
+        })
 
         console.debug(`[MainChart] Initialised with ${this.tracks.length} tracks`)
     }
@@ -108,6 +112,10 @@ export class MainChart {
 
     onHoverChange(callback: HoverChangeCallback): void {
         this.hoverChangeCallback = callback
+    }
+
+    onInstantHoverChange(callback: (path: string | null) => void): void {
+        this.instantHoverChangeCallback = callback
     }
 
     /** Deselect any selected segment in the timeline panel. */

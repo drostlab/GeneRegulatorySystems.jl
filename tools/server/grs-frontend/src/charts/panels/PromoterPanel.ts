@@ -1,4 +1,4 @@
-import { EAxisAlignment, ELineDrawMode, FastBandRenderableSeries, NumericAxis, SweepAnimation, XyyDataSeries } from "scichart"
+import { EAxisAlignment, ELineDrawMode, EResamplingMode, FastBandRenderableSeries, NumericAxis, SweepAnimation, XyyDataSeries } from "scichart"
 import { TimeseriesPanel } from "./TimeseriesPanel"
 import type { BasePanelOptions } from "./BasePanel"
 import type { TimeseriesData, TimeseriesMetadata } from "@/types/simulation"
@@ -156,6 +156,7 @@ export class PromoterPanel extends TimeseriesPanel {
                         fillY1: colour,
                         strokeY1: colour,
                         drawNaNAs: ELineDrawMode.DiscontinuousLine,
+                        resamplingMode: EResamplingMode.None,
                         animation: new SweepAnimation({ duration: SWEEP_DURATION_MS })
                     })
                     this.surface.renderableSeries.add(bandSeries)

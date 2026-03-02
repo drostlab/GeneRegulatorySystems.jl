@@ -53,6 +53,7 @@ export type HoverChangeCallback = (modelPath: string | null, executionPath: stri
 export class TimelinePanel extends BasePanel {
     private segmentClickCallback?: SegmentClickCallback
     private hoverChangeCallback?: HoverChangeCallback
+    private instantHoverChangeCallback?: (path: string | null) => void
     /** Track data annotations so we can clear only them (not modifier-owned ones). */
     private dataAnnotations = new Set<AnnotationBase>()
     /** Currently selected segment ID (null = none). */
@@ -138,6 +139,10 @@ export class TimelinePanel extends BasePanel {
 
     onHoverChange(callback: HoverChangeCallback): void {
         this.hoverChangeCallback = callback
+    }
+
+    onInstantHoverChange(callback: (path: string | null) => void): void {
+        this.instantHoverChangeCallback = callback
     }
 
     override dispose(): void {
@@ -415,6 +420,7 @@ export class TimelinePanel extends BasePanel {
                 }
                 this.surface.resumeUpdates()
                 this.isHoveringInstant = hovered
+                this.instantHoverChangeCallback?.(hovered ? modelPath : null)
             },
         })
         this.addDataAnnotation(text)

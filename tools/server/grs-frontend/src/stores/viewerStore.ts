@@ -18,18 +18,32 @@ export const useViewerStore = defineStore('viewer', () => {
     const selectedSpeciesNodes = ref<string[]>([])
     const selectedSpeciesTypes = ref<SpeciesType[]>([])
     const selectedSegmentIds = ref<Set<number> | null>(null)
-    /** Model path currently hovered in the timeline panel (null when not hovering). */
-    const hoveredModelPath = ref<string | null>(null)
-    /** Execution path of the hovered branch (null when not hovering). */
+    /** Model path of the rectangle segment currently hovered (null when not hovering). */
+    const hoveredRectModelPath = ref<string | null>(null)
+    /** Execution path of the hovered rect branch (null when not hovering). */
     const hoveredExecutionPath = ref<string | null>(null)
+    /** Model path of the instant annotation currently hovered (null when not hovering). */
+    const hoveredInstantModelPath = ref<string | null>(null)
 
-    /** Active model path: hovered model takes priority, else derived from current timepoint. */
+    /**
+     * Active model path driving the network overlay.
+     * Only rect hover changes this (not instants); falls back to cursor timepoint.
+     */
     const activeModelPath = computed((): string | null => {
-        if (hoveredModelPath.value) return hoveredModelPath.value
+        if (hoveredRectModelPath.value) return hoveredRectModelPath.value
         const scheduleStore = useScheduleStore()
         const segments = scheduleStore.segments
         if (!segments.length) return null
         return getModelPathAtTime(segments, currentTimepoint.value)
+    })
+
+    /**
+     * Model path to highlight in the schedule editor.
+     * Instant hover takes priority when present, otherwise follows rect hover.
+     * Never falls back to timepoint — only set during explicit hover.
+     */
+    const editorHighlightModelPath = computed((): string | null => {
+        return hoveredInstantModelPath.value ?? hoveredRectModelPath.value
     })
 
     const selectedPaths = computed((): Set<string> | null => {
@@ -52,7 +66,7 @@ export const useViewerStore = defineStore('viewer', () => {
         const t = currentTimepoint.value
         const scheduleStore = useScheduleStore()
 
-        // Priority 1: a specific branch is hovered — filter to exactly that path
+        // Priority 1: a rect branch is hovered — filter to exactly that execution path
         const filterPath = hoveredExecutionPath.value
 
         // Priority 2: a segment is selected — restrict to its execution paths
@@ -116,9 +130,13 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSegmentIds.value = ids
     }
 
-    function setHoveredModelPath(path: string | null, executionPath: string | null = null): void {
-        hoveredModelPath.value = path
+    function setHoveredRectModel(path: string | null, executionPath: string | null = null): void {
+        hoveredRectModelPath.value = path
         hoveredExecutionPath.value = executionPath
+    }
+
+    function setHoveredInstantModel(path: string | null): void {
+        hoveredInstantModelPath.value = path
     }
 
     function reset(): void {
@@ -126,7 +144,8 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedGenes.value = []
         selectedSpeciesNodes.value = []
         selectedSegmentIds.value = null
-        hoveredModelPath.value = null
+        hoveredRectModelPath.value = null
+        hoveredInstantModelPath.value = null
         hoveredExecutionPath.value = null
     }
 
@@ -136,13 +155,14 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSpeciesNodes,
         selectedSpeciesTypes,
         selectedSegmentIds,
-        hoveredModelPath,
         activeModelPath,
+        editorHighlightModelPath,
         selectedPaths,
         proteinCountsAtTimepoint,
         maxProteinCounts,
         setTimepoint,
-        setHoveredModelPath,
+        setHoveredRectModel,
+        setHoveredInstantModel,
         selectSegments,
         reset
     }

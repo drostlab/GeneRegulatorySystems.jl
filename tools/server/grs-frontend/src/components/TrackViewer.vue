@@ -233,7 +233,11 @@ onMounted(async () => {
     })
 
     chart.onHoverChange((modelPath: string | null, executionPath: string | null) => {
-        viewerStore.setHoveredModelPath(modelPath, executionPath)
+        viewerStore.setHoveredRectModel(modelPath, executionPath)
+    })
+
+    chart.onInstantHoverChange((modelPath: string | null) => {
+        viewerStore.setHoveredInstantModel(modelPath)
     })
 
     window.addEventListener('keydown', handleEscapeKey)
