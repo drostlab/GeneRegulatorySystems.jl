@@ -36,7 +36,7 @@ export const GENE_BASE = { width: 120, height: 50 }
 export const COMPOUND_PADDING_RANGE = { min: 6, max: 40 }
 
 /** Species node size (small enough to fit inside gene in tight grid). */
-export const SPECIES_SIZE = 10
+export const SPECIES_SIZE = 8
 
 /** Orphan species size (circle, bigger than child species). */
 export const ORPHAN_SPECIES_SIZE = 30
@@ -217,10 +217,10 @@ export function buildStylesheet(isDark = false): any[] {
         {
             selector: 'edge.species-view',
             style: {
-                'width': 1.5,
-                'font-size': 3,
-                'arrow-scale': 0.5,
-                'text-opacity': 0,
+                'width': 'mapData(at, 0.1, 10, 2.5, 0.75)',
+                'font-size': 5,
+                'arrow-scale': 0.8,
+                'text-opacity': 1,
             } as any,
         },
         // -- produces (summary edges for cross-gene reaction products) --

@@ -246,7 +246,7 @@ function buildNodeElement(
 
     // Parent colour for reaction label backgrounds (lightened)
     const parentColour = node.parent && node.parent in geneColours
-        ? lighten(geneColours[node.parent], 0.5)
+        ? lighten(geneColours[node.parent], 0.7)
         : colour
 
     return {

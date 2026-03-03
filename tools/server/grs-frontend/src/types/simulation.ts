@@ -85,5 +85,5 @@ export function formatResultLabel(result: SimulationResult | undefined | null): 
         date = new Date(result.id)
     }
 
-    return `${result.schedule_name || 'Unknown'} - ${date.toLocaleString()}`
+    return `${date.toLocaleString()} - ${result.schedule_name || 'Unknown'}`
 }

@@ -21,6 +21,9 @@
   --border-radius-sm: 3px;
   --border-radius-md: 8px;
   --border-radius-lg: 16px;
+
+  /* Theme Colors */
+  --overlay-background: var(--p-surface-0);
 }
 
 * {
@@ -231,6 +234,10 @@ html, body, #app {
 /* ========================================================================
    Dark Mode Overrides
    ======================================================================== */
+
+:root.app-dark {
+  --overlay-background: var(--p-surface-900);
+}
 
 .app-dark .disabled-overlay {
   background: rgba(255, 255, 255, 0.06);

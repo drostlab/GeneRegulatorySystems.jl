@@ -18,6 +18,7 @@ import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
 import { MainChart } from '@/charts/MainChart'
 import { useTheme } from '@/composables/useTheme'
+import { GREEN } from '@/config/theme'
 
 const simulationStore = useSimulationStore()
 const scheduleStore = useScheduleStore()
@@ -796,5 +797,20 @@ function _scheduleStreamingFlush(): void {
 :deep(.run-simulation-btn .p-button-label) {
     font-weight: 400 !important;
     font-family: inherit;
+}
+
+
+:deep(.run-simulation-btn) {
+    background: v-bind('GREEN[500]');
+    border-color: v-bind('GREEN[500]');
+    color: #ffffff;
+}
+:deep(.run-simulation-btn:hover) {
+    background: v-bind('GREEN[600]') !important;
+    border-color: v-bind('GREEN[600]') !important;
+}
+:deep(.run-simulation-btn:active) {
+    background: v-bind('GREEN[700]') !important;
+    border-color: v-bind('GREEN[700]') !important;
 }
 </style>

@@ -20,7 +20,7 @@
 
 import { type IThemeProvider, SciChartJSDarkv2Theme, SciChartJSLightTheme } from 'scichart'
 import logging from '@/utils/logging'
-import { desaturate } from '@/utils/colorUtils'
+import { desaturate, rotateHue, lighten } from '@/utils/colorUtils'
 
 const log = logging.getLogger('theme')
 
@@ -44,7 +44,7 @@ export const RED = {
 } as const
 
 /** Green scale — exact Aura/Tailwind values so token refs like {green.500} resolve identically. */
-export const GREEN = {
+export const _GREEN_BASE = {
     50:  '#f0fdf4',
     100: '#dcfce7',
     200: '#bbf7d0',
@@ -57,6 +57,10 @@ export const GREEN = {
     900: '#14532d',
     950: '#052e16',
 } as const
+
+export const GREEN = Object.fromEntries(
+    Object.entries(_GREEN_BASE).map(([k, v]) => [k, lighten(rotateHue(v, 10), 0.2)])
+) as Record<keyof typeof _GREEN_BASE, string>
 
 /** Neutral grey scale — exact Aura/Tailwind zinc values. */
 export const GREY = {
@@ -190,7 +194,7 @@ const light: ThemeMode = {
             hover:    { stroke: GREY[400], text: GREY[700] },
             selected: { fill: RED[200], stroke: GREY[300], text: GREY[900] },
         },
-        segmentBoundary: GREY[300],
+        segmentBoundary: GREY[400],
     },
     network: {
         reactionBg:           GREY[300],

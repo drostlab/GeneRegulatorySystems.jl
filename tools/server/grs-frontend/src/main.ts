@@ -9,6 +9,7 @@ import './style.css'
 import App from './App.vue'
 import Aura from '@primeuix/themes/aura'
 import { EWatermarkPosition, SciChartDefaults, SciChartSurface } from "scichart";
+import { RED, GREEN} from '@/config/theme';
 
 SciChartSurface.UseCommunityLicense();
 SciChartDefaults.watermarkPosition = EWatermarkPosition.BottomRight
@@ -21,17 +22,30 @@ SciChartDefaults.useNativeText = false
 const MyPreset = definePreset(Aura, {
     semantic: {
         primary: {
-            50: '{red.50}',
-            100: '{red.100}',
-            200: '{red.200}',
-            300: '{red.300}',
-            400: '{red.400}',
-            500: '{red.500}',
-            600: '{red.600}',
-            700: '{red.700}',
-            800: '{red.800}',
-            900: '{red.900}',
-            950: '{red.950}'
+            50: RED[50],
+            100: RED[100],
+            200: RED[200],
+            300: RED[300],
+            400: RED[400],
+            500: RED[500],
+            600: RED[600],
+            700: RED[700],
+            800: RED[800],
+            900: RED[900],
+            950: RED[950]
+        },
+        success: {
+            50: GREEN[50],
+            100: GREEN[100],
+            200: GREEN[200],
+            300: GREEN[300],
+            400: GREEN[400],
+            500: GREEN[500],
+            600: GREEN[600],
+            700: GREEN[700],
+            800: GREEN[800],
+            900: GREEN[900],
+            950: GREEN[950]
         },
     },
     components: {

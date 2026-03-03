@@ -121,13 +121,14 @@ function toggleDetail(): void {
     position: absolute;
     bottom: 8px;
     left: 8px;
-    background: var(--p-surface-card);
+    background: var(--overlay-background);
     border: 1px solid var(--p-surface-border);
-    border-radius: 4px;
-    padding: 4px 8px;
+    border-radius: 8px;
+    padding: 8px 12px;
     font-family: Montserrat, sans-serif;
     pointer-events: none;
     max-width: 60%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .model-label-name {
