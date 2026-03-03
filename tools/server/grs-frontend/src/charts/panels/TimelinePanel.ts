@@ -179,10 +179,6 @@ export class TimelinePanel extends BasePanel {
                 }
             }
         }
-        if (this.tooltipDiv) {
-            this.tooltipDiv.style.background = this.theme.chart.tooltipBg
-            this.tooltipDiv.style.color = this.theme.chart.tooltipFg
-        }
         this.segmentColour = tl.rect.colour
         for (const rs of this.surface.renderableSeries.asArray()) {
             if (rs instanceof FastRectangleRenderableSeries) {
@@ -465,18 +461,12 @@ export class TimelinePanel extends BasePanel {
     /** Create and append the tooltip div to document.body. */
     private createTooltipDiv(): HTMLDivElement {
         const el = document.createElement('div')
+        el.className = 'grs-tooltip'
         Object.assign(el.style, {
             position: 'fixed',
             display: 'none',
-            padding: '4px 10px',
-            background: this.theme.chart.tooltipBg,
-            color: this.theme.chart.tooltipFg,
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontFamily: 'Montserrat, sans-serif',
             pointerEvents: 'none',
             zIndex: '9999',
-            whiteSpace: 'pre',
         })
         document.body.appendChild(el)
         return el

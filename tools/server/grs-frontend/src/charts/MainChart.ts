@@ -1,4 +1,6 @@
 import { EXyDirection, MouseWheelZoomModifier, SciChartSurface, ZoomExtentsModifier, ZoomPanModifier, SeriesSelectionModifier, type TSciChart } from "scichart"
+import { toBlob } from 'html-to-image'
+import { saveAs } from 'file-saver'
 import { AxisSyncModifier } from "./modifiers/AxisSyncModifier"
 import { DragGuardModifier } from "./modifiers/DragGuardModifier"
 import { SelectSyncModifier, type GroupingFn } from "./modifiers/SelectSyncModifier"
@@ -36,7 +38,10 @@ export class MainChart {
     private hoverChangeCallback?: HoverChangeCallback
     private instantHoverChangeCallback?: (path: string | null) => void
 
+    private isDark = false
+
     async init(containerRef: Ref<HTMLDivElement | undefined>, isDark: boolean) {
+        this.isDark = isDark
         const { sciChartSurface, wasmContext } = await SciChartSurface.create(containerRef.value!, { theme: getSciChartTheme(isDark) })
 
         this.surface = sciChartSurface
@@ -158,8 +163,17 @@ export class MainChart {
         this.surface?.delete()
     }
 
+    /** Export the current chart as a high-quality PNG file download. */
+    exportImage(): void {
+        if (!this.surface) return
+        const root = this.surface.domChartRoot
+        root.style.position = 'relative'
+        toBlob(root, { pixelRatio: 10, skipFonts: true }).then(blob => { if (blob) saveAs(blob, 'chart.png') })
+    }
+
     /** Re-apply the SciChart theme on dark-mode toggle. */
     applyTheme(isDark: boolean): void {
+        this.isDark = isDark
         this.surface.applyTheme(getTheme(isDark).sciChartTheme)
         for (const { panel } of this.tracks) {
             panel.applyTheme(isDark)

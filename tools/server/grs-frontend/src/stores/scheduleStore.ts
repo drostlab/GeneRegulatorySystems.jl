@@ -163,6 +163,19 @@ export const useScheduleStore = defineStore(
             return getSpeciesForType(schedule.value.data, speciesType)
         }
 
+        function downloadSchedule(): void {
+            const spec = schedule.value.spec
+            const name = schedule.value.name || 'schedule'
+            if (!spec) return
+            const blob = new Blob([spec], { type: 'application/json' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `${name}.schedule.json`
+            a.click()
+            URL.revokeObjectURL(url)
+        }
+
         return {
             schedule,
             scheduleKey,
@@ -181,7 +194,8 @@ export const useScheduleStore = defineStore(
             setSchedule,
             fetchUnionNetwork,
             getSpeciesForGeneId,
-            getSpeciesForSpeciesType
+            getSpeciesForSpeciesType,
+            downloadSchedule
         }
     },
     {

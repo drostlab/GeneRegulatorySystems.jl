@@ -17,6 +17,8 @@ import type { UnionNetwork } from '@/types/network'
 import cytoscape from 'cytoscape'
 // @ts-ignore
 import fcose from 'cytoscape-fcose'
+// @ts-ignore
+import svgExporter from 'cytoscape-svg'
 
 import { getGeneViewElements } from './networkElements'
 import { buildStylesheet } from './networkStyles'
@@ -28,6 +30,7 @@ import { DynamicsSync } from './DynamicsSync'
 import { createEdgeTooltip, createNodeTooltip, type Tooltip } from './Tooltip'
 
 cytoscape.use(fcose)
+cytoscape.use(svgExporter)
 
 export class NetworkView {
     private cy: Core | null = null
@@ -106,6 +109,19 @@ export class NetworkView {
     /** Toggle between gene and species views manually. */
     toggleDetail(): void {
         this.adaptiveZoom.toggleDetail()
+    }
+
+    /** Export the current network as an SVG file download. */
+    exportSVG(): void {
+        if (!this.cy) return
+        const svg: string = (this.cy as any).svg({ full: true, scale: 1.5 })
+        const blob = new Blob([svg], { type: 'image/svg+xml' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'network.svg'
+        a.click()
+        URL.revokeObjectURL(url)
     }
 
     /** Whether species/reaction detail is currently visible. */

@@ -9,7 +9,6 @@
  * @param tooltipId - unique DOM id for the tooltip element
  */
 import type { Core, EventHandler } from 'cytoscape'
-import { getTheme } from '@/config/theme'
 
 export class Tooltip {
     private cy: Core | null = null
@@ -82,18 +81,12 @@ export class Tooltip {
 
         el = document.createElement('div')
         el.id = this.tooltipId
+        el.className = 'grs-tooltip'
         Object.assign(el.style, {
             position: 'absolute',
             display: 'none',
-            padding: '4px 10px',
-            background: getTheme(false).chart.tooltipBg,
-            color: getTheme(false).chart.tooltipFg,
-            borderRadius: '4px',
-            fontSize: '11px',
-            fontFamily: 'Montserrat, sans-serif',
             pointerEvents: 'none',
             zIndex: '9999',
-            whiteSpace: 'pre',
         })
 
         const container = this.cy?.container()

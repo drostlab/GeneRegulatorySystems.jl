@@ -432,6 +432,9 @@ function _scheduleStreamingFlush(): void {
     })
 }
 
+defineExpose({
+    exportSVG: () => chart.exportImage(),
+})
 </script>
 
 

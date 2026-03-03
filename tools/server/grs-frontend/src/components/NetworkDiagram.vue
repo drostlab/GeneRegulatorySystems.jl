@@ -59,23 +59,30 @@ function toggleDetail(): void {
     networkView.toggleDetail()
     isDetailVisible.value = networkView.isDetailVisible
 }
+
+function exportSVG(): void {
+    networkView.exportSVG()
+}
+
+defineExpose({ exportSVG })
 </script>
 
 <template>
     <div class="network-diagram-container">
         <div ref="containerRef" class="cytoscape-container" />
 
-        <!-- Detail toggle -->
-        <Button
-            class="detail-toggle"
-            :icon="isDetailVisible ? 'pi pi-search-minus' : 'pi pi-search-plus'"
-            v-tooltip.left="isDetailVisible ? 'Gene view' : 'Species view'"
-            severity="secondary"
-            size="small"
-            text
-            rounded
-            @click="toggleDetail"
-        />
+        <!-- Bottom-right controls -->
+        <div class="controls">
+            <Button
+                :icon="isDetailVisible ? 'pi pi-search-minus' : 'pi pi-search-plus'"
+                v-grs-tooltip="isDetailVisible ? 'Gene view' : 'Species view'"
+                severity="secondary"
+                size="small"
+                text
+                rounded
+                @click="toggleDetail"
+            />
+        </div>
 
         <!-- Model info overlay -->
         <div v-if="activeModelLabel" class="model-label-overlay">
@@ -111,10 +118,14 @@ function toggleDetail(): void {
     inset: 0;
 }
 
-.detail-toggle {
+.controls {
     position: absolute;
     bottom: 8px;
     right: 8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 2px;
 }
 
 .model-label-overlay {

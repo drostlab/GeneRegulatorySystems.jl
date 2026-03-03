@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 import PrimeVue from 'primevue/config'
+import { grsTooltip } from '@/directives/grsTooltip'
 import Tooltip from 'primevue/tooltip'
 import { definePreset } from '@primeuix/themes'
 import 'primeicons/primeicons.css'
@@ -85,5 +86,6 @@ app.use(PrimeVue, {
 })
 
 app.directive('tooltip', Tooltip)
+app.directive('grs-tooltip', grsTooltip)
 
 app.mount('#app')

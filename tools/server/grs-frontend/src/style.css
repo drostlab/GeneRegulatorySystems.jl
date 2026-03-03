@@ -24,6 +24,10 @@
 
   /* Theme Colors */
   --overlay-background: var(--p-surface-0);
+
+  /* DOM tooltip */
+  --grs-tooltip-bg: #3f3f46;
+  --grs-tooltip-fg: #ffffff;
 }
 
 * {
@@ -150,6 +154,19 @@ html, body, #app {
   font-size: var(--font-size-md);
 }
 
+/* Menu/MenuItem styling */
+.p-menu {
+  font-size: var(--font-size-sm) !important;
+}
+
+.p-menuitem-text {
+  font-size: var(--font-size-sm) !important;
+}
+
+.p-menu .p-menuitem {
+  padding: 0.5rem 1rem !important;
+}
+
 /* Chip styling */
 :deep(.p-chip),
 :deep(.dropdown-small .p-chip) {
@@ -162,6 +179,17 @@ html, body, #app {
 /* Input styling */
 .input-small {
   font-size: var(--font-size-sm) !important;
+}
+
+/* Shared DOM tooltip (Cytoscape hover, timeline hover, button tooltips) */
+.grs-tooltip {
+  background: var(--grs-tooltip-bg);
+  color: var(--grs-tooltip-fg);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: Montserrat, sans-serif;
+  padding: 4px 10px;
+  white-space: pre;
 }
 
 /* ========================================================================
@@ -237,6 +265,8 @@ html, body, #app {
 
 :root.app-dark {
   --overlay-background: var(--p-surface-900);
+  --grs-tooltip-bg: #e4e4e7;
+  --grs-tooltip-fg: #09090b;
 }
 
 .app-dark .disabled-overlay {

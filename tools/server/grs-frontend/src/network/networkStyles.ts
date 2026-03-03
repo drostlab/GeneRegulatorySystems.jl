@@ -218,7 +218,7 @@ export function buildStylesheet(isDark = false): any[] {
             selector: 'edge.species-view',
             style: {
                 'width': 'mapData(at, 0.1, 10, 2.5, 0.75)',
-                'font-size': 5,
+                'font-size': 3,
                 'arrow-scale': 0.8,
                 'text-opacity': 1,
             } as any,
