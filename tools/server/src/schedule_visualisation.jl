@@ -27,6 +27,7 @@ using Colors
 export Network, UnionNetwork, ModelExclusions, TimelineSegment, ScheduleData, StructureNode
 export ReifiedSchedule, ValidationMessage
 export reify_schedule, extract_network_for_model_path, extract_union_network, is_valid, get_error_messages
+export gene_colours_from_spec
 
 # ============================================================================
 # Schema Types
@@ -274,6 +275,27 @@ function extract_union_network(spec_string::String, segments::Vector{TimelineSeg
         links = collect(values(all_links)),
         model_exclusions = model_exclusions,
     )
+end
+
+# ============================================================================
+# ============================================================================
+# Public: gene colours from spec
+# ============================================================================
+
+"""
+    gene_colours_from_spec(spec_string) -> Dict{String, String}
+
+Dry-run the schedule and return the gene-colour mapping (gene name → hex colour)
+used for visualisation.  This is a lightweight alternative to `reify_schedule`
+when only gene colours are needed (e.g. for dim-reduction colouring).
+"""
+function gene_colours_from_spec(spec_string::String)::Dict{String, String}
+    spec = JSON.parse(spec_string, dicttype=Dict{Symbol, Any})
+    bindings = _spec_bindings(spec)
+    specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
+    grs_schedule = GRSSchedule(; specification, bindings)
+    (_, _, gene_colours) = _collect_segments(grs_schedule)
+    return gene_colours
 end
 
 # ============================================================================

@@ -2,7 +2,7 @@
 
 julia_version = "1.12.4"
 manifest_format = "2.0"
-project_hash = "3c3acc5be3179c3115577ebf2b2da7b37de05a37"
+project_hash = "098eee8ab335667a41ed04bb7398e00683988b68"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -76,6 +76,18 @@ deps = ["LinearAlgebra", "Random", "StaticArrays"]
 git-tree-sha1 = "d57bd3762d308bded22c3b82d033bff85f6195c6"
 uuid = "ec485272-7323-5ecc-a04f-4719b315124d"
 version = "0.4.0"
+
+[[deps.Arpack]]
+deps = ["Arpack_jll", "Libdl", "LinearAlgebra", "Logging"]
+git-tree-sha1 = "9b9b347613394885fd1c8c7729bfc60528faa436"
+uuid = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
+version = "0.5.4"
+
+[[deps.Arpack_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "libblastrampoline_jll"]
+git-tree-sha1 = "7f54761502ff149a9d492e4acefe9805898e29b3"
+uuid = "68821587-b530-5797-8361-c406ea357684"
+version = "3.5.2+0"
 
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra"]
@@ -519,6 +531,17 @@ weakdeps = ["ChainRulesCore", "EnzymeCore"]
     [deps.DispatchDoctor.extensions]
     DispatchDoctorChainRulesCoreExt = "ChainRulesCore"
     DispatchDoctorEnzymeCoreExt = "EnzymeCore"
+
+[[deps.Distances]]
+deps = ["LinearAlgebra", "Statistics", "StatsAPI"]
+git-tree-sha1 = "c7e3a542b999843086e2f29dac96a618c105be1d"
+uuid = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
+version = "0.10.12"
+weakdeps = ["ChainRulesCore", "SparseArrays"]
+
+    [deps.Distances.extensions]
+    DistancesChainRulesCoreExt = "ChainRulesCore"
+    DistancesSparseArraysExt = "SparseArrays"
 
 [[deps.Distributed]]
 deps = ["Random", "Serialization", "Sockets"]
@@ -1092,6 +1115,12 @@ git-tree-sha1 = "65ae3db6ab0e5b1b5f217043c558d9d1d33cc88d"
 uuid = "6f1432cf-f94c-5a45-995e-cdbf5db27b0b"
 version = "3.5.0"
 
+[[deps.LsqFit]]
+deps = ["Distributions", "ForwardDiff", "LinearAlgebra", "NLSolversBase", "Printf", "StatsAPI"]
+git-tree-sha1 = "f386224fa41af0c27f45e2f9a8f323e538143b43"
+uuid = "2fda8390-95c7-5789-9bda-21331edee243"
+version = "0.15.1"
+
 [[deps.Lz4_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "191686b1ac1ea9c89fc52e996ad15d1d241d1e33"
@@ -1210,11 +1239,23 @@ git-tree-sha1 = "fade91fe9bee7b142d332fc6ab3f0deea29f637b"
 uuid = "102ac46a-7ee4-5c85-9060-abc95bfdeaa3"
 version = "0.5.9"
 
+[[deps.MultivariateStats]]
+deps = ["Arpack", "Distributions", "LinearAlgebra", "SparseArrays", "Statistics", "StatsAPI", "StatsBase"]
+git-tree-sha1 = "7c3ff68a904d0f7404e5d2f7f5bc667934d8d616"
+uuid = "6f286f6a-111f-5878-ab1e-185364afe411"
+version = "0.10.4"
+
 [[deps.MutableArithmetics]]
 deps = ["LinearAlgebra", "SparseArrays", "Test"]
 git-tree-sha1 = "22df8573f8e7c593ac205455ca088989d0a2c7a0"
 uuid = "d8a4904e-b15c-11e9-3269-09a3773c0cb0"
 version = "1.6.7"
+
+[[deps.NLSolversBase]]
+deps = ["ADTypes", "DifferentiationInterface", "Distributed", "FiniteDiff", "ForwardDiff"]
+git-tree-sha1 = "25a6638571a902ecfb1ae2a18fc1575f86b1d4df"
+uuid = "d41bc354-129a-5804-8e4c-c37616107c6c"
+version = "7.10.0"
 
 [[deps.NaNMath]]
 deps = ["OpenLibm_jll"]
@@ -1240,6 +1281,12 @@ version = "1.2.3"
     CovarianceEstimation = "587fd27a-f159-11e8-2dae-1979310e6154"
     Requires = "ae029012-a4dd-5104-9daa-d747884805df"
     Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
+
+[[deps.NearestNeighborDescent]]
+deps = ["DataStructures", "Distances", "Graphs", "Random", "Reexport", "SparseArrays"]
+git-tree-sha1 = "7bb5ecf8d71228df32b6bf8976756e7fdd9a4649"
+uuid = "dd2c4c9e-a32f-5b2f-b342-08c2f244fce8"
+version = "0.3.8"
 
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
@@ -2089,6 +2136,12 @@ git-tree-sha1 = "ea3e54c2bdde39062abf5a9758a23735558705e1"
 uuid = "781d530d-4396-4725-bb49-402e4bee1e77"
 version = "1.4.0"
 
+[[deps.UMAP]]
+deps = ["Accessors", "Arpack", "Distances", "LinearAlgebra", "LsqFit", "NearestNeighborDescent", "Random", "SparseArrays"]
+git-tree-sha1 = "0e4844c080d83cd08b4dcfd1bfe6b366019d925d"
+uuid = "c4f8c510-2410-5be4-91d7-4fbaeb39457e"
+version = "0.2.0"
+
 [[deps.URIs]]
 git-tree-sha1 = "bef26fb046d031353ef97a82e3fdb6afe7f21b1a"
 uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
@@ -2162,7 +2215,7 @@ uuid = "3f19e933-33d8-53b3-aaab-bd5110c3b7a0"
 version = "17.7.0+0"
 
 [[deps.server]]
-deps = ["Arrow", "Colors", "Dates", "GeneRegulatorySystems", "HTTP", "JSON", "Logging", "LoggingExtras", "Oxygen", "Revise", "Setfield", "SymbolicUtils", "Tables", "Test", "UUIDs"]
+deps = ["ArgParse", "Arrow", "Colors", "Dates", "GeneRegulatorySystems", "HTTP", "JSON", "Logging", "LoggingExtras", "MultivariateStats", "Oxygen", "Revise", "Setfield", "SymbolicUtils", "Tables", "Test", "UMAP", "UUIDs"]
 path = "."
 uuid = "86ab0978-0466-42e7-a2ae-38e617ed6ea3"
 version = "0.1.0"

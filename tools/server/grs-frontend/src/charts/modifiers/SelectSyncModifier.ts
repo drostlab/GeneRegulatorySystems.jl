@@ -1,16 +1,25 @@
 import { ChartModifierBase2D, EChart2DModifierType, ModifierMouseArgs, translateFromCanvasToSeriesViewRect, type IRenderableSeries } from "scichart"
+import type { PanelGroup } from "../layout/PanelGroup"
 
 /** Function that maps a dataSeriesName to a group key, or null to exclude. */
 export type GroupingFn = (dataSeriesName: string) => string | null
 
+/**
+ * Synchronises series selection across all sub-surfaces in a PanelGroup.
+ *
+ * Click = solo (select only the clicked gene, or deselect if already the sole selection).
+ * Ctrl/Cmd+Click = toggle (add/remove from current selection).
+ */
 export class SelectSyncModifier extends ChartModifierBase2D {
     public type = EChart2DModifierType.Custom
     private selectedGroups: Set<string> = new Set()
     private onSelectionChange?: (selectedGroups: string[]) => void
     private groupFn: GroupingFn
+    private group: PanelGroup
 
-    constructor(groupFn: GroupingFn, callback?: (selectedGroups: string[]) => void) {
+    constructor(group: PanelGroup, groupFn: GroupingFn, callback?: (selectedGroups: string[]) => void) {
         super()
+        this.group = group
         this.groupFn = groupFn
         this.onSelectionChange = callback
     }
@@ -19,41 +28,58 @@ export class SelectSyncModifier extends ChartModifierBase2D {
         super.modifierMouseUp(args)
         if (!this.mousePoint) return
 
-        // Find which subchart was clicked (only read selection from that one
-        // to avoid stale isSelected flags on other subcharts)
-        let clickedSubChart: { renderableSeries: { asArray: () => IRenderableSeries[] } } | undefined
-        for (const sc of this.parentSurface.subCharts) {
-            const pt = translateFromCanvasToSeriesViewRect(this.mousePoint, sc.seriesViewRect)
-            if (pt) {
-                clickedSubChart = sc
-                break
-            }
-        }
+        const clickedGroup = this.findClickedGroup()
+        if (!clickedGroup) return
 
-        const currentlySelected = new Set<string>()
-        if (clickedSubChart) {
-            for (const series of clickedSubChart.renderableSeries.asArray()) {
-                if (series.isSelected) {
-                    const group = this.resolveGroup(series)
-                    if (group) currentlySelected.add(group)
-                }
+        const isToggle = args.ctrlKey || args.nativeEvent?.metaKey === true
+        const newSelection = new Set(this.selectedGroups)
+
+        if (isToggle) {
+            if (newSelection.has(clickedGroup)) {
+                newSelection.delete(clickedGroup)
+            } else {
+                newSelection.add(clickedGroup)
+            }
+        } else {
+            // Solo: select only the clicked gene, or deselect if it was the sole selection
+            if (newSelection.size === 1 && newSelection.has(clickedGroup)) {
+                newSelection.clear()
+            } else {
+                newSelection.clear()
+                newSelection.add(clickedGroup)
             }
         }
 
         const selectionChanged =
-            currentlySelected.size !== this.selectedGroups.size ||
-            [...currentlySelected].some(g => !this.selectedGroups.has(g))
+            newSelection.size !== this.selectedGroups.size ||
+            [...newSelection].some(g => !this.selectedGroups.has(g))
 
         if (selectionChanged) {
-            this.syncSelectionState(currentlySelected)
-            this.selectedGroups = currentlySelected
-            console.debug(`[SelectSync] Selection changed: [${[...currentlySelected]}]`)
-            this.onSelectionChange?.([...currentlySelected])
+            this.selectedGroups = newSelection
+            this.syncSelectionState(newSelection)
+            console.debug(`[SelectSync] Selection changed (${isToggle ? 'toggle' : 'solo'}): [${[...newSelection]}]`)
+            this.onSelectionChange?.([...newSelection])
+        } else {
+            // SeriesSelectionModifier may have toggled isSelected flags -- force back to our state
+            this.syncSelectionState(this.selectedGroups)
         }
     }
 
+    /** Identify the gene group under the click point. */
+    private findClickedGroup(): string | null {
+        for (const sc of this.group.allSurfaces) {
+            const pt = translateFromCanvasToSeriesViewRect(this.mousePoint, sc.seriesViewRect)
+            if (!pt) continue
+            for (const series of sc.renderableSeries.asArray()) {
+                const group = this.resolveGroup(series)
+                if (group) return group
+            }
+        }
+        return null
+    }
+
     private syncSelectionState(selectedGroups: Set<string>): void {
-        for (const subChart of this.parentSurface.subCharts) {
+        for (const subChart of this.group.allSurfaces) {
             for (const series of subChart.renderableSeries.asArray()) {
                 const group = this.resolveGroup(series)
                 if (!group) continue

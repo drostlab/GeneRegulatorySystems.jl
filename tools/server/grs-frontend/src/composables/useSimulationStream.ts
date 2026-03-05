@@ -15,6 +15,7 @@ import type { TimeseriesData } from '@/types/simulation'
 export type ProgressCallback = (currentTime: number, frameCount: number) => void
 export type TimeseriesCallback = (data: TimeseriesData) => void
 export type StatusCallback = (status: string, error?: string) => void
+export type PhaseSpaceReadyCallback = (simulationId: string) => void
 
 /** WebSocket message types from server */
 interface WsProgressMessage {
@@ -37,7 +38,12 @@ interface WsStatusMessage {
     error?: string
 }
 
-type WsMessage = WsProgressMessage | WsTimeseriesMessage | WsStatusMessage
+interface WsPhaseSpaceReadyMessage {
+    type: 'phasespace_ready'
+    simulation_id: string
+}
+
+type WsMessage = WsProgressMessage | WsTimeseriesMessage | WsStatusMessage | WsPhaseSpaceReadyMessage
 
 /**
  * Composable for managing the simulation WebSocket stream.
@@ -52,6 +58,9 @@ export function useSimulationStream() {
     let onProgress: ProgressCallback | null = null
     let onTimeseries: TimeseriesCallback | null = null
     let onStatus: StatusCallback | null = null
+    // Phase-space tracking survives untrack() -- cleared explicitly via clearPhaseSpaceTracking()
+    let phaseSpaceSimId: string | null = null
+    let onPhaseSpaceReady: PhaseSpaceReadyCallback | null = null
 
     const wsUrl = computed(() => config.getWebSocketUrl())
 
@@ -132,6 +141,12 @@ export function useSimulationStream() {
                 console.debug(`[SimStream] Status: ${msg.status} hasCallback=${!!onStatus}`, msg.error ?? '')
                 onStatus?.(msg.status, msg.error)
                 break
+            case 'phasespace_ready':
+                console.debug(`[SimStream] PhaseSpaceReady: simId=${msg.simulation_id} expecting=${phaseSpaceSimId}`)
+                if (msg.simulation_id === phaseSpaceSimId) {
+                    onPhaseSpaceReady?.(msg.simulation_id)
+                }
+                break
             default:
                 console.warn('[SimStream] Unknown message type', (msg as Record<string, unknown>).type)
         }
@@ -177,12 +192,24 @@ export function useSimulationStream() {
         onStatus = callbacks.onStatus ?? null
     }
 
-    /** Stop tracking the current simulation. */
+    /** Stop tracking the current simulation (does NOT clear phaseSpace tracking). */
     function untrack(): void {
         simulationId.value = null
         onProgress = null
         onTimeseries = null
         onStatus = null
+    }
+
+    /** Register a callback for when phasespace_ready arrives for a specific simulation. */
+    function trackPhaseSpace(simId: string, cb: PhaseSpaceReadyCallback): void {
+        phaseSpaceSimId = simId
+        onPhaseSpaceReady = cb
+    }
+
+    /** Clear phase-space tracking (call after phasespace_ready is handled). */
+    function clearPhaseSpaceTracking(): void {
+        phaseSpaceSimId = null
+        onPhaseSpaceReady = null
     }
 
     return {
@@ -195,6 +222,8 @@ export function useSimulationStream() {
         resume,
         track,
         untrack,
+        trackPhaseSpace,
+        clearPhaseSpaceTracking,
     }
 }
 

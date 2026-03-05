@@ -12,11 +12,14 @@ import { getTheme } from "@/config/theme"
 import { TimelinePanel } from "./panels/TimelinePanel"
 import { PromoterPanel } from "./panels/PromoterPanel"
 import { CountsPanel } from "./panels/CountsPanel"
-import { SubChartLayoutModifier } from "./modifiers/SubChartLayoutModifier"
+import { PhaseSpacePanel, type HoverInfo } from "./panels/PhaseSpacePanel"
 import { SharedTimeCursorModifier } from "./modifiers/SharedTimeCursorModifier"
+import { PanelGroup } from "./layout/PanelGroup"
+import { ChartLayout, type GroupNode, type LayoutNode } from "./layout/ChartLayout"
 import { collectPathYRanges } from "./layout/rectangleLayout"
 import { getPathTimeRanges, getSegmentBoundaryTimes } from "@/types/schedule"
 import type { StructureNode, TimelineSegment, TimeseriesData, TimeseriesMetadata } from "@/types"
+import type { PhaseSpaceResult } from "@/types/simulation"
 import { type SpeciesType } from "@/types/schedule"
 import { useScheduleStore } from "@/stores/scheduleStore"
 
@@ -24,19 +27,38 @@ export type SelectionChangeCallback = (selectedGenes: string[]) => void
 export type SegmentClickCallback = (segmentId: number, modelPath: string) => void
 export type HoverChangeCallback = (modelPath: string | null, executionPath: string | null) => void
 
+/** Fraction of width allocated to the timeseries group when phase space is visible. */
+const TIMESERIES_SPLIT_RATIO = 0.65
+
 export class MainChart {
     private surface!: SciChartSurface
     private wasmContext!: TSciChart
+
+    // -- Panel groups & layout --
+    private timeseriesGroup!: PanelGroup
+    private phaseSpaceGroup!: PanelGroup
+    private chartLayout!: ChartLayout
+    private timeseriesLayoutNode!: GroupNode
+
+    // -- Scoped modifiers (timeseries group) --
     private axisSynchroniser!: AxisSyncModifier
-    private layoutModifier!: SubChartLayoutModifier
     private selectSyncModifier!: SelectSyncModifier
     private timeCursorModifier!: SharedTimeCursorModifier
+
+    // -- Tracks (convenience array parallelling timeseriesGroup) --
     private tracks!: Array<{ id: string; panel: BasePanel }>
+
+    // -- Phase space --
+    private phaseSpacePanel: PhaseSpacePanel | null = null
+
+    // -- Callbacks --
     private timepointChangeCallback?: (timepoint: number) => void
     private selectionChangeCallback?: SelectionChangeCallback
     private segmentClickCallback?: SegmentClickCallback
     private hoverChangeCallback?: HoverChangeCallback
     private instantHoverChangeCallback?: (path: string | null) => void
+    private phaseSpacePathSelectCallback?: (path: string) => void
+    private phaseSpaceHoverCallback?: (info: HoverInfo | null) => void
 
     private isDark = false
 
@@ -71,12 +93,26 @@ export class MainChart {
             { id: 'proteins', panel: new CountsPanel(options, "Proteins") }
         ]
 
-        this.layoutModifier = new SubChartLayoutModifier("Time")
-        this.surface.chartModifiers.add(this.layoutModifier)
+        // -- Set up panel groups --
+        this.timeseriesGroup = new PanelGroup("timeseries")
+        for (const { id, panel } of this.tracks) {
+            this.timeseriesGroup.add(id, panel)
+        }
 
-        this.axisSynchroniser = new AxisSyncModifier()
+        this.phaseSpaceGroup = new PanelGroup("phasespace")
+
+        // -- Set up layout tree (single group initially) --
+        this.chartLayout = new ChartLayout()
+        this.chartLayout.attach(this.surface)
+
+        this.timeseriesLayoutNode = { kind: 'group', group: this.timeseriesGroup, xAxisLabel: "Time" }
+        this.chartLayout.setRoot(this.timeseriesLayoutNode)
+
+        // -- Scoped modifiers (all scoped to timeseries group) --
+        this.axisSynchroniser = new AxisSyncModifier(this.timeseriesGroup)
         this.surface.chartModifiers.add(this.axisSynchroniser)
-        this.timeCursorModifier = new SharedTimeCursorModifier(isDark, t => this.timepointChangeCallback?.(t))
+
+        this.timeCursorModifier = new SharedTimeCursorModifier(this.timeseriesGroup, isDark, t => this.timepointChangeCallback?.(t))
         this.surface.chartModifiers.add(this.timeCursorModifier)
 
         /** Groups timeseries by gene ID (prefix before ':'); excludes segment rectangles. */
@@ -86,7 +122,7 @@ export class MainChart {
             return colonIndex >= 0 ? name.substring(0, colonIndex) : name
         }
 
-        this.selectSyncModifier = new SelectSyncModifier(geneGroupFn, genes => this.selectionChangeCallback?.(genes))
+        this.selectSyncModifier = new SelectSyncModifier(this.timeseriesGroup, geneGroupFn, genes => this.selectionChangeCallback?.(genes))
         this.surface.chartModifiers.add(this.selectSyncModifier)
 
         const timelinePanel = this.getTimelinePanel()
@@ -146,7 +182,7 @@ export class MainChart {
         this.tracks.forEach(({ id, panel }) => {
             panel.isVisible = ids.includes(id)
         })
-        this.layoutModifier.updateLayout()
+        this.chartLayout.updateLayout()
         this.timeCursorModifier?.onSubChartVisibilityChanged()
     }
 
@@ -160,6 +196,9 @@ export class MainChart {
 
     dispose(): void {
         this.tracks?.forEach(({ panel }) => panel.dispose())
+        this.phaseSpacePanel?.dispose()
+        this.chartLayout?.dispose()
+        // surface.delete() cascades to all sub-surfaces (including phase-space)
         this.surface?.delete()
     }
 
@@ -178,6 +217,7 @@ export class MainChart {
         for (const { panel } of this.tracks) {
             panel.applyTheme(isDark)
         }
+        this.phaseSpacePanel?.applyTheme(isDark)
         this.timeCursorModifier.applyColorTheme(isDark)
     }
 
@@ -266,5 +306,99 @@ export class MainChart {
             // Move the time cursor line to current simulation time
             this.timeCursorModifier?.setCursorTime(currentTime)
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Phase space API
+    // ------------------------------------------------------------------
+
+    /** Show the phase-space panel (creates it lazily), sets a horizontal split layout. */
+    showPhaseSpace(result: PhaseSpaceResult): void {
+        this._ensurePhaseSpacePanel()
+        this.phaseSpacePanel!.isVisible = true
+        this.phaseSpacePanel!.setPhaseSpaceData(result)
+        this._applyPhaseSpaceLayout(true)
+        console.debug("[MainChart] Phase space shown")
+    }
+
+    /** Hide the phase-space panel and revert to single-group layout. */
+    hidePhaseSpace(): void {
+        if (!this.phaseSpacePanel) return
+        this.phaseSpacePanel.isVisible = false
+        this.phaseSpacePanel.clearData()
+        this._applyPhaseSpaceLayout(false)
+        console.debug("[MainChart] Phase space hidden")
+    }
+
+    /** Update data on an already-visible phase-space panel. */
+    setPhaseSpaceData(result: PhaseSpaceResult): void {
+        if (!this.phaseSpacePanel || !this.phaseSpacePanel.isVisible) {
+            this.showPhaseSpace(result)
+            return
+        }
+        this.phaseSpacePanel.setPhaseSpaceData(result)
+    }
+
+    /** Update the current-timepoint highlight on the phase-space panel. */
+    setPhaseSpaceTimepoint(t: number): void {
+        this.phaseSpacePanel?.setTimepoint(t)
+    }
+
+    /** Register a callback for when the user clicks a path in the phase-space view. */
+    onPhaseSpacePathSelect(callback: (path: string) => void): void {
+        this.phaseSpacePathSelectCallback = callback
+        this.phaseSpacePanel?.onPathSelect(callback)
+    }
+
+    /** Register a callback for when the user hovers a point in the phase-space view. */
+    onPhaseSpaceHover(callback: (info: HoverInfo | null) => void): void {
+        this.phaseSpaceHoverCallback = callback
+        this.phaseSpacePanel?.onHover(callback)
+    }
+
+    /** Whether the phase-space panel is currently shown. */
+    get isPhaseSpaceVisible(): boolean {
+        return this.phaseSpacePanel !== null && this.phaseSpacePanel.isVisible
+    }
+
+    // ------------------------------------------------------------------
+    // Phase space internals
+    // ------------------------------------------------------------------
+
+    /** Create the phase-space panel once; subsequent calls are no-ops. */
+    private _ensurePhaseSpacePanel(): void {
+        if (this.phaseSpacePanel) return
+        const options: BasePanelOptions = {
+            parentSurface: this.surface,
+            wasmContext: this.wasmContext,
+            isDark: this.isDark,
+        }
+        this.phaseSpacePanel = new PhaseSpacePanel(options)
+        this.phaseSpacePanel.isVisible = false  // hidden until explicitly shown
+        this.phaseSpaceGroup.add("phasespace", this.phaseSpacePanel)
+
+        if (this.phaseSpacePathSelectCallback) {
+            this.phaseSpacePanel.onPathSelect(this.phaseSpacePathSelectCallback)
+        }
+        if (this.phaseSpaceHoverCallback) {
+            this.phaseSpacePanel.onHover(this.phaseSpaceHoverCallback)
+        }
+    }
+
+    /** Toggle layout between single-group (timeseries only) and horizontal split. */
+    private _applyPhaseSpaceLayout(showPhaseSpace: boolean): void {
+        let root: LayoutNode
+        if (showPhaseSpace && this.phaseSpacePanel) {
+            root = {
+                kind: 'split',
+                direction: 'horizontal',
+                ratio: TIMESERIES_SPLIT_RATIO,
+                a: this.timeseriesLayoutNode,
+                b: { kind: 'group', group: this.phaseSpaceGroup, xAxisLabel: "" },
+            }
+        } else {
+            root = this.timeseriesLayoutNode
+        }
+        this.chartLayout.setRoot(root)
     }
 }

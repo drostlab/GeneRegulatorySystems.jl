@@ -1,5 +1,6 @@
 import { ChartModifierBase2D, EChart2DModifierType, ECoordinateMode, EHorizontalAnchorPoint, EVerticalAnchorPoint, LineAnnotation, ModifierMouseArgs, TextAnnotation, Thickness, translateFromCanvasToSeriesViewRect, type ISciChartSubSurface } from "scichart"
 import { getTheme } from "@/config/theme"
+import type { PanelGroup } from "../layout/PanelGroup"
 
 
 export class SharedTimeCursorModifier extends ChartModifierBase2D {
@@ -8,14 +9,17 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
     private activeLabel: { subChartId: string; annotation: TextAnnotation } | null = null
     private onTimeChanged?: (t: number) => void
     private isDark: boolean
+    private group: PanelGroup
 
-    constructor(isDark: boolean, callback?: (t: number) => void) {
+    constructor(group: PanelGroup, isDark: boolean, callback?: (t: number) => void) {
         super()
+        this.group = group
         this.isDark = isDark
         this.onTimeChanged = callback
     }
 
     onAttachSubSurface(subChart: ISciChartSubSurface): void {
+        if (!this._isInGroup(subChart)) return
         const t = getTheme(this.isDark)
         const line = new LineAnnotation({
             xCoordinateMode: ECoordinateMode.DataValue,
@@ -89,7 +93,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
      * Call this after new annotations are added (e.g. after setScheduleData).
      */
     bringToFront(): void {
-        for (const sc of this.parentSurface.subCharts) {
+        for (const sc of this.group.allSurfaces) {
             const line = this.xLines.get(sc.id)
             if (!line) continue
             sc.annotations.remove(line)
@@ -105,7 +109,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
     private _timeFromMouse(): number | undefined {
         if (!this.mousePoint) return undefined
 
-        for (const sc of this.parentSurface.subCharts) {
+        for (const sc of this.group.allSurfaces) {
             const pt = translateFromCanvasToSeriesViewRect(this.mousePoint, sc.seriesViewRect)
             if (pt) {
                 const calc = sc.xAxes.get(0).getCurrentCoordinateCalculator()
@@ -119,10 +123,12 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
     private _showCursorAt(time: number): void {
         this._lastTime = time
         const lastVisibleId = this._lastVisibleSubChartId()
-        const lastVisibleChart = lastVisibleId ? this.parentSurface.subCharts.find(sc => sc.id === lastVisibleId) : null
+        const lastVisibleChart = lastVisibleId
+            ? this.group.allSurfaces.find(sc => sc.id === lastVisibleId)
+            : null
 
-        // Show/update lines on all visible subcharts
-        for (const sc of this.parentSurface.subCharts) {
+        // Show/update lines on all visible subcharts in the group
+        for (const sc of this.group.allSurfaces) {
             const line = this.xLines.get(sc.id)
             if (!line) continue
 
@@ -180,7 +186,7 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
     /** Delete the active label. */
     private _deleteLabel(): void {
         if (this.activeLabel) {
-            const subChart = this.parentSurface.subCharts.find(sc => sc.id === this.activeLabel!.subChartId)
+            const subChart = this.group.allSurfaces.find(sc => sc.id === this.activeLabel!.subChartId)
             if (subChart) {
                 subChart.annotations.remove(this.activeLabel.annotation)
                 this.activeLabel.annotation.delete()
@@ -189,12 +195,13 @@ export class SharedTimeCursorModifier extends ChartModifierBase2D {
         }
     }
 
-    /** Return the id of the last visible subchart (bottom-most). */
+    /** Return the id of the last visible subchart in this group (bottom-most). */
     private _lastVisibleSubChartId(): string | undefined {
-        const subCharts = this.parentSurface.subCharts
-        for (let i = subCharts.length - 1; i >= 0; i--) {
-            if (subCharts[i]!.isVisible) return subCharts[i]!.id
-        }
-        return undefined
+        const surfaces = this.group.visibleSurfaces
+        return surfaces.length > 0 ? surfaces[surfaces.length - 1]!.id : undefined
+    }
+
+    private _isInGroup(subChart: ISciChartSubSurface): boolean {
+        return this.group.allSurfaces.some(s => s.id === subChart.id)
     }
 }

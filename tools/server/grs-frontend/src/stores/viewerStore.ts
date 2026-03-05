@@ -130,6 +130,17 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSegmentIds.value = ids
     }
 
+    /** Select all timeline segments belonging to a given execution path. */
+    function selectExecutionPath(executionPath: string): void {
+        const scheduleStore = useScheduleStore()
+        const matchIds = new Set(
+            scheduleStore.segments
+                .filter(s => s.execution_path === executionPath)
+                .map(s => s.id)
+        )
+        selectedSegmentIds.value = matchIds.size > 0 ? matchIds : null
+    }
+
     function setHoveredRectModel(path: string | null, executionPath: string | null = null): void {
         hoveredRectModelPath.value = path
         hoveredExecutionPath.value = executionPath
@@ -164,6 +175,7 @@ export const useViewerStore = defineStore('viewer', () => {
         setHoveredRectModel,
         setHoveredInstantModel,
         selectSegments,
+        selectExecutionPath,
         reset
     }
 })

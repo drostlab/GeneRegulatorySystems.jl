@@ -10,8 +10,8 @@
  * Used by: simulationStore
  */
 
-import { apiFetchJson } from '@/utils/api'
-import type { SimulationResult, TimeseriesData } from '@/types'
+import { apiFetch, apiFetchJson } from '@/utils/api'
+import type { PhaseSpaceResult, SimulationResult, TimeseriesData } from '@/types'
 
 /**
  * Fetch all stored simulation results (no timeseries data).
@@ -57,6 +57,17 @@ export async function runSimulation(scheduleName: string, scheduleJson: string, 
     }
 
     return result
+}
+
+/**
+ * Fetch phase-space embedding for a simulation result.
+ * Returns null when the embedding is not yet available (still computing).
+ */
+export async function fetchPhaseSpace(resultId: string): Promise<PhaseSpaceResult | null> {
+    const response = await apiFetch(`/simulations/${resultId}/phasespace`)
+    if (response.status === 404) return null
+    if (!response.ok) throw new Error(`API Error: HTTP ${response.status}`)
+    return response.json() as Promise<PhaseSpaceResult>
 }
 
 /**

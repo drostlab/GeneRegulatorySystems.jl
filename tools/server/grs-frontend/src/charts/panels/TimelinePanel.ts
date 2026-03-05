@@ -129,8 +129,6 @@ export class TimelinePanel extends BasePanel {
         xAxis.visibleRangeChanged.subscribe(() => this.updateLabelSizes())
         this.parentSurface.resized.subscribe(this.onParentResized)
         this.parentSurface.domCanvas2D.addEventListener('mousemove', this.onMouseMove)
-
-        console.debug('[TimelinePanel] Constructed')
     }
 
     onSegmentClick(callback: SegmentClickCallback): void {
@@ -158,7 +156,6 @@ export class TimelinePanel extends BasePanel {
 
     /** Hide/show all data annotations when the panel visibility toggles. */
     override set isVisible(value: boolean) {
-        console.debug(`[TimelinePanel] isVisible set to ${value}`)
         super.isVisible = value
         this.setAnnotationsVisible(value)
     }
@@ -194,7 +191,6 @@ export class TimelinePanel extends BasePanel {
     }
 
     setScheduleData(structure: StructureNode, segments: TimelineSegment[]): LayoutRectangle[] {
-        console.debug(`[TimelinePanel] setScheduleData: ${segments.length} segments`)
         this.clearOwnAnnotations()
         if (this.tooltipDiv) this.tooltipDiv.style.display = 'none'
         this.labelRectMap.clear()
@@ -226,7 +222,6 @@ export class TimelinePanel extends BasePanel {
             this.addInstantGroup(instants)
         }
 
-        console.debug(`[TimelinePanel] Rendered ${this.rectangles.length} layout items`)
         return this.rectangles
     }
 
@@ -239,7 +234,6 @@ export class TimelinePanel extends BasePanel {
     /** Deselect current segment and restore the zoom state that was active before selection. */
     deselectSegment(): void {
         if (this.selectedSegmentId === null) return
-        console.debug('[TimelinePanel] Deselecting segment')
         this.restoreSelectedSeries()
         this.selectedSegmentId = null
         const range = this.preSelectionTimeRange ?? this.fullTimeExtent
@@ -311,7 +305,6 @@ export class TimelinePanel extends BasePanel {
                 const lbl = this.segmentLabelMap.get(segmentId)
                 if (lbl) lbl.textColor = this.theme.timeline.rect.selected.text
 
-                console.debug(`[TimelinePanel] Segment selected: id=${segmentId} model=${modelPath}`)
                 const xRange = this.surface.xAxes.get(0)?.visibleRange
                 this.preSelectionTimeRange = xRange ? { min: xRange.min, max: xRange.max } : null
                 this.selectedSegmentId = segmentId
@@ -402,7 +395,6 @@ export class TimelinePanel extends BasePanel {
             padding: new Thickness(3, 6, 3, 9),
             onHover: (args) => {
                 const hovered = args.isHovered
-                console.debug(`[TimelinePanel] Instant label hover: hovered=${hovered} model=${modelPath}`)
                 // Batch all property mutations to prevent rendering artefacts
                 this.surface.suspendUpdates()
                 line.stroke = hovered ? this.theme.timeline.instant.hover.line : this.theme.timeline.instant.normal.line
@@ -429,10 +421,8 @@ export class TimelinePanel extends BasePanel {
     private handleHover(hovered: boolean, modelPath: string, executionPath: string): void {
         if (hovered) {
             this.currentHoveredModel = modelPath
-            console.debug(`[TimelinePanel] Hover enter: model=${modelPath} path=${executionPath}`)
             this.hoverChangeCallback?.(modelPath, executionPath)
         } else {
-            console.debug(`[TimelinePanel] Hover leave: model=${this.currentHoveredModel}`)
             this.currentHoveredModel = null
             this.hoverChangeCallback?.(null, null)
         }

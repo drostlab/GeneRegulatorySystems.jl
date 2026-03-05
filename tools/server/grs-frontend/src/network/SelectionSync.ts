@@ -50,26 +50,25 @@ export class SelectionSync {
     // Cytoscape -> Store
     // ========================================================================
 
+    /**
+     * Click = solo (select only the tapped node; deselect if already sole selection).
+     * Ctrl/Cmd+Click = toggle (add/remove from current selection).
+     */
     private onNodeTap = (evt: any): void => {
         if (this.updating) return
         this.updating = true
 
         const node = evt.target
         const store = useViewerStore()
+        const origEvent = evt.originalEvent as MouseEvent | undefined
+        const isToggle = origEvent?.ctrlKey === true || origEvent?.metaKey === true
 
         if (node.data('kind') === 'gene') {
             const id = node.id()
-            const current = store.selectedGenes
-            store.selectedGenes = current.includes(id)
-                ? current.filter(g => g !== id)
-                : [...current, id]
+            store.selectedGenes = applySelectionAction(store.selectedGenes, id, isToggle)
         } else {
-            // orphan-species: tracked by own node ID
             const id = node.id()
-            const current = store.selectedSpeciesNodes
-            store.selectedSpeciesNodes = current.includes(id)
-                ? current.filter(s => s !== id)
-                : [...current, id]
+            store.selectedSpeciesNodes = applySelectionAction(store.selectedSpeciesNodes, id, isToggle)
         }
 
         this.updating = false
@@ -134,4 +133,22 @@ function resolveSelectable(node: any): string | null {
     if (parent) return parent
     if (node.hasClass('orphan-species')) return node.id()
     return null
+}
+
+/**
+ * Apply click-to-solo / Ctrl+Click-to-toggle logic.
+ *   - Solo: replace selection with [id], or clear if id was the sole selection.
+ *   - Toggle: add id if absent, remove if present.
+ */
+function applySelectionAction(current: string[], id: string, isToggle: boolean): string[] {
+    if (isToggle) {
+        return current.includes(id)
+            ? current.filter(g => g !== id)
+            : [...current, id]
+    }
+    // Solo
+    if (current.length === 1 && current[0] === id) {
+        return []
+    }
+    return [id]
 }

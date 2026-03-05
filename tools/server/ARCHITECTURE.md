@@ -4,12 +4,13 @@
 
 | File | Purpose | Key Exports |
 | ------ | --------- | ------------- |
-| `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `POST /schedules/union-network`, `POST /schedules/network`, `POST /simulations/{id}/timeseries` (filtered), simulation run/results |
-| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network`. Internal: `model_path_to_json_path` (converts internal model_path string to a JSONPath segment array for source highlighting), `_gene_names` (lightweight dispatch-based gene extraction without building networks), `_spec_bindings`/`_spec_seed` (handle both Dict and Vector specs), `_validate_spec` (Dict and Vector overloads), `_label`/`_type_label` (label extraction with fallback for unlabelled models). Gene colour system: `_gene_colours` (dispatch on model definition type — `RandomDifferentiation.Definition` → tree hues for core + grays for peripheral via `_diff_colours`; `Differentiation.Definition` → same; `KroneckerNetworks.Definition` → `_gray_colours`; `V1.Definition` → `_generate_gene_colours`). Tree hue helpers: `_collect_diff_leaves_node!` (DFS leaf collection), `_assign_diff_hues!`/`_assign_diff_hues_node!` (bottom-up hue assignment using `_circular_mean_hue`), `_diff_colours` (top-level for a `Differentiation.Definition`). |
+| `src/server.jl` | HTTP route definitions (Oxygen.jl) | Routes: schedules CRUD, `POST /schedules/union-network`, `POST /schedules/network`, `POST /simulations/{id}/timeseries` (filtered), `GET /simulations/{id}/phasespace` (returns stored phase-space result or 404), simulation run/results. After `run_simulation` completes, spawns a `Threads.@spawn` task that calls `PhaseSpace.compute_and_store`; on success sends `{ type: "phasespace_ready", simulation_id }` over WS. |
+| `src/schedule_visualisation.jl` | Schedule reification, network extraction, structure tree | Types: `Network`, `UnionNetwork`, `ModelExclusions`, `TimelineSegment`, `StructureNode`, `ScheduleData`, `ReifiedSchedule`, `ValidationMessage`. Functions: `reify_schedule`, `extract_network_for_model_path`, `extract_union_network`, `gene_colours_from_spec` (public — dry-runs the schedule and returns `Dict{String,String}` gene→hex colour, used by the dim-reduction pipeline). Internal: `model_path_to_json_path`, `_gene_names`, `_spec_bindings`/`_spec_seed`, `_validate_spec`, `_label`/`_type_label`, `_collect_segments`. Gene colour system: `_gene_colours` (dispatch on model definition type — `RandomDifferentiation.Definition` → tree hues for core + grays for peripheral via `_diff_colours`; `Differentiation.Definition` → same; `KroneckerNetworks.Definition` → `_gray_colours`; `V1.Definition` → `_generate_gene_colours`). Tree hue helpers: `_collect_diff_leaves_node!`, `_assign_diff_hues!`/`_assign_diff_hues_node!`, `_diff_colours`. |
 | `src/schedule_storage.jl` | Schedule file persistence (examples/user/snapshot) | `list_schedules`, `load_schedule`, `save_schedule` |
 | `src/simulation.jl` | Simulation execution and result management | `run_simulation`, `load_result`, `list_results`, `load_timeseries_for_species` |
 | `src/simulation_controller.jl` | Live simulation lifecycle (pause/resume, WS streaming, gene subscriptions) | `SimulationController`, `check_pause!`, `pause!`, `resume!`, `subscribe_genes!`, `send_progress`, `send_timeseries`, `send_status` |
 | `src/streaming_sink.jl` | Arrow IPC storage + WS streaming during execution | `StreamingSimulationSink`, `flush!` |
+| `src/phasespace.jl` | Post-simulation adaptive phase-space projection over protein species | Types: `PhaseSpacePoint` (x,y,path,t,colour), `PhaseSpaceResult` (adds `method`, `axis_labels`, `axis_top_genes`). Functions: `compute_and_store(result_path, simulation_id, gene_colours)`, `load_phasespace(result_path)`. Method selection: `_choose_method(n_genes)` → `:direct` (≤2 genes, highest-variance axes), `:pca` (≤20 genes, 2 leading PCs with variance-explained labels and top-loading gene), `:pca_umap` (>20 genes, PCA 50 → UMAP 2-D). Colouring: `_compute_colours` dispatches to `_softmax_colours` when saturated gene colours present (differentiation), or `_path_colours` (evenly-spaced hues by execution path) otherwise. Internal helpers: `_load_protein_timeseries`, `_collect_cells`, `_step_value`, `_build_expression_matrix`, `_run_direct`, `_run_pca_2d`, `_run_pca_umap`, `_coloured_gene_indices`, `_is_saturated`, `_to_hex`, `_store`. |
 
 ## Frontend (Vue 3 + Pinia + SciChart + Cytoscape)
 
@@ -18,28 +19,30 @@
 | File | Purpose | Key State/Actions |
 | ------ | --------- | ------------------- |
 | `scheduleStore.ts` | Schedule data, union network | State: `schedule`, `unionNetwork`, `isLoading`, `isNetworkLoading`. Computed: `allGenes`, `geneColours`, `segments`, `modelPaths`. Actions: `loadScheduleByKey`, `loadScheduleBySpec`, `fetchUnionNetwork`, `clearNetwork`. Spec-skip: compares new spec to current before reloading. |
-| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesNodes`, `selectedSpeciesTypes`, `selectedSegmentIds`, `hoveredModelPath`, `hoveredExecutionPath`. Computed: `activeModelPath` (hovered model takes priority, else derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint` (filters to hovered path or active-at-timepoint paths), `maxProteinCounts`. Actions: `selectSegments`, `setHoveredModelPath` |
-| `simulationStore.ts` | Simulation results with lazy loading + streaming | State: `currentResult` (`SimulationResult | null`), `isSimulationRunning`, `isPaused`, `timeseriesCache`, `fetchedGenes`, `streamingBuffer`. Computed: `timeseries`, `progress`, `currentResultId`, `currentResultLabel`. Actions: `runSimulation`, `loadResult`, `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)`, `pauseSimulation`, `resumeSimulation`, `updateStreamSubscription(genes)` |
+| `viewerStore.ts` | All selection/interaction state | State: `currentTimepoint`, `selectedGenes`, `selectedSpeciesNodes`, `selectedSpeciesTypes`, `selectedSegmentIds`, `hoveredModelPath`, `hoveredExecutionPath`. Computed: `activeModelPath` (hovered model takes priority, else derived from currentTimepoint + segments), `selectedPaths`, `proteinCountsAtTimepoint` (filters to hovered path or active-at-timepoint paths), `maxProteinCounts`. Actions: `selectSegments`, `selectExecutionPath(path)` (finds all segment IDs for that execution path and calls `selectSegments`), `setHoveredModelPath` |
+| `simulationStore.ts` | Simulation results with lazy loading + streaming | State: `currentResult` (`SimulationResult | null`), `isSimulationRunning`, `isPaused`, `timeseriesCache`, `fetchedGenes`, `streamingBuffer`, `phaseSpaceResult` (`PhaseSpaceResult | null`), `isPhaseSpacePending`. Computed: `timeseries`, `progress`, `currentResultId`, `currentResultLabel`, `isPhaseSpaceAvailable`. Actions: `runSimulation`, `loadResult`, `fetchGeneTimeseries(genes)`, `getTimeseries(genes?, paths?)`, `pauseSimulation`, `resumeSimulation`, `updateStreamSubscription(genes)`. Phase-space wiring: on status=completed, registers `trackPhaseSpace(simId, _onPhaseSpaceReady)` before `untrack()`; `_onPhaseSpaceReady` fetches HTTP and sets `phaseSpaceResult`. `loadResult` also eagerly tries `fetchPhaseSpace` (best-effort). |
 
 ### Charts (SciChart)
 
 | File | Purpose |
 | ------ | --------- |
-| `MainChart.ts` | Orchestrates all panels. Creates `SeriesSyncCoordinator` with gene grouping function and passes it to panels via `BasePanelOptions`. Callbacks: `onTimepointChange`, `onSelectionChange`, `onSegmentClick`, `onHoverChange`. |
-| `SeriesSyncCoordinator.ts` | Syncs hover state across subcharts by group key. Dims non-hovered series (opacity=0.3), skips null-group (segments). Invalidates parent surface after sync. Reentrancy-guarded. |
-| `panels/BasePanel.ts` | Abstract base: surface, wasmContext, coordinator, visibility, `setTimeExtent` |
+| `MainChart.ts` | Orchestrates all panels. Manages two `PanelGroup`s (`timeseriesGroup`, `phaseSpaceGroup`) and a `ChartLayout` tree. Scoped modifiers only operate on `timeseriesGroup`. Phase-space API: `showPhaseSpace(result)`, `hidePhaseSpace()`, `setPhaseSpaceData(result)`, `setPhaseSpaceTimepoint(t)`, `onPhaseSpacePathSelect(cb)`. Callbacks: `onTimepointChange`, `onSelectionChange`, `onSegmentClick`, `onHoverChange`. |
+| `panels/BasePanel.ts` | Abstract base: SciChartSubSurface, wasmContext, visibility, `setTimeExtent`, `applyTheme`, `dispose` |
 | `panels/TimeseriesPanel.ts` | Abstract: adds `metadata`, `pathTimeRanges`, segment boundary dashed lines (`setSegmentBoundaries`), abstract `setData`, `appendStreamingData`, `clearData` |
-| `panels/TimelinePanel.ts` | FastRectangleRenderableSeries for schedule segments. Dynamic label sizing (hidden when too small, re-evaluated on zoom via `visibleRangeChanged`). Selected segment highlighted with purple fill/stroke from theme, tracked via `restoreSelectedSeries`. Hover tooltip: DOM div appended to `document.body` (position:fixed, white-space:pre, border-radius), positioned at mouse cursor tracked via `mousemove` on parent canvas. Segments use a single uniform fill colour from the theme. Rectangle label shows `rect.label` falling back to `rect.executionPath`. Instant models: TextAnnotation with background fill and hover highlight; hover mutations batched in `suspendUpdates`/`resumeUpdates`. Click-to-select zooms x-axis; click again deselects. DragGuardModifier prevents drag-release selecting. Hover fires `onHoverChange`. |
-| `panels/PromoterPanel.ts` | FastBandRenderableSeries for promoter activity, positioned by `pathYRanges`. Hover dims via coordinator. Streaming: `appendStreamingData` with cursor extension for XyyDataSeries. SweepAnimation on `setData`. |
-| `panels/CountsPanel.ts` | FastLineRenderableSeries for mRNA/protein counts. Hover dims via coordinator. Streaming: `appendStreamingData` with cursor extension for XyDataSeries. SweepAnimation on `setData`. |
-| `charts/chartConstants.ts` | Centralised font family, font sizes, axis thickness, segment palette. `getSegmentPalette(isDark)` for mode-aware palette. |
-| `charts/theme.ts` | `getSciChartTheme(isDark)` — bridge to `getTheme(isDark).sciChartTheme` |
-| `layout/rectangleLayout.ts` | `layoutRectangles(structure, segments, yMin, yMax)` and `collectPathYRanges` |
-| `modifiers/AxisSyncModifier.ts` | Syncs X-axis visible range across sub-charts |
-| `modifiers/DragGuardModifier.ts` | Tracks mouse delta between mouseDown/mouseMove. Exposes `isDrag` flag for click-vs-drag discrimination. Added first in modifier list. |
-| `modifiers/SelectSyncModifier.ts` | Syncs selection by group key across sub-charts. Accepts generic `GroupingFn`. Scans subcharts directly (no cache). |
-| `modifiers/SharedTimeCursorModifier.ts` | Vertical cursor line synced across sub-charts |
-| `modifiers/SubChartLayoutModifier.ts` | Vertical stacking of visible sub-charts. Collapses hidden sub-charts to zero-area Rect so they don't render at stale positions. Adaptive y-axis title font scaling based on panel pixel height. |
+| `panels/TimelinePanel.ts` | FastRectangleRenderableSeries for schedule segments. Dynamic label sizing. Click-to-select zooms x-axis. Hover fires `onHoverChange`. |
+| `panels/PromoterPanel.ts` | FastBandRenderableSeries for promoter activity, positioned by `pathYRanges`. Streaming with cursor extension. |
+| `panels/CountsPanel.ts` | FastLineRenderableSeries for mRNA/protein counts. Streaming with cursor extension. SweepAnimation on `setData`. |
+| `panels/PhaseSpacePanel.ts` | BasePanel subclass for phase-space embedding. Per-path trajectory lines + scatter points + hollow-circle timepoint highlight (theme-aware stroke) + directional arrowheads at path endpoints via `CustomAnnotation`. Methods: `setPhaseSpaceData(result)`, `setTimepoint(t)`, `onPathSelect(cb)`, `onHover(cb)`. Hover/dimming/tooltip delegated to `PhaseSpaceHoverModifier` (custom `ChartModifierBase2D`). Own zoom/pan modifiers (independent of timeseries). |
+| `charts/chartConstants.ts` | Centralised font family, font sizes, axis thickness, segment palette. |
+| `charts/theme.ts` | `getSciChartTheme(isDark)` -- bridge to `getTheme(isDark).sciChartTheme` |
+| `layout/PanelGroup.ts` | Lightweight registry of related panels. `add(id, panel)`, `remove(id)`, `visibleSurfaces`, `allSurfaces`. Used by scoped modifiers and ChartLayout. |
+| `layout/ChartLayout.ts` | Recursive tree-based layout engine replacing SubChartLayoutModifier. `LayoutNode` = `GroupNode` (vertical stack of a PanelGroup) or `SplitNode` (horizontal/vertical split with ratio). Manages `SciChartVerticalGroup` per PanelGroup. Adaptive y-axis font scaling. |
+| `layout/rectangleLayout.ts` | `layoutRectangles(structure, segments, yMin, yMax)` and `collectPathYRanges`. Caps at `MAX_TIMELINE_PATHS=10` duration paths; excess paths are excluded from layout. |
+| `modifiers/AxisSyncModifier.ts` | Scoped to a `PanelGroup`. Syncs X-axis visible range only across group's surfaces. |
+| `modifiers/DragGuardModifier.ts` | Tracks mouse delta between mouseDown/mouseMove. Exposes `isDrag` flag for click-vs-drag discrimination. |
+| `modifiers/SelectSyncModifier.ts` | Scoped to a `PanelGroup`. Syncs selection by group key across group's surfaces. Accepts generic `GroupingFn`. |
+| `modifiers/SharedTimeCursorModifier.ts` | Scoped to a `PanelGroup`. Vertical cursor line synced across group's surfaces. |
+| `modifiers/PhaseSpaceHoverModifier.ts` | Custom `ChartModifierBase2D` for phase-space hover. Uses `hitTestProvider.hitTestDataPoint` on scatter series for accurate sub-surface hit-testing. Path dimming, tooltip DOM, hover callback. |
 
 ### Network (Cytoscape)
 
@@ -84,7 +87,7 @@
 
 **WS protocol** (`/ws`):
 - Client -> Server: `{ type: "subscribe", species: [...] }`, `{ type: "pause" }`, `{ type: "resume" }`
-- Server -> Client: `{ type: "progress", simulation_id, current_time, frame_count }`, `{ type: "timeseries", simulation_id, data: TimeseriesData }`, `{ type: "status", simulation_id, status, error? }`
+- Server -> Client: `{ type: "progress", simulation_id, current_time, frame_count }`, `{ type: "timeseries", simulation_id, data: TimeseriesData }`, `{ type: "status", simulation_id, status, error? }`, `{ type: "phasespace_ready", simulation_id }` (sent after phase-space computation completes; client then fetches `GET /simulations/{id}/phasespace`)
 
 **Pause/resume:** `check_pause!(controller)` is called on every sink event. When paused, the simulation thread blocks on a `Threads.Condition`. Resume notifies the condition.
 
@@ -96,6 +99,7 @@
 5. `PromoterPanel` pre-computes band layout params (yCenter, bandHeight) for every (gene, path) key when `setPathYRanges` or `setMetadata` is called, so streaming doesn't need to guess band dimensions.
 6. Progress-driven time cursor sync moves `viewerStore.currentTimepoint` during simulation.
 7. On completion, the store clears the streaming cache and refetches definitive timeseries via HTTP. `setData` renders the complete result with `SweepAnimation`.
+8. Before calling `untrack()` on status=completed, the store registers `trackPhaseSpace(simId, _onPhaseSpaceReady)`. When the server sends `phasespace_ready`, `_onPhaseSpaceReady` fetches `GET /simulations/{id}/phasespace` and sets `phaseSpaceResult`. `TrackViewer` auto-shows `PhaseSpacePanel` when `isPhaseSpaceAvailable` flips to true. `PhaseSpacePanel` also tries to load a pre-existing phase-space result when `loadResult` is called for an already-completed simulation.
 
 ### Loading UX Pattern
 
@@ -119,7 +123,7 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 | File | Key Types |
 | ------ | ----------- |
 | `types/schedule.ts` | `TimelineSegment` (id, execution_path, model_path, json_path, from, to, label), `StructureNode` (type, execution_path, label, children), `ScheduleData`, `ReifiedSchedule`. Functions: `getPathTimeRanges`, `getSegmentBoundaryTimes`, `getActivePathsAtTime` |
-| `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` (unified; `current_time`, `max_time`, `status` includes `'paused'`), `SimulationStatus`, `getProgress()`, `getMaxTime()`, `formatResultLabel()` |
+| `types/simulation.ts` | `TimeseriesData` = `Record<species, Record<path, [t,v][]>>`, `TimeseriesMetadata`, `SimulationResult` (unified; `current_time`, `max_time`, `status` includes `'paused'`), `SimulationStatus`, `PhaseSpacePoint` (x, y, path, t, colour), `PhaseSpaceResult` (simulation_id, method, axis_labels, axis_top_genes, points, n_genes, n_cells), `getProgress()`, `getMaxTime()`, `formatResultLabel()` |
 | `types/network.ts` | `Node`, `Link` (with `scope: LinkScope`), `LinkScope` (`'all' | 'gene' | 'species'`), `Network`, `UnionNetwork`, `ModelExclusions`, `linkId()`, `MODEL_NODE_KINDS` |
 
 ### Components
@@ -127,7 +131,7 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 | File | Purpose |
 | ------ | --------- |
 | `App.vue` | 3-panel splitter layout |
-| `TrackViewer.vue` | Toolbar (run/load/gene filter/track settings) + MainChart + fullscreen |
+| `TrackViewer.vue` | Toolbar (run/load/gene filter/track settings/phase-space toggle) + MainChart. `showPhaseSpace` ref auto-set true when `isPhaseSpaceAvailable` becomes true; toggles `chart.showPhaseSpace(result)` / `chart.hidePhaseSpace()`. Watches phase-space result + timepoint. |
 | `NetworkDiagram.vue` | Cytoscape graph via `NetworkView`. Model label overlay (bottom-left). Watches `scheduleStore.unionNetwork`. |
 | `ScheduleEditor.vue` | Schedule dropdown + Monaco JSON editor + validation. Watches `viewerStore.hoveredModelPath` and `selectedSegmentIds`; resolves the corresponding `json_path` from loaded segments via `findRangeForJsonPath`, then calls `highlightScope`/`clearScopeHighlight` to highlight and optionally scroll to the active scope in the editor. |
 
@@ -139,11 +143,11 @@ Simulation timeseries: first-ever fetch shows full overlay on chart; subsequent 
 | `utils/jsonPathUtils.ts` | `findRangeForJsonPath(text, path)` — resolves a `(string|number)[]` JSONPath (as produced by the backend's `model_path_to_json_path`) to `{ startOffset, endOffset }` inside a JSON string using `jsonc-parser` |
 | `utils/api.ts` | `apiFetch`, `apiFetchJson`, `apiFetchText` with retry/timeout |
 | `services/scheduleService.ts` | Schedule API: load, save, list, `fetchUnionNetwork`, `fetchNetwork`, `fetchNetworkFromSpec` |
-| `services/simulationService.ts` | Simulation API: `runSimulation`, `loadResult`, `listResults`, `fetchTimeseriesForSpecies` |
+| `services/simulationService.ts` | Simulation API: `runSimulation`, `loadResult`, `listResults`, `fetchTimeseriesForSpecies`, `fetchPhaseSpace(resultId)` (GET `/simulations/{id}/phasespace`, returns `PhaseSpaceResult | null` on 404) |
 
 ### Composables
 
 | File | Purpose |
 | ------ | --------- |
-| `composables/useSimulationStream.ts` | WebSocket connection for live simulation streaming. Singleton via `getSimulationStream()`. Functions: `connect`, `disconnect`, `subscribe(species)`, `pause`, `resume`, `track(id, callbacks)`, `untrack`. Callbacks: `ProgressCallback`, `TimeseriesCallback`, `StatusCallback`. Auto-reconnect on disconnect. |
+| `composables/useSimulationStream.ts` | WebSocket connection for live simulation streaming. Singleton via `getSimulationStream()`. Functions: `connect`, `disconnect`, `subscribe(species)`, `pause`, `resume`, `track(id, callbacks)`, `untrack` (clears only progress/timeseries/status callbacks), `trackPhaseSpace(simId, cb)` (separate callback that survives `untrack()`), `clearPhaseSpaceTracking()`. Callbacks: `ProgressCallback`, `TimeseriesCallback`, `StatusCallback`, `PhaseSpaceReadyCallback`. Handles `phasespace_ready` WS message type. Auto-reconnect on disconnect. |
 | `composables/useMonacoEditor.ts` | Monaco editor lifecycle: `init`, `setValue`, `getContent`, `updateOptions`, `dispose`. Scope highlighting: `highlightScope(startOffset, endOffset, scroll?)` adds a decoration (`scope-highlight` + `scope-highlight-gutter` CSS classes) and optionally scrolls; `clearScopeHighlight()` removes it. |

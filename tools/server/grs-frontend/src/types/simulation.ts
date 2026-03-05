@@ -75,6 +75,24 @@ export function restructureTimeseriesByPathAndGene(
     return result
 }
 
+export interface PhaseSpacePoint {
+    x: number
+    y: number
+    path: string
+    t: number
+    colour: string
+}
+
+export interface PhaseSpaceResult {
+    simulation_id: string
+    method: string
+    axis_labels: string[]
+    axis_top_genes: string[]
+    points: PhaseSpacePoint[]
+    n_genes: number
+    n_cells: number
+}
+
 export function formatResultLabel(result: SimulationResult | undefined | null): string {
     if (!result) return ''
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useScheduleStore } from './scheduleStore'
-import type { SimulationResult, TimeseriesData } from '@/types/simulation'
+import type { SimulationResult, TimeseriesData, PhaseSpaceResult } from '@/types/simulation'
 import { formatResultLabel, getProgress } from '@/types/simulation'
 import { getTimeExtent } from '@/types/schedule'
 import * as simulationService from '@/services/simulationService'
@@ -47,6 +47,12 @@ export const useSimulationStore = defineStore(
         /** Latest streaming delta from WS (consumed by TrackViewer for appendStreamingData). */
         const streamingDelta = ref<TimeseriesData | null>(null)
 
+        /** Phase-space embedding result, available once server has finished computing it. */
+        const phaseSpaceResult = ref<PhaseSpaceResult | null>(null)
+
+        /** True while the server is computing the phase-space embedding post-simulation. */
+        const isPhaseSpacePending = ref(false)
+
         // =====================================================================
         // COMPUTED
         // =====================================================================
@@ -56,6 +62,8 @@ export const useSimulationStore = defineStore(
         const currentResultLabel = computed(() => formatResultLabel(currentResult.value))
 
         const isLoaded = computed(() => currentResult.value !== null)
+
+        const isPhaseSpaceAvailable = computed(() => phaseSpaceResult.value !== null)
 
         const progress = computed((): number => {
             if (!currentResult.value) return 0
@@ -182,6 +190,14 @@ export const useSimulationStore = defineStore(
             if (status === 'completed' || status === 'error') {
                 isSimulationRunning.value = false
                 isPaused.value = false
+
+                // Register phase-space callback BEFORE untrack() so the WS connection is still open
+                if (status === 'completed') {
+                    const simId = currentResult.value.id
+                    isPhaseSpacePending.value = true
+                    getSimulationStream().trackPhaseSpace(simId, (id) => { _onPhaseSpaceReady(id) })
+                }
+
                 getSimulationStream().untrack()
 
                 // Refetch definitive timeseries from server (replaces streaming cache)
@@ -202,6 +218,15 @@ export const useSimulationStore = defineStore(
             }
         }
 
+        async function _onPhaseSpaceReady(simId: string): Promise<void> {
+            console.debug(`[SimulationStore] _onPhaseSpaceReady: simId=${simId}`)
+            const data = await simulationService.fetchPhaseSpace(simId)
+            phaseSpaceResult.value = data
+            isPhaseSpacePending.value = false
+            getSimulationStream().clearPhaseSpaceTracking()
+            console.debug(`[SimulationStore] Phase space loaded: ${data?.n_cells ?? 0} cells, method=${data?.method ?? 'n/a'}`)
+        }
+
         /** Update the set of species streamed via WS based on selected genes. */
         function updateStreamSubscription(genes: string[]): void {
             if (!isSimulationRunning.value) return
@@ -219,6 +244,8 @@ export const useSimulationStore = defineStore(
             isLoadingResult.value = true
             try {
                 clearTimeseriesCache()
+                phaseSpaceResult.value = null
+                isPhaseSpacePending.value = false
                 const result = await simulationService.loadResult(resultId)
                 currentResult.value = result
 
@@ -232,6 +259,14 @@ export const useSimulationStore = defineStore(
                 if (genes.length > 0) {
                     await fetchGeneTimeseries(genes.slice(0, DEFAULT_STREAM_GENE_COUNT))
                 }
+
+                // Try to load a pre-computed phase-space embedding (best-effort).
+                simulationService.fetchPhaseSpace(resultId).then(ps => {
+                    phaseSpaceResult.value = ps
+                    console.debug(`[SimulationStore] Phase space for loaded result: ${ps ? ps.n_cells + ' cells' : 'not available'}`)
+                }).catch(e => {
+                    console.warn('[SimulationStore] fetchPhaseSpace failed:', e)
+                })
             } finally {
                 isLoadingResult.value = false
             }
@@ -328,6 +363,8 @@ export const useSimulationStore = defineStore(
             isSimulationRunning.value = false
             isPaused.value = false
             isPreparingSimulation.value = false
+            phaseSpaceResult.value = null
+            isPhaseSpacePending.value = false
             clearTimeseriesCache()
         }
 
@@ -336,6 +373,8 @@ export const useSimulationStore = defineStore(
             isSimulationRunning.value = false
             isPaused.value = false
             isPreparingSimulation.value = false
+            phaseSpaceResult.value = null
+            isPhaseSpacePending.value = false
             clearTimeseriesCache()
         }
 
@@ -371,6 +410,9 @@ export const useSimulationStore = defineStore(
             isLoadingResult,
             isFetchingTimeseries,
             isPreparingSimulation,
+            phaseSpaceResult,
+            isPhaseSpacePending,
+            isPhaseSpaceAvailable,
             currentResultId,
             currentResultLabel,
             isLoaded,

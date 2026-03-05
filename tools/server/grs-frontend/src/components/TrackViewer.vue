@@ -18,6 +18,7 @@ import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
 import { MainChart } from '@/charts/MainChart'
 import { useTheme } from '@/composables/useTheme'
+import { buildClientPhaseSpace } from '@/charts/phaseSpaceBuilder'
 import { GREEN } from '@/config/theme'
 
 const simulationStore = useSimulationStore()
@@ -26,6 +27,8 @@ const viewerStore = useViewerStore()
 const { isDark, onThemeChange } = useTheme()
 
 const DEFAULT_SELECTED_GENES_COUNT = 5
+/** Maximum genes to fetch/render at once (selection can exceed this). */
+const MAX_RENDERED_GENES = 5
 
 const containerRef = ref<HTMLDivElement>()
 const results = ref<SimulationResult[]>([])
@@ -33,6 +36,7 @@ const isFullscreen = ref<boolean>(false)
 const selectedTracks = ref<string[]>([])
 const trackSettingsPanel = ref()
 const previousGeneSelection = ref<string[] | null>(null)
+const showPhaseSpace = ref(false)
 
 const chart = new MainChart()
 
@@ -114,6 +118,52 @@ watch(
     }
 )
 
+/** Active phase-space result: client-side for 1-2 genes, server-precomputed otherwise. */
+const activePhaseSpaceResult = computed(() => {
+    const genes = viewerStore.selectedGenes
+    const timeseries = simulationStore.timeseries
+    const metadata = scheduleStore.timeseriesMetadata
+    const resultId = simulationStore.currentResult?.id
+
+    if (genes.length >= 1 && genes.length <= 2 && timeseries && metadata && resultId) {
+        return buildClientPhaseSpace(timeseries, genes, metadata.gene_colours, resultId)
+    }
+    return simulationStore.phaseSpaceResult
+})
+
+watch(
+    () => activePhaseSpaceResult.value !== null,
+    (available) => {
+        if (available) showPhaseSpace.value = true
+    }
+)
+
+// When showPhaseSpace toggles (button or auto-set), show/hide in MainChart
+watch(showPhaseSpace, (show) => {
+    if (show && activePhaseSpaceResult.value) {
+        chart.showPhaseSpace(activePhaseSpaceResult.value)
+    } else {
+        chart.hidePhaseSpace()
+    }
+})
+
+// When active phase-space result changes, update the chart
+watch(activePhaseSpaceResult, (result) => {
+    if (result && showPhaseSpace.value) {
+        chart.setPhaseSpaceData(result)
+    }
+})
+
+// When timepoint changes, update highlighted position in phase space
+watch(
+    () => viewerStore.currentTimepoint,
+    (t) => {
+        if (activePhaseSpaceResult.value && showPhaseSpace.value) {
+            chart.setPhaseSpaceTimepoint(t)
+        }
+    }
+)
+
 watch(
     () => ({ structure: scheduleStore.schedule.data?.structure, segments: scheduleStore.segments, metadata: scheduleStore.timeseriesMetadata }),
     async ({ structure, segments, metadata }) => {
@@ -155,21 +205,22 @@ watch(
     () => viewerStore.selectedGenes,
     async (genes) => {
         if (!simulationStore.isLoaded || genes.length === 0) return
+        const capped = genes.slice(0, MAX_RENDERED_GENES)
 
         // During streaming, only update WS subscription (HTTP fetch deferred to completion)
         if (simulationStore.isSimulationRunning) {
-            simulationStore.updateStreamSubscription(genes)
+            simulationStore.updateStreamSubscription(capped)
             return
         }
 
-        await simulationStore.fetchGeneTimeseries(genes)
+        await simulationStore.fetchGeneTimeseries(capped)
     },
     { deep: true }
 )
 
 /** Push current simulation data to chart, filtered by selected genes/paths. */
 function refreshSimulationData(): void {
-    const genes = viewerStore.selectedGenes
+    const genes = viewerStore.selectedGenes.slice(0, MAX_RENDERED_GENES)
     const paths = viewerStore.selectedPaths
     const pathArray = paths ? [...paths] : null
     const visibleData = simulationStore.getTimeseries(genes, pathArray)
@@ -205,10 +256,13 @@ onMounted(async () => {
             chart.deselectSegment()
             viewerStore.selectSegments(null)
         }
-        if (selectedGenes.length === 1) {
-            previousGeneSelection.value = [...viewerStore.selectedGenes]
-            viewerStore.selectedGenes = [selectedGenes[0]!]
-        } else if (selectedGenes.length === 0 && previousGeneSelection.value) {
+        if (selectedGenes.length > 0) {
+            // Save the full selection before narrowing (only on first narrowing)
+            if (!previousGeneSelection.value) {
+                previousGeneSelection.value = [...viewerStore.selectedGenes]
+            }
+            viewerStore.selectedGenes = [...selectedGenes]
+        } else if (previousGeneSelection.value) {
             console.debug(`[TrackViewer] Restoring previous selection: [${previousGeneSelection.value}]`)
             viewerStore.selectedGenes = previousGeneSelection.value
             previousGeneSelection.value = null
@@ -241,6 +295,19 @@ onMounted(async () => {
         viewerStore.setHoveredInstantModel(modelPath)
     })
 
+    chart.onPhaseSpacePathSelect((path: string) => {
+        viewerStore.selectExecutionPath(path)
+    })
+
+    chart.onPhaseSpaceHover((info) => {
+        if (info) {
+            viewerStore.setTimepoint(info.t)
+            viewerStore.setHoveredRectModel(null, info.path)
+        } else {
+            viewerStore.setHoveredRectModel(null, null)
+        }
+    })
+
     window.addEventListener('keydown', handleEscapeKey)
 })
 
@@ -261,9 +328,11 @@ async function loadResult(event: SelectChangeEvent) {
     await simulationStore.loadResult(selectedResultId)
 
     // If schedule was same spec, watchers won't fire -- explicitly fetch timeseries
-    const genes = viewerStore.selectedGenes
+    const genes = viewerStore.selectedGenes.slice(0, MAX_RENDERED_GENES)
     if (genes.length > 0 && simulationStore.isLoaded) {
         await simulationStore.fetchGeneTimeseries(genes)
+        // Watcher skips during active fetch; explicitly refresh once fetch completes
+        refreshSimulationData()
     }
 }
 
@@ -293,6 +362,8 @@ function clearSimulation() {
         simulationStore.cancelSimulation()
     }
     chart.clearSimulationData()
+    chart.hidePhaseSpace()
+    showPhaseSpace.value = false
     simulationStore.clearResult()
     selectedTracks.value = scheduleStore.isLoaded ? ['schedule'] : []
     // Reset streaming buffer
@@ -564,6 +635,17 @@ defineExpose({
 
                     <Button
                         v-if="simulationStore.currentResultId"
+                        :icon="showPhaseSpace ? 'pi pi-chart-scatter' : 'pi pi-chart-scatter'"
+                        :disabled="isScheduleLoading"
+                        size="small"
+                        text
+                        :severity="showPhaseSpace ? 'secondary' : undefined"
+                        @click="showPhaseSpace = !showPhaseSpace"
+                        title="Toggle phase space view"
+                    />
+
+                    <Button
+                        v-if="simulationStore.currentResultId"
                         icon="pi pi-sliders-v"
                         :disabled="isScheduleLoading"
                         size="small"
@@ -710,7 +792,8 @@ defineExpose({
 }
 
 .chart-container {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     height: 100%;
 }
 

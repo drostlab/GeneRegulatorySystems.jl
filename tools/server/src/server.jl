@@ -18,6 +18,7 @@ include("schedule_storage.jl")
 include("schedule_visualisation.jl")
 include("simulation_controller.jl")
 include("simulation.jl")
+include("phasespace.jl")
 
 # Use submodules
 using .ScheduleStorage
@@ -25,6 +26,7 @@ using .StreamingSink
 using .Simulation
 using .SimulationController_
 using .ScheduleVisualization
+using .PhaseSpace
 using Base: @kwdef
 
 
@@ -106,6 +108,15 @@ end
     result = Simulation.load_result(id)
     isnothing(result) && throw("Result not found")
     return result::Simulation.SimulationResult
+end
+
+# get phase-space result for a completed simulation
+@get "/simulations/{id}/phasespace" function(_, id::String)
+    result = Simulation.load_result(id)
+    isnothing(result) && return HTTP.Response(404, "Result not found")
+    ps = PhaseSpace.load_phasespace(result.path)
+    isnothing(ps) && return HTTP.Response(404, "Phase-space result not available")
+    return ps
 end
 
 @kwdef struct TimeseriesRequest
@@ -203,10 +214,48 @@ end
     )
     active_controller[] = ctrl
 
+    # Compute gene colours for phase-space colouring (dryrun, tolerates errors).
+    gene_colours = try
+        ScheduleVisualization.gene_colours_from_spec(data.payload.schedule_spec)
+    catch e
+        @warn "[Server] Could not compute gene_colours for phase-space" exception=e
+        Dict{String,String}()
+    end
+
     # Spawn async simulation task
     simulation_task[] = @async begin
         Simulation.run_simulation(result, model, current_ws; controller = ctrl)
         active_controller[] = nothing
+
+        # After simulation completes, compute phase-space embedding on a thread
+        # so we don't block the event loop.  Notify the client when ready.
+        local sim_id   = result.id
+        local res_path = result.path
+        Threads.@spawn begin
+            @info "[PhaseSpace] Spawning computation" sim_id
+            ps = try
+                PhaseSpace.compute_and_store(res_path, sim_id, gene_colours)
+            catch e
+                @error "[PhaseSpace] Computation failed" sim_id exception=e
+                nothing
+            end
+            if !isnothing(ps)
+                lock(WS_LOCK) do
+                    ws = ws_client[]
+                    if !isnothing(ws)
+                        try
+                            send(ws, JSON.json(Dict(
+                                "type"          => "phasespace_ready",
+                                "simulation_id" => sim_id,
+                            )))
+                            @info "[PhaseSpace] Notified client" sim_id
+                        catch e
+                            @warn "[PhaseSpace] WS notification failed" sim_id exception=e
+                        end
+                    end
+                end
+            end
+        end
     end
 
     # Return immediately with status=running

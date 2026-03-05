@@ -1,5 +1,8 @@
 import type { StructureNode, TimelineSegment } from '@/types/schedule'
 
+/** Maximum concurrently visible execution-path rows in the timeline. */
+const MAX_TIMELINE_PATHS = 10
+
 export interface LayoutRectangle {
     segmentId: number
     executionPath: string
@@ -23,7 +26,9 @@ export function layoutRectangles(
 
     const rectangles: LayoutRectangle[] = []
     for (const [, segs] of segmentsByPath) {
-        const { yMin: rectYMin, yMax: rectYMax } = yRanges.get(segs[0]!.execution_path) ?? { yMin, yMax }
+        const range = yRanges.get(segs[0]!.execution_path)
+        if (!range) continue  // path excluded by cap
+        const { yMin: rectYMin, yMax: rectYMax } = range
         for (const seg of segs) {
             rectangles.push({
                 segmentId: seg.id,
@@ -104,6 +109,12 @@ function computeYRanges(
         const sb = pathSpans.get(b)!
         return sa.from - sb.from || a.localeCompare(b, undefined, { numeric: true })
     })
+
+    // Cap to avoid overcrowded layout; excess paths are simply not rendered
+    if (durationPaths.length > MAX_TIMELINE_PATHS) {
+        console.debug(`[rectangleLayout] Capping ${durationPaths.length} paths to ${MAX_TIMELINE_PATHS}`)
+        durationPaths.length = MAX_TIMELINE_PATHS
+    }
 
     // Greedy interval-graph colouring using actual segment-level overlap
     const bandByPath = greedyBandAssign(durationPaths, segmentsByPath)

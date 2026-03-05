@@ -19,5 +19,7 @@ export type {
     TimeseriesData,
     TimeseriesMetadata,
     SimulationStatus,
-    SimulationResult
+    SimulationResult,
+    PhaseSpacePoint,
+    PhaseSpaceResult
 } from './simulation'
