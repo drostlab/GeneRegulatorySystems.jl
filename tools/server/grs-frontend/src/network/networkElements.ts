@@ -284,6 +284,7 @@ function buildEdgeElement(
     const isSelfLoop = source === target
 
     const at = (link.properties.at as number) ?? 1
+    const isPeripheral = link.properties.peripheral === true
     const weight = 1 / Math.max(at, 0.1)
 
     return {
@@ -300,7 +301,7 @@ function buildEdgeElement(
             originalLinkIds: originalLinkIds ?? [linkId(link)],
             ...link.properties,
         },
-        classes: `${link.kind}${isSelfLoop ? ' loop' : ''}`,
+        classes: `${link.kind}${isSelfLoop ? ' loop' : ''}${isPeripheral ? ' peripheral' : ''}`,
     }
 }
 

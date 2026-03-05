@@ -150,11 +150,16 @@ export class NetworkView {
             // Strong repulsion to avoid overlap
             nodeRepulsion: 50000,
             idealEdgeLength: (edge: any) => {
+                if (edge.data('kind') === 'differentiation_tree') return 10
                 const weight = edge.data('weight') ?? 1
                 // Softer scaling: sqrt dampens extreme differences
-                return 100 / Math.sqrt(weight)
+                return 150 / Math.sqrt(weight)
             },
-            edgeElasticity: 0.2,
+            edgeElasticity: (edge: any) => {
+                if (edge.data('kind') === 'differentiation_tree') return 0.05
+                if (edge.hasClass('peripheral')) return 0.02
+                return 0.45
+            },
             nestingFactor: 0.1,
             gravity: 32.8,
             numIter: 1000,

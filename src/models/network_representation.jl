@@ -363,8 +363,12 @@ function entity(definition::V1.Definition, f!::Wrapped; include_reactions::Bool=
 end
 
 function _collect_core_symbols(t::Differentiation.Transient, symbols::Set{Symbol})
-    _collect_core_symbols(t.differentiator, symbols)
-    _collect_core_symbols(t.timer, symbols)
+    # Timer genes are created anonymous (name = Symbol()) in RandomDifferentiation
+    # and renamed to "$(differentiator)_timer" by Differentiation.build.
+    # Derive the timer name from the differentiator to match what ends up in the V1 model.
+    diff_name = _diff_node_name(t.differentiator)
+    push!(symbols, diff_name)
+    push!(symbols, Symbol("$(diff_name)_timer"))
     _collect_core_symbols(t.next, symbols)
     _collect_core_symbols(t.alternative, symbols)
 end
@@ -375,6 +379,39 @@ end
 
 function _collect_core_symbols(g::V1.Gene, symbols::Set{Symbol})
     push!(symbols, g.name)
+end
+
+# Collect timer gene names by deriving from differentiator names (same convention as make_timer!).
+function _collect_timer_symbols!(t::Differentiation.Transient, symbols::Set{Symbol})
+    diff_name = _diff_node_name(t.differentiator)
+    push!(symbols, Symbol("$(diff_name)_timer"))
+    _collect_timer_child!(t.next, symbols)
+    _collect_timer_child!(t.alternative, symbols)
+end
+_collect_timer_child!(t::Differentiation.Transient, symbols) = _collect_timer_symbols!(t, symbols)
+_collect_timer_child!(::Any, ::Any) = nothing
+
+# Helpers to extract a gene name from a differentiator/leaf, which may be a V1.Gene or plain Symbol.
+_diff_node_name(g::V1.Gene)::Symbol = g.name
+_diff_node_name(s::Symbol)::Symbol = s
+
+# Traverse the differentiation tree and emit invisible spring edges (scope=:gene, weight=0.5).
+function _collect_tree_links!(t::Differentiation.Transient, links::Vector{Link})
+    parent_name = _diff_node_name(t.differentiator)
+    _collect_tree_child_link!(parent_name, t.next, links)
+    _collect_tree_child_link!(parent_name, t.alternative, links)
+end
+
+function _collect_tree_child_link!(parent::Symbol, child::Differentiation.Transient, links::Vector{Link})
+    child_name = _diff_node_name(child.differentiator)
+    push!(links, Link(kind=:differentiation_tree, from=parent, to=child_name,
+                      scope=:gene, properties=Dict{Symbol,Any}(:weight => 0.5)))
+    _collect_tree_links!(child, links)
+end
+
+function _collect_tree_child_link!(parent::Symbol, child::Union{V1.Gene, Symbol}, links::Vector{Link})
+    push!(links, Link(kind=:differentiation_tree, from=parent, to=_diff_node_name(child),
+                      scope=:gene, properties=Dict{Symbol,Any}(:weight => 0.5)))
 end
 
 function entity(definition::Differentiation.Definition, f!::Wrapped; kw...)
@@ -396,12 +433,15 @@ function entity(definition::Differentiation.Definition, f!::Wrapped; kw...)
     peripheral_nodes = [n for n in v1_entity.nodes if n.name ∉ core_symbols]
     peripheral_links = [l for l in v1_entity.links if !(l.from in core_symbols && l.to in core_symbols)]
 
+    tree_links = Link[]
+    _collect_tree_links!(definition.differentiation, tree_links)
+
     Entity(
         kind=:differentiation_model,
         name=:differentiation_model,
         properties=v1_entity.properties,
         nodes=vcat([diff_core], peripheral_nodes),
-        links=peripheral_links
+        links=vcat(peripheral_links, tree_links)
     )
 end
 
@@ -415,24 +455,76 @@ entity(f!::Instant; kw...) = Entity(kind=:instant, name=:instant)
 # Kronecker networks: always skip species/reaction detail (too large)
 function entity(definition::KroneckerNetworks.Definition, f!::Wrapped; include_reactions=true, kw...)
     v1_entity = entity(f!.model; include_reactions=false, kw...)
+    tagged_nodes = [
+        Entity(kind=n.kind, name=n.name,
+               properties=merge(n.properties, Dict(:model_kind => "kronecker")),
+               nodes=n.nodes, links=n.links)
+        for n in v1_entity.nodes
+    ]
     Entity(
         kind=:kronecker_network,
         name=:kronecker_network,
         properties=v1_entity.properties,
-        nodes=v1_entity.nodes,
+        nodes=tagged_nodes,
         links=v1_entity.links
     )
 end
 
-# Random differentiation: always skip species/reaction detail (too large)
+# Random differentiation: always skip species/reaction detail (too large).
+# Tags timer and peripheral (Kronecker) nodes within the differentiation_model entity.
 function entity(definition::RandomDifferentiation.Definition, f!::Wrapped; include_reactions=true, kw...)
-    v1_entity = entity(f!.model; include_reactions=false, kw...)
+    diff_def = f!.model.definition  # Differentiation.Definition (already instantiated)
+    base_entity = entity(f!.model; include_reactions=false, kw...)
+
+    core_symbols = Set{Symbol}()
+    _collect_core_symbols(diff_def.differentiation, core_symbols)
+    timer_symbols = Set{Symbol}()
+    _collect_timer_symbols!(diff_def.differentiation, timer_symbols)
+
+    function _tag(n::Entity)
+        n.kind != :gene && return n
+        if n.name ∉ core_symbols
+            return Entity(kind=n.kind, name=n.name,
+                properties=merge(n.properties, Dict(:model_kind => "kronecker")),
+                nodes=n.nodes, links=n.links)
+        elseif n.name ∈ timer_symbols
+            return Entity(kind=n.kind, name=n.name,
+                properties=merge(n.properties, Dict(:model_kind => "timer")),
+                nodes=n.nodes, links=n.links)
+        end
+        return n
+    end
+
+    # base_entity.nodes = [diff_core_entity, peripheral_gene1, ...]
+    # diff_core_entity.nodes = [core_gene1, ...]
+    tagged_nodes = map(base_entity.nodes) do child
+        if child.kind == :differentiation_core
+            Entity(kind=child.kind, name=child.name, properties=child.properties,
+                   nodes=map(_tag, child.nodes), links=child.links)
+        else
+            _tag(child)
+        end
+    end
+
+    # Tag regulatory links that involve at least one peripheral (Kronecker) node.
+    tagged_links = map(base_entity.links) do l
+        if l.from ∉ core_symbols || l.to ∉ core_symbols
+            Link(kind=l.kind, from=l.from, to=l.to, scope=l.scope,
+                 properties=merge(l.properties, Dict{Symbol,Any}(:peripheral => true)))
+        else
+            l
+        end
+    end
+
+    tree_links = Link[]
+    _collect_tree_links!(diff_def.differentiation, tree_links)
+
     Entity(
         kind=:random_differentiation,
         name=:random_differentiation,
-        properties=v1_entity.properties,
-        nodes=v1_entity.nodes,
-        links=v1_entity.links
+        properties=base_entity.properties,
+        nodes=tagged_nodes,
+        links=vcat(tagged_links, tree_links)
     )
 end
 

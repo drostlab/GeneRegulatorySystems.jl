@@ -9,7 +9,7 @@ module ScheduleVisualization
 
 using GeneRegulatorySystems
 using GeneRegulatorySystems.Models
-using GeneRegulatorySystems.Models: Wrapped, Instant, Label, Descriptions
+using GeneRegulatorySystems.Models: Wrapped, Instant, Label, Descriptions, Differentiation, KroneckerNetworks, RandomDifferentiation
 using GeneRegulatorySystems.Models.V1
 using GeneRegulatorySystems.Models.Plumbing
 using GeneRegulatorySystems.Models.Scheduling
@@ -167,10 +167,9 @@ function reify_schedule(spec_string::String; name::String="", source::String="sn
             specification = Specifications.Specification(spec; bound = Set(keys(bindings)))
             grs_schedule = GRSSchedule(; specification, bindings)
 
-            segments, genes = _collect_segments(grs_schedule)
+            segments, genes, gene_colours = _collect_segments(grs_schedule)
             merged = _merge_contiguous_segments(segments)
             structure = _build_structure_tree(grs_schedule)
-            gene_colours = _generate_gene_colours(genes)
 
             @info "Schedule visualisation generated" name segments=length(merged) genes=length(genes) elapsed=(time() - vis_start)
 
@@ -405,13 +404,15 @@ end
 # ============================================================================
 
 """
-Collect all raw segments and gene names from a single dryrun pass.
-Returns (segments, gene_names) — gene names are deduplicated per model_path.
+Collect all raw segments, gene names, and gene colours from a single dryrun pass.
+Gene colours are generated per-model using dispatch (`_gene_colours`).
+Returns `(segments, gene_names, gene_colours)` — deduplicated per model_path.
 """
-function _collect_segments(grs_schedule)::Tuple{Vector{TimelineSegment}, Vector{String}}
+function _collect_segments(grs_schedule)::Tuple{Vector{TimelineSegment}, Vector{String}, Dict{String, String}}
     segments = TimelineSegment[]
     next_id = Ref(1)
     genes = Set{String}()
+    gene_colours = Dict{String, String}()
     seen_model_paths = Set{String}()
 
     # TODO: use a custom approach to collect segments
@@ -438,11 +439,12 @@ function _collect_segments(grs_schedule)::Tuple{Vector{TimelineSegment}, Vector{
             for name in _gene_names(primitive!)
                 push!(genes, string(name))
             end
+            merge!(gene_colours, _gene_colours(primitive!))
         end
     end
 
     grs_schedule(Models.FlatState(); dryrun = dryrun_collector)
-    return (segments, sort(collect(genes)))
+    return (segments, sort(collect(genes)), gene_colours)
 end
 
 """
@@ -635,17 +637,119 @@ _gene_names(_) = Symbol[]  # fallback for non-gene models (e.g. resampling)
 # Internal: Gene Colours
 # ============================================================================
 
+_hsl_hex(h::Float64, s::Float64, l::Float64)::String =
+    "#$(hex(convert(RGB, HSL(h, s, l))))"
+
+# Generate maximally-distinct pastel colours for a plain list of gene names.
 function _generate_gene_colours(gene_names::Vector{String})::Dict{String, String}
     isempty(gene_names) && return Dict{String, String}()
-
     seed = [colorant"white", colorant"black", colorant"crimson", colorant"green"]
     colors = distinguishable_colors(length(gene_names), seed, dropseed = true)
     # Pastel: low saturation, high value
     colors = [let hsv = HSV(c); HSV(hsv.h, hsv.s * 0.65, min(hsv.v * 1.8, 1.0)) end for c in colors]
     colors = convert.(RGB, colors)
-
     return Dict(string(gene) => "#$(hex(colors[i]))" for (i, gene) in enumerate(gene_names))
 end
+
+# Evenly-spaced gray shades between light and dark for Kronecker/peripheral genes.
+function _gray_colours(gene_names::Vector{String})::Dict{String, String}
+    isempty(gene_names) && return Dict{String, String}()
+    n = length(gene_names)
+    return Dict(
+        name => _hsl_hex(0.0, 0.0, 0.62 - 0.20 * (i - 1) / max(1, n - 1))
+        for (i, name) in enumerate(gene_names)
+    )
+end
+
+# ── Differentiation tree colouring ──────────────────────────────────────────
+# Top-down arc-splitting: the root owns a centre hue and a total arc.
+# Each level splits the arc in half and assigns left/right children to the
+# two sub-centres.  The parent hue is structurally the midpoint of its
+# children — proper paint-mixing by construction, no bottom-up pass needed.
+# Saturation and lightness scale up with depth so leaves are vivid and
+# ancestors are progressively muddier.
+
+_diff_gene_name(g::V1.Gene)::Symbol = g.name
+_diff_gene_name(s::Symbol)::Symbol  = s
+
+# Centre hue (degrees) and initial half-arc for the root differentiator.
+# The range [centre-arc … centre+arc] at full depth stays well clear of
+# pure red (0°/360°) and pure green (120°).
+const _DIFF_HUE_CENTER      = 220.0   # blue
+const _DIFF_HUE_INITIAL_ARC = 100.0   # ± from centre at root; doubles down the tree
+
+_diff_saturation(depth::Int)::Float64 = clamp(0.18 + depth * 0.14, 0.18, 0.78)
+_diff_lightness(depth::Int)::Float64  = clamp(0.30 + depth * 0.08, 0.30, 0.64)
+
+# Assign colour to a Transient node then recurse into children.
+# `centre` is the hue for this node; `half_arc` is half the arc it owns.
+function _assign_diff_colours!(
+    t::Differentiation.Transient,
+    centre::Float64,
+    half_arc::Float64,
+    depth::Int,
+    colours::Dict{String, String},
+)
+    hue = mod(centre, 360.0)
+    s   = _diff_saturation(depth)
+    l   = _diff_lightness(depth)
+    colours[string(_diff_gene_name(t.differentiator))] = _hsl_hex(hue, s, l)
+    # Timer: same hue, lighter and less saturated (name derived per make_timer! convention)
+    timer_name = Symbol(string(_diff_gene_name(t.differentiator)) * "_timer")
+    colours[string(timer_name)] = _hsl_hex(hue, max(s - 0.12, 0.08), min(l + 0.18, 0.82))
+    child_half = half_arc / 2.0
+    _assign_diff_child!(t.next,        centre - half_arc / 2.0, child_half, depth + 1, colours)
+    _assign_diff_child!(t.alternative, centre + half_arc / 2.0, child_half, depth + 1, colours)
+end
+
+# Recurse into a child that is itself a Transient.
+function _assign_diff_child!(t::Differentiation.Transient, centre, half_arc, depth, colours)
+    _assign_diff_colours!(t, centre, half_arc, depth, colours)
+end
+
+# Leaf: just assign the colour at the given hue.
+function _assign_diff_child!(g::V1.Gene, centre, _, depth, colours)
+    colours[string(g.name)] = _hsl_hex(mod(centre, 360.0), _diff_saturation(depth), _diff_lightness(depth))
+end
+function _assign_diff_child!(sym::Symbol, centre, _, depth, colours)
+    colours[string(sym)] = _hsl_hex(mod(centre, 360.0), _diff_saturation(depth), _diff_lightness(depth))
+end
+
+# Generate colours for a fully-instantiated Differentiation.Definition.
+# Core differentiators → tree hues; timers → same hue lighter; peripheral → grays.
+function _diff_colours(def::Differentiation.Definition)::Dict{String, String}
+    colours = Dict{String, String}()
+    _assign_diff_colours!(def.differentiation, _DIFF_HUE_CENTER, _DIFF_HUE_INITIAL_ARC, 0, colours)
+    peripheral_names = String[string(g.name) for g in def.peripheral.genes]
+    merge!(colours, _gray_colours(peripheral_names))
+    return colours
+end
+
+# ── Per-model dispatch ───────────────────────────────────────────────────────
+
+_gene_colours(primitive::Primitive)             = _gene_colours(primitive.f!)
+_gene_colours(wrapped::Wrapped)                 = _gene_colours(wrapped.definition, wrapped)
+
+# Random differentiation: delegate to the instantiated Differentiation.Definition
+function _gene_colours(::RandomDifferentiation.Definition, wrapped::Wrapped)
+    _diff_colours(wrapped.model.definition)
+end
+
+# Plain differentiation: fall through to V1 via generic descent
+function _gene_colours(::KroneckerNetworks.Definition, wrapped::Wrapped)
+    gene_names = String[string(g.name) for g in wrapped.model.definition.genes]
+    _gray_colours(gene_names)
+end
+
+# Plain V1: maximally-distinct pastel colours
+function _gene_colours(def::V1.Definition, ::Wrapped)
+    gene_names = String[string(g.name) for g in def.genes]
+    _generate_gene_colours(gene_names)
+end
+
+# Descend through unrecognised Wrapped layers
+_gene_colours(_, wrapped::Wrapped) = _gene_colours(wrapped.model)
+_gene_colours(_)                   = Dict{String, String}()
 
 # ============================================================================
 # Internal: Validation

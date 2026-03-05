@@ -51,7 +51,7 @@ export function linkId(link: Link): string {
 /** Node kinds that represent container/model-level nodes (filtered out of visualisation). */
 export const MODEL_NODE_KINDS = new Set([
     'v1_model', 'reaction_system', 'differentiation_model',
-    'differentiation_core', 'kronecker_network', 'instant'
+    'differentiation_core', 'kronecker_network', 'instant', 'random_differentiation'
 ])
 
 /** Species names representing cellular machinery (filtered out of visualisation). */

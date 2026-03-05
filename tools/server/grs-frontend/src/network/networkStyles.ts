@@ -32,6 +32,13 @@ export const EDGE_COLOURS = THEME_EDGE_COLOURS
 /** Gene node base dimensions. */
 export const GENE_BASE = { width: 120, height: 50 }
 
+/** Kronecker gene node dimensions (circle). */
+export const KRONECKER_SIZE = 3
+/** Timer gene node dimensions (circle, slightly larger than kronecker, dashed border). */
+export const TIMER_SIZE = 20
+/** Opacity for peripheral (Kronecker) nodes and edges. */
+export const PERIPHERAL_OPACITY = 0.5
+
 /** Min/max compound-node padding for dynamic sizing in species view. */
 export const COMPOUND_PADDING_RANGE = { min: 6, max: 40 }
 
@@ -101,6 +108,32 @@ export function buildStylesheet(isDark = false): any[] {
                 'text-wrap': 'none' as any,
                 'text-max-width': '9999px',
                 'color': t.network.geneLabelText,
+            } as any,
+        },
+        // -- kronecker (peripheral) gene: tiny circle, no label --
+        {
+            selector: 'node.gene[model_kind = "kronecker"]',
+            style: {
+                'shape': 'ellipse',
+                'width': KRONECKER_SIZE,
+                'height': KRONECKER_SIZE,
+                'font-size': 7,
+                'min-width': `${KRONECKER_SIZE}px`,
+                'min-height': `${KRONECKER_SIZE}px`,
+                'opacity': PERIPHERAL_OPACITY,
+            } as any,
+        },
+        // -- timer gene: small circle, dashed border, slightly larger than kronecker --
+        {
+            selector: 'node.gene[model_kind = "timer"]',
+            style: {
+                'shape': 'ellipse',
+                'width': TIMER_SIZE,
+                'height': TIMER_SIZE,
+                'font-size': 7,
+                'min-width': `${TIMER_SIZE}px`,
+                'min-height': `${TIMER_SIZE}px`,
+                'border-color': 'data(nodeColour)'
             } as any,
         },
         // -- orphan species (shown at gene level, circle) --
@@ -194,11 +227,12 @@ export function buildStylesheet(isDark = false): any[] {
                 'z-index': 109,
             } as any,
         },
-        // -- gene-view regulatory edges: width scaled by binding site --
+        // -- gene-view regulatory edges: width and opacity scaled by binding site --
         {
             selector: 'edge[kind="activation"], edge[kind="repression"]',
             style: {
                 'width': 'mapData(at, 0.1, 10, 5, 1)',
+                'opacity': 'mapData(at, 0.1, 10, 1, 0.5)',
             } as any,
         },
         {
@@ -213,11 +247,12 @@ export function buildStylesheet(isDark = false): any[] {
                 'target-arrow-shape': 'tee',
             } as any,
         },
-        // -- species-view regulatory edges: visible width, smaller label --
+        // -- species-view regulatory edges: width and opacity scaled by binding site --
         {
             selector: 'edge.species-view',
             style: {
                 'width': 'mapData(at, 0.1, 10, 2.5, 0.75)',
+                'opacity': 'mapData(at, 0.1, 10, 1, 0.5)',
                 'font-size': 3,
                 'arrow-scale': 0.8,
                 'text-opacity': 1,
@@ -261,6 +296,21 @@ export function buildStylesheet(isDark = false): any[] {
                 'text-margin-y': -1,
                 'text-background-opacity': 0,
                 'color': t.network.speciesEdgeLabelText,
+            } as any,
+        },
+        // -- peripheral Kronecker edges: barely visible, nearly inert in physics --
+        {
+            selector: 'edge.peripheral',
+            style: {
+                'opacity': PERIPHERAL_OPACITY * 0.5
+            } as any,
+        },
+        // -- differentiation tree edges: invisible but kept in fcose layout as springs --
+        {
+            selector: 'edge.differentiation_tree',
+            style: {
+                'opacity': 0,
+                'events': 'no',
             } as any,
         },
         {

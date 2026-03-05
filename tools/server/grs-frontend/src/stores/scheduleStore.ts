@@ -27,12 +27,7 @@ export const useScheduleStore = defineStore(
         const isLoading = ref<boolean>(false)
 
         const allGenes = computed(() => schedule.value.data ? extractAllGeneIds(schedule.value.data) : null)
-        const geneColours = computed(() => {
-            const colours = schedule.value.data?.gene_colours ?? null
-            if (!colours) return null
-            // Temporary: override gene_1 colour for figure polishing
-            return { ...colours, gene_1: '#a8abaf', gene_2: '#f9baff', gene_3:  '#ffc561'}
-        })
+        const geneColours = computed(() => schedule.value.data?.gene_colours ?? null)
         const segments = computed(() => schedule.value.data?.segments || [])
         const isLoaded = computed(() => schedule.value.data !== null)
 
