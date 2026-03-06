@@ -383,24 +383,23 @@ export const useSimulationStore = defineStore(
         // =====================================================================
 
         function _mergeTimeseries(data: TimeseriesData): void {
-            const merged = { ...timeseriesCache.value }
+            const cache = timeseriesCache.value
             for (const [speciesName, pathData] of Object.entries(data)) {
-                if (!merged[speciesName]) {
-                    merged[speciesName] = pathData
+                if (!cache[speciesName]) {
+                    cache[speciesName] = pathData
                 } else {
-                    // Append to existing paths
-                    const existing = { ...merged[speciesName] }
+                    const existing = cache[speciesName]!
                     for (const [path, points] of Object.entries(pathData)) {
                         if (!existing[path]) {
                             existing[path] = points
                         } else {
-                            existing[path] = [...existing[path]!, ...points]
+                            existing[path]!.push(...points)
                         }
                     }
-                    merged[speciesName] = existing
                 }
             }
-            timeseriesCache.value = merged
+            // Trigger reactivity with shallow replace
+            timeseriesCache.value = { ...cache }
         }
 
         return {

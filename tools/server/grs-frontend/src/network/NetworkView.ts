@@ -26,6 +26,7 @@ import { getTheme } from '@/config/theme'
 import { AdaptiveZoom } from './AdaptiveZoom'
 import { ModelFilter } from './ModelFilter'
 import { SelectionSync } from './SelectionSync'
+import { HoverSync } from './HoverSync'
 import { DynamicsSync } from './DynamicsSync'
 import { createEdgeTooltip, createNodeTooltip, type Tooltip } from './Tooltip'
 
@@ -40,6 +41,7 @@ export class NetworkView {
     private adaptiveZoom = new AdaptiveZoom()
     private modelFilter = new ModelFilter()
     private selectionSync = new SelectionSync()
+    private hoverSync = new HoverSync()
     private dynamicsSync = new DynamicsSync()
     private edgeTooltip: Tooltip = createEdgeTooltip()
     private nodeTooltip: Tooltip = createNodeTooltip()
@@ -179,6 +181,7 @@ export class NetworkView {
             this.adaptiveZoom.attach(this.cy, network, geneColours)
             this.modelFilter.attach(this.cy)
             this.selectionSync.attach(this.cy)
+            this.hoverSync.attach(this.cy)
             this.dynamicsSync.attach(this.cy)
             this.edgeTooltip.attach(this.cy)
             this.nodeTooltip.attach(this.cy)
@@ -204,6 +207,7 @@ export class NetworkView {
         this.adaptiveZoom.destroy()
         this.modelFilter.destroy()
         this.selectionSync.destroy()
+        this.hoverSync.destroy()
         this.dynamicsSync.destroy()
         this.edgeTooltip.destroy()
         this.nodeTooltip.destroy()

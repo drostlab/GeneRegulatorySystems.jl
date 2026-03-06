@@ -21,6 +21,7 @@ import {
     EDGE_COLOUR_FALLBACK,
     DIM_OPACITY as THEME_DIM_OPACITY,
     GREY,
+    RED,
     getTheme,
 } from '@/config/theme'
 
@@ -202,6 +203,15 @@ export function buildStylesheet(isDark = false): any[] {
         {
             selector: 'node.highlighted',
             style: {
+                'z-index': 10,
+            } as any,
+        },
+        // -- gene hover (from timeseries panel hover) --
+        {
+            selector: 'node.gene-hover',
+            style: {
+                'border-width': 2,
+                'border-color': RED[400],
                 'z-index': 10,
             } as any,
         },

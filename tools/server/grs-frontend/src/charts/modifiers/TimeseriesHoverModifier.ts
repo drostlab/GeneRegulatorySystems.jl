@@ -18,16 +18,24 @@ import { hitTestNearest, shouldProcessEvent } from "./hitTestUtils"
 const HIT_TEST_RADIUS_CSS = 8
 
 type PathHoverCallback = (path: string | null) => void
+type GeneHoverCallback = (gene: string | null) => void
 
 export class TimeseriesHoverModifier extends ChartModifierBase2D {
     public type = EChart2DModifierType.Custom
     private tooltipDiv: HTMLDivElement | null = null
     private pathHoverCallback?: PathHoverCallback
+    private geneHoverCallback?: GeneHoverCallback
     private hoveredPath: string | null = null
+    private hoveredGene: string | null = null
 
     /** Register a callback fired with the execution path on hover (null on leave). */
     onPathHover(cb: PathHoverCallback): void {
         this.pathHoverCallback = cb
+    }
+
+    /** Register a callback fired with the gene id on hover (null on leave). */
+    onGeneHover(cb: GeneHoverCallback): void {
+        this.geneHoverCallback = cb
     }
 
     override modifierMouseMove(args: ModifierMouseArgs): void {
@@ -47,6 +55,10 @@ export class TimeseriesHoverModifier extends ChartModifierBase2D {
                 this.hoveredPath = null
                 this.pathHoverCallback?.(null)
             }
+            if (this.hoveredGene !== null) {
+                this.hoveredGene = null
+                this.geneHoverCallback?.(null)
+            }
             return
         }
 
@@ -64,6 +76,10 @@ export class TimeseriesHoverModifier extends ChartModifierBase2D {
             this.hoveredPath = path
             this.pathHoverCallback?.(path || null)
         }
+        if (this.hoveredGene !== gene) {
+            this.hoveredGene = gene
+            this.geneHoverCallback?.(gene || null)
+        }
 
         this._showTooltip(label, args)
     }
@@ -74,6 +90,10 @@ export class TimeseriesHoverModifier extends ChartModifierBase2D {
         if (this.hoveredPath !== null) {
             this.hoveredPath = null
             this.pathHoverCallback?.(null)
+        }
+        if (this.hoveredGene !== null) {
+            this.hoveredGene = null
+            this.geneHoverCallback?.(null)
         }
     }
 

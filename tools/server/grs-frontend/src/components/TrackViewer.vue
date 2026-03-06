@@ -320,6 +320,11 @@ onMounted(async () => {
         viewerStore.setHoveredRectModel(null, path)
     })
 
+    // Timeseries panel gene hover -> store (bidirectional sync with network)
+    chart.onTimeseriesGeneHover((gene: string | null) => {
+        viewerStore.setHoveredGene(gene)
+    })
+
     window.addEventListener('keydown', handleEscapeKey)
 })
 
@@ -419,6 +424,13 @@ watch(
     (path) => chart.highlightPath(path ?? null),
 )
 
+// Gene highlight sync: when hoveredGeneId changes (from network hover),
+// dim all panels to highlight just that gene. Composes with path highlight.
+watch(
+    () => viewerStore.hoveredGeneId,
+    (gene) => chart.highlightGene(gene ?? null),
+)
+
 watch(
     () => selectedTracks.value,
     (newTracks) => {
@@ -487,7 +499,7 @@ watch(
 watch(
     () => simulationStore.streamingDelta,
     (delta) => {
-        if (!simulationStore.isSimulationRunning || !delta) return
+        if (!delta) return
         _mergeIntoBuffer(delta)
         _scheduleStreamingFlush()
     }
@@ -507,11 +519,9 @@ function _scheduleStreamingFlush(): void {
     if (streamingRafId !== null) return
     streamingRafId = requestAnimationFrame(() => {
         streamingRafId = null
-        // Abort if simulation finished (definitive data loaded via HTTP)
-        if (!simulationStore.isSimulationRunning) {
-            streamingBuffer = {}
-            return
-        }
+        // Always flush buffered data — it was received during the simulation even if
+        // status=completed arrived before this RAF fired (common with step-based schedules
+        // where many WS messages arrive within a single animation frame).
         const hasData = Object.keys(streamingBuffer).length > 0
         if (hasData && scheduleStore.timeseriesMetadata) {
             const bufSummary = Object.entries(streamingBuffer).map(([sp, pd]) =>

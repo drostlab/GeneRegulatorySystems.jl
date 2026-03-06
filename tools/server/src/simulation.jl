@@ -569,6 +569,14 @@ function _load_events_as_timeseries(
                     push!(path_series, (prev_end + 1e-9, Int64(-1)))
                 end
 
+                # Synthetic start-point: for the first episode on a path in step-based
+                # schedules, duplicate the first data point back to the bridging run start
+                # so the line visually begins at the segment boundary rather than at the
+                # first snapshot time.
+                if isnan(prev_end) && !isnan(predecessor_from) && !isempty(points) && predecessor_from < first(points[1]) - 1e-9
+                    pushfirst!(points, (predecessor_from, points[1][2]))
+                end
+
                 # Inject endpoint at scheduled segment boundary
                 if ep_to > 0.0 && !isempty(points)
                     last_t, last_v = points[end]

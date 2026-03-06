@@ -5,12 +5,11 @@
         {"{add}": {"$": ["defaults", "bootstrap"]}},
         {
             "branch": true,
-            "each": {"length": 1},
+            "each": {"length": 5},
             "as": "realization",
             "step": {
                 "label": "SKG-k${k}-realization-${realization}",
                 "to": 10000.0,
-                "step": 10.0,
                 "do": {"{regulation/kronecker}": {
                     "seed": "kronecker-${seed}-${k}-${realization}",
                     "base_rates": {"$": ["defaults", "gene", "base_rates"]},

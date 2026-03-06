@@ -226,6 +226,13 @@ export class TimelinePanel extends BasePanel {
     }
 
     /**
+     * Gene filter is a no-op for the timeline (segments are path-based, not gene-based).
+     */
+    override highlightGene(_gene: string | null): void {
+        // Timeline segments have no gene concept — intentional no-op.
+    }
+
+    /**
      * Dim all rectangle segments except those whose executionPath matches `path`.
      * Pass null to restore all to normal opacity.
      */

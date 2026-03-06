@@ -60,6 +60,7 @@ export class MainChart {
     private phaseSpacePathSelectCallback?: (path: string) => void
     private phaseSpaceHoverCallback?: (info: HoverInfo | null) => void
     private timeseriesPathHoverCallback?: (path: string | null) => void
+    private timeseriesGeneHoverCallback?: (gene: string | null) => void
 
     private isDark = false
 
@@ -137,9 +138,10 @@ export class MainChart {
             this.instantHoverChangeCallback?.(modelPath)
         })
 
-        // Wire timeseries path hover callback to all timeseries panels
+        // Wire timeseries hover callbacks to all timeseries panels
         for (const { panel } of this.getTimeseriesPanels()) {
             panel.onPathHover(path => this.timeseriesPathHoverCallback?.(path))
+            panel.onGeneHover(gene => this.timeseriesGeneHoverCallback?.(gene))
         }
 
         console.debug(`[MainChart] Initialised with ${this.tracks.length} tracks`)
@@ -170,6 +172,11 @@ export class MainChart {
         this.timeseriesPathHoverCallback = callback
     }
 
+    /** Register a callback for when the user hovers over a gene in a timeseries panel. */
+    onTimeseriesGeneHover(callback: (gene: string | null) => void): void {
+        this.timeseriesGeneHoverCallback = callback
+    }
+
     /**
      * Dim all series in every panel except those belonging to `path`.
      * Pass null to restore all panels to full opacity.
@@ -179,6 +186,18 @@ export class MainChart {
             panel.highlightPath(path)
         }
         this.phaseSpacePanel?.highlightPath(path)
+    }
+
+    /**
+     * Dim all series in every panel except those belonging to `gene`.
+     * Pass null to restore all panels to full opacity.
+     * Composes with highlightPath — both filters apply simultaneously.
+     */
+    highlightGene(gene: string | null): void {
+        for (const { panel } of this.tracks) {
+            panel.highlightGene(gene)
+        }
+        this.phaseSpacePanel?.highlightGene(gene)
     }
 
     /** Deselect any selected segment in the timeline panel. */

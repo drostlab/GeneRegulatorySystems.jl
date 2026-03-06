@@ -4,6 +4,17 @@ import { getTheme, type ThemeMode } from "@/config/theme";
 
 export const PATH_DIM_OPACITY = 0.2
 
+/** Extract the gene id (left of colon) from a `<gene>:<path>` series name. */
+export function extractGene(name: string): string | null {
+    const colonIdx = name.indexOf(':')
+    return colonIdx > 0 ? name.substring(0, colonIdx) : null
+}
+
+/** Extract the execution path (right of colon) from a `<gene>:<path>` series name. */
+export function extractPath(name: string): string | null {
+    const colonIdx = name.indexOf(':')
+    return colonIdx >= 0 ? name.substring(colonIdx + 1) : null
+}
 
 export interface BasePanelOptions {
     parentSurface: SciChartSurface
@@ -20,6 +31,11 @@ export abstract class BasePanel {
     wasmContext: TSciChart
     parentSurface: SciChartSurface
     protected theme: ThemeMode
+
+    /** Currently active path filter (null = no filter). */
+    protected _highlightedPath: string | null = null
+    /** Currently active gene filter (null = no filter). */
+    protected _highlightedGene: string | null = null
 
     constructor({parentSurface, wasmContext, isDark, modifiers = []}: BasePanelOptions) {
         this.parentSurface = parentSurface
@@ -76,18 +92,59 @@ export abstract class BasePanel {
     }
 
     /**
-     * Dim all series except those belonging to `path`. Pass null to restore all.
-     * Series are identified by `<prefix>:<path>` in dataSeriesName.
-     * Skips internal series (prefixed `__`) and segment rectangles.
+     * Dim all series except those belonging to `path`. Pass null to restore.
+     * Composes with gene filter via `_applyHighlightFilters()`.
      */
     highlightPath(path: string | null): void {
+        this._highlightedPath = path
+        this._applyHighlightFilters()
+    }
+
+    /**
+     * Dim all series except those belonging to `gene`. Pass null to restore.
+     * Composes with path filter via `_applyHighlightFilters()`.
+     */
+    highlightGene(gene: string | null): void {
+        this._highlightedGene = gene
+        this._applyHighlightFilters()
+    }
+
+    /**
+     * Determine whether a series matches ALL active highlight filters.
+     * Returns true if the series should be shown at full opacity.
+     */
+    protected _seriesMatchesFilters(name: string): boolean {
+        if (name.startsWith('__') || name.startsWith('segment:')) return true
+        const colonIdx = name.indexOf(':')
+        if (colonIdx < 0) return true
+        if (this._highlightedPath !== null) {
+            const seriesPath = name.substring(colonIdx + 1)
+            if (seriesPath !== this._highlightedPath) return false
+        }
+        if (this._highlightedGene !== null) {
+            const seriesGene = name.substring(0, colonIdx)
+            if (seriesGene !== this._highlightedGene) return false
+        }
+        return true
+    }
+
+    /** Whether any highlight filter is currently active. */
+    protected get _hasActiveFilter(): boolean {
+        return this._highlightedPath !== null || this._highlightedGene !== null
+    }
+
+    /**
+     * Apply composable highlight filters (path + gene) to all series.
+     * Series are identified by `<gene>:<path>` in dataSeriesName.
+     * Skips internal series (prefixed `__`) and segment rectangles.
+     */
+    protected _applyHighlightFilters(): void {
         for (const rs of this.surface.renderableSeries.asArray()) {
             const name = rs.dataSeries?.dataSeriesName ?? ''
             if (name.startsWith('__') || name.startsWith('segment:')) continue
             const colonIdx = name.indexOf(':')
             if (colonIdx < 0) continue
-            const seriesPath = name.substring(colonIdx + 1)
-            rs.opacity = (path === null || seriesPath === path) ? 1 : PATH_DIM_OPACITY
+            rs.opacity = this._seriesMatchesFilters(name) ? 1 : PATH_DIM_OPACITY
         }
     }
 

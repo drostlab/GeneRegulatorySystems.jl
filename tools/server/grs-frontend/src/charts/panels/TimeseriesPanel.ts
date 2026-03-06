@@ -31,6 +31,11 @@ export abstract class TimeseriesPanel extends BasePanel {
         this.hoverModifier.onPathHover(cb)
     }
 
+    /** Register a callback fired with the gene id on hover (null on leave). */
+    onGeneHover(cb: (gene: string | null) => void): void {
+        this.hoverModifier.onGeneHover(cb)
+    }
+
     setMetadata(metadata: TimeseriesMetadata | null): void {
         this.metadata = metadata
     }

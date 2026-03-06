@@ -24,6 +24,8 @@ export const useViewerStore = defineStore('viewer', () => {
     const hoveredExecutionPath = ref<string | null>(null)
     /** Model path of the instant annotation currently hovered (null when not hovering). */
     const hoveredInstantModelPath = ref<string | null>(null)
+    /** Gene id currently hovered in the network diagram (null when not hovering). */
+    const hoveredGeneId = ref<string | null>(null)
 
     /**
      * Active model path driving the network overlay.
@@ -150,6 +152,10 @@ export const useViewerStore = defineStore('viewer', () => {
         hoveredInstantModelPath.value = path
     }
 
+    function setHoveredGene(gene: string | null): void {
+        hoveredGeneId.value = gene
+    }
+
     function reset(): void {
         currentTimepoint.value = 0
         selectedGenes.value = []
@@ -158,6 +164,7 @@ export const useViewerStore = defineStore('viewer', () => {
         hoveredRectModelPath.value = null
         hoveredInstantModelPath.value = null
         hoveredExecutionPath.value = null
+        hoveredGeneId.value = null
     }
 
     return {
@@ -167,6 +174,7 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSpeciesTypes,
         selectedSegmentIds,
         hoveredExecutionPath,
+        hoveredGeneId,
         activeModelPath,
         editorHighlightModelPath,
         selectedPaths,
@@ -175,6 +183,7 @@ export const useViewerStore = defineStore('viewer', () => {
         setTimepoint,
         setHoveredRectModel,
         setHoveredInstantModel,
+        setHoveredGene,
         selectSegments,
         selectExecutionPath,
         reset

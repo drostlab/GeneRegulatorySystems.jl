@@ -141,9 +141,6 @@ export class CountsPanel extends TimeseriesPanel {
                     // -1 is the gap marker between non-contiguous episodes
                     counts.push(points[i]![1] === -1 ? NaN : points[i]![1])
                 }
-                const tFirst = time[0]?.toFixed(1) ?? '-'
-                const tLast = time[time.length - 1]?.toFixed(1) ?? '-'
-                console.debug(`[CountsPanel] ${isNew ? 'CREATE' : 'APPEND'} key=${key} pts=${points.length} t=${tFirst}..${tLast} totalSeries=${this.seriesMap.size}`)
                 xySeries.appendRange(time, counts)
             }
         }

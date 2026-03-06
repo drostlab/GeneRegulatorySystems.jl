@@ -69,8 +69,8 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
 - `ws_client::Union{HTTP.WebSocket, Nothing}`: WebSocket for streaming
 - `controller`: SimulationController for pause/progress/timeseries (duck-typed)
 - `i_to_path::Dict{Int, String}`: Episode index to path mapping
-- `stream_event_interval::Int`: Number of events between WS timeseries sends
-- `events_since_stream::Int`: Events accumulated since last stream
+- `stream_interval_ns::UInt64`: Minimum nanoseconds between WS streaming updates (wall-clock)
+- `last_stream_ns::UInt64`: Wall-clock time (ns) of the last stream update
 - `pending_timeseries::Dict`: Accumulated timeseries for subscribed species since last stream
 - `frame_count::Int`: Running count of frames for progress reporting
 - `path_run_predecessor::Dict{String, Dict{Float64, Float64}}`: run_predecessor[path][to] = from for each non-instant episode (gap detection)
@@ -85,8 +85,8 @@ Direct Arrow sink with optional WebSocket streaming via SimulationController.
     ws_client::Union{HTTP.WebSocket, Nothing} = nothing
     controller::Any = nothing
     i_to_path::Dict{Int, String} = Dict{Int, String}()
-    stream_event_interval::Int = 100000
-    events_since_stream::Int = 0
+    stream_interval_ns::UInt64 = UInt64(500_000_000)  # 500ms wall-clock
+    last_stream_ns::UInt64 = time_ns()
     pending_timeseries::Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}} = Dict{Symbol, Dict{String, Vector{Tuple{Float64, Int}}}}()
     frame_count::Int = 0
     # Gap tracking: mirrors the run_predecessor approach in _load_events_as_timeseries.
@@ -122,6 +122,14 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
         @debug "[StreamingSink] Index entry (no output)" i=sink.i path=path
         push!(sink.index, (; sink.i, path, from, to, model, label, count = 0, into = "", seed))
         sink.i_to_path[sink.i] = path
+
+        # Record run_predecessor for bridging runs (step-based schedules) so downstream
+        # gap detection can tell that snapshot episodes are contiguous with their bridging run.
+        # Do NOT update path_last_to here — that would bridge over legitimate gaps between
+        # non-contiguous model segments sharing the same execution path.
+        if from < to
+            get!(sink.path_run_predecessor, path) do; Dict{Float64, Float64}() end[to] = from
+        end
         return
     end
 
@@ -166,19 +174,35 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
         push!(channel.names, name)
         push!(channel.values, value)
         count += 1
-        sink.events_since_stream += 1
 
         _accumulate_subscribed(sink, name, path, t, value)
 
-        # Stream inside the event loop at regular event intervals
-        if sink.events_since_stream >= sink.stream_event_interval
+        # Stream inside the event loop on wall-clock interval
+        if time_ns() - sink.last_stream_ns >= sink.stream_interval_ns
             _check_pause_if_needed(sink)
             _stream_update(sink, t)
-            sink.events_since_stream = 0
         end
     end
 
     sink.frame_count += 1
+
+    # Synthetic start-point: for the first episode on a path in step-based schedules,
+    # duplicate the first real data point back to the bridging run start so the line
+    # visually begins at the segment boundary rather than at the first snapshot time.
+    if !isnothing(sink.controller) && isnan(get(sink.path_last_to, path, NaN))
+        predecessor_from = get(get(sink.path_run_predecessor, path, Dict{Float64, Float64}()), from, NaN)
+        if !isnan(predecessor_from) && predecessor_from < from - 1e-9
+            for sp in sink.controller.subscribed_species
+                sd = get(sink.pending_timeseries, sp, nothing)
+                isnothing(sd) && continue
+                series = get(sd, path, nothing)
+                (isnothing(series) || isempty(series)) && continue
+                # Skip if the only point is a gap marker
+                series[1][2] == Int64(-1) && continue
+                pushfirst!(series, (predecessor_from, series[1][2]))
+            end
+        end
+    end
 
     # Record execution segment metadata
     push!(sink.index, (; sink.i, path, from, to, model, label, count, into, seed))
@@ -190,14 +214,10 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     end
     sink.path_last_to[path] = to
 
-    # Stream at episode boundary.
-    # For step-based (snapshot) schedules, each snapshot has far fewer events
-    # than stream_event_interval so we stream unconditionally after every
-    # snapshot episode (from == to) to give one frame per step.
-    is_snapshot = from >= to - 1e-9
-    if is_snapshot || sink.events_since_stream >= sink.stream_event_interval
+    # Stream at episode boundary if wall-clock interval elapsed.
+    # This covers both snapshot (step-based) and continuous episodes.
+    if time_ns() - sink.last_stream_ns >= sink.stream_interval_ns
         _stream_update(sink, to)
-        sink.events_since_stream = 0
     end
 end
 
@@ -243,6 +263,8 @@ function _stream_update(sink::StreamingSimulationSink, current_time::Float64)
     isnothing(sink.controller) && return
     ctrl = sink.controller
     isnothing(ctrl.ws_client) && return
+
+    sink.last_stream_ns = time_ns()
 
     # Send progress
     @info "[StreamingSink] Streaming update" current_time=current_time frame_count=sink.frame_count subscribed=length(ctrl.subscribed_species) pending=length(sink.pending_timeseries)

@@ -5,7 +5,7 @@
             "step": {
                 "label": "SKG-k8",
                 "to": 1000.0,
-                "step": 100.0,
+                "step": 20.0,
                 "do": {"{regulation/kronecker}": {
                     "seed": "kronecker-${seed}",
                     "base_rates": {"$": ["defaults", "gene", "base_rates"]},

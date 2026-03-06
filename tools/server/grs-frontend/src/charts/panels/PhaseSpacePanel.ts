@@ -225,9 +225,19 @@ export class PhaseSpacePanel extends BasePanel {
     /**
      * Override: skip when hover modifier is active (it manages its own dimming).
      * Otherwise dim non-matching paths and boost the highlighted path.
+     * Gene filter is a no-op for phase space (series are `line:<path>`, not `<gene>:<path>`).
      */
-    override highlightPath(path: string | null): void {
+    override highlightGene(_gene: string | null): void {
+        // Phase space has no gene concept in series naming — intentional no-op.
+    }
+
+    /**
+     * Override: skip when hover modifier is active (it manages its own dimming).
+     * Otherwise dim non-matching paths and boost the highlighted path.
+     */
+    protected override _applyHighlightFilters(): void {
         if (this.hoverModifier.isHovering) return
+        const path = this._highlightedPath
         for (const rs of this.surface.renderableSeries.asArray()) {
             const name = rs.dataSeries?.dataSeriesName ?? ''
             if (name.startsWith('__')) continue

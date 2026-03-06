@@ -254,20 +254,17 @@ export class PromoterPanel extends TimeseriesPanel {
     }
 
     /**
-     * Dim band fills for non-matching paths. Pass null to restore all.
+     * Composable highlight for band fills: dims non-matching series.
      * Overrides BasePanel because FastBandRenderableSeries.opacity does not
-     * affect the fillY1 area — we must rewrite fillY1 with an alpha channel.
+     * affect the fillY1 area -- we must rewrite fillY1 with an alpha channel.
      */
-    override highlightPath(path: string | null): void {
+    protected override _applyHighlightFilters(): void {
         for (const rs of this.surface.renderableSeries.asArray()) {
             if (!(rs instanceof FastBandRenderableSeries)) continue
             const name = rs.dataSeries?.dataSeriesName ?? ''
-            const colonIdx = name.indexOf(':')
-            if (colonIdx < 0) continue
-            const seriesPath = name.substring(colonIdx + 1)
             const baseColour = this.keyColourMap.get(name)
             if (!baseColour) continue
-            const matches = path === null || seriesPath === path
+            const matches = this._seriesMatchesFilters(name)
             rs.fillY1 = matches ? baseColour : withOpacity(baseColour, PATH_DIM_OPACITY)
             rs.strokeY1 = rs.fillY1
             rs.stroke = rs.fillY1
