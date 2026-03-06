@@ -1,10 +1,11 @@
 import { EAxisAlignment, ELineDrawMode, EResamplingMode, FastBandRenderableSeries, NumericAxis, SweepAnimation, XyyDataSeries } from "scichart"
 import { TimeseriesPanel } from "./TimeseriesPanel"
-import type { BasePanelOptions } from "./BasePanel"
+import { PATH_DIM_OPACITY, type BasePanelOptions } from "./BasePanel"
 import type { TimeseriesData, TimeseriesMetadata } from "@/types/simulation"
 import { restructureTimeseriesByPathAndGene } from "@/types/simulation"
 import { getGeneFromSpeciesName } from "@/types/schedule"
 import { CHART_FONT_SIZES, AXIS_THICKNESS } from "../chartConstants"
+import { withOpacity } from "@/utils/colorUtils"
 
 const SWEEP_DURATION_MS = 400
 
@@ -18,6 +19,9 @@ export class PromoterPanel extends TimeseriesPanel {
 
     /** Cached band layout params per series key: { yCenter, bandHeight } */
     private bandParams: Map<string, { yCenter: number; bandHeight: number }> = new Map()
+
+    /** Original hex colour per series key — used by highlightPath to dim fills. */
+    private keyColourMap: Map<string, string> = new Map()
 
     constructor(options: BasePanelOptions) {
         super(options)
@@ -149,6 +153,7 @@ export class PromoterPanel extends TimeseriesPanel {
                     }
                     this.seriesMap.set(key, xyyDataSeries)
 
+                    this.keyColourMap.set(key, colour)
                     const bandSeries = new FastBandRenderableSeries(this.wasmContext, {
                         dataSeries: xyyDataSeries,
                         stroke: colour,
@@ -248,9 +253,31 @@ export class PromoterPanel extends TimeseriesPanel {
         return { xData, yTop, yBottom }
     }
 
+    /**
+     * Dim band fills for non-matching paths. Pass null to restore all.
+     * Overrides BasePanel because FastBandRenderableSeries.opacity does not
+     * affect the fillY1 area — we must rewrite fillY1 with an alpha channel.
+     */
+    override highlightPath(path: string | null): void {
+        for (const rs of this.surface.renderableSeries.asArray()) {
+            if (!(rs instanceof FastBandRenderableSeries)) continue
+            const name = rs.dataSeries?.dataSeriesName ?? ''
+            const colonIdx = name.indexOf(':')
+            if (colonIdx < 0) continue
+            const seriesPath = name.substring(colonIdx + 1)
+            const baseColour = this.keyColourMap.get(name)
+            if (!baseColour) continue
+            const matches = path === null || seriesPath === path
+            rs.fillY1 = matches ? baseColour : withOpacity(baseColour, PATH_DIM_OPACITY)
+            rs.strokeY1 = rs.fillY1
+            rs.stroke = rs.fillY1
+        }
+    }
+
     /** Create a new XyyDataSeries + FastBandRenderableSeries for streaming. */
     private _createStreamingSeries(key: string, geneId: string): XyyDataSeries {
         const colour = this.metadata!.gene_colours[geneId] ?? this.theme.chart.fallbackSeries
+        this.keyColourMap.set(key, colour)
         const xyyData = new XyyDataSeries(this.wasmContext, {
             isSorted: true,
             containsNaN: true,
@@ -283,5 +310,6 @@ export class PromoterPanel extends TimeseriesPanel {
         dataSeries.delete()
         this.seriesMap.delete(key)
         this.bandParams.delete(key)
+        this.keyColourMap.delete(key)
     }
 }

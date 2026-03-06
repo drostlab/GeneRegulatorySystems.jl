@@ -85,7 +85,7 @@ function compute_and_store(
     gene_names = sort(collect(keys(protein_series)), by = string)  # Vector{Symbol}
     n_genes    = length(gene_names)
 
-    cells   = _collect_cells(protein_series)
+    cells   = _collect_cells(result_path, protein_series)
     n_cells = length(cells)
     if n_cells < 4
         @warn "[PhaseSpace] Too few cells for embedding" simulation_id n_cells
@@ -235,7 +235,7 @@ function _run_direct(
     n_cells = size(X, 1)
 
     if n_genes == 1
-        coords = vcat(X[:, 1]', zeros(1, n_cells))
+        coords = vcat(reshape(X[:, 1], 1, :), zeros(1, n_cells))
         labels = [string(gene_names[1]), "0"]
         return coords, labels, ["", ""]
     end
@@ -244,7 +244,7 @@ function _run_direct(
     variances = [var(X[:, j]) for j in 1:n_genes]
     order     = sortperm(variances; rev = true)
     j1, j2    = order[1], order[2]
-    coords    = vcat(X[:, j1]', X[:, j2]')
+    coords    = vcat(reshape(X[:, j1], 1, :), reshape(X[:, j2], 1, :))
     labels    = [string(gene_names[j1]), string(gene_names[j2])]
     return coords, labels, ["", ""]
 end
@@ -268,14 +268,25 @@ function _run_pca_2d(
     n_components < 2 && return nothing, String[], String[]
 
     try
-        model  = fit(PCA, Xt; maxoutdim = n_components, pratio = 0.9999)
-        scores = transform(model, Xt)            # n_components × n_cells
-        coords = Matrix{Float64}(scores)         # 2 × n_cells
+        model    = fit(PCA, Xt; maxoutdim = n_components, pratio = 0.9999)
+        n_fitted = outdim(model)
+        n_fitted >= 1 || return nothing, String[], String[]
 
-        pvar          = principalvars(model) ./ tvar(model) .* 100.0
-        loadings      = projection(model)        # n_genes × n_components
-        top_genes     = [string(gene_names[argmax(abs.(loadings[:, k]))]) for k in 1:n_components]
-        axis_labels   = ["PC$(k) ($(round(pvar[k]; digits=1))%)" for k in 1:n_components]
+        scores   = transform(model, Xt)          # n_fitted × n_cells
+        pvar     = principalvars(model) ./ tvar(model) .* 100.0
+        loadings = projection(model)             # n_genes × n_fitted
+
+        top_genes   = [string(gene_names[argmax(abs.(loadings[:, k]))]) for k in 1:n_fitted]
+        axis_labels = ["PC$(k) ($(round(pvar[k]; digits=1))%)" for k in 1:n_fitted]
+
+        # Pad to 2 dimensions if PCA returned only 1 component
+        if n_fitted == 1
+            coords = vcat(scores, zeros(1, n_cells))
+            push!(axis_labels, "")
+            push!(top_genes,   "")
+        else
+            coords = Matrix{Float64}(scores)     # 2 × n_cells
+        end
 
         return coords, axis_labels, top_genes
     catch e
@@ -387,19 +398,97 @@ end
 # Internal: expression matrix
 # ============================================================================
 
-"""All unique (path, t) observation points across all species, sorted."""
+"""
+Sample observation points on a regular time grid, at most `n_per_path` per path.
+
+Collects all unique paths and the overall time range from the data, then
+returns `n_per_path` evenly-spaced (path, t) pairs per path.  The step-function
+interpolation in `_build_expression_matrix` handles the value lookup.
+
+When the index contains snapshot episodes (`from == to`), those are exact
+observation timepoints from a step-based schedule and are used directly.
+Otherwise (continuous runs), every recorded event timestamp is used as a cell —
+the user is responsible for keeping run sizes manageable via `step:`.
+"""
 function _collect_cells(
+    result_path::String,
     protein_series::Dict{Symbol, Dict{String, Vector{Tuple{Float64,Int}}}},
 )::Vector{Tuple{String, Float64}}
-    cells_set = Set{Tuple{String, Float64}}()
+    # --- try snapshot cells from index ---
+    cells = _collect_snapshot_cells(result_path)
+    if !isempty(cells)
+        @debug "[PhaseSpace] Using snapshot cells from index" n_cells=length(cells)
+        return cells
+    end
+
+    # --- fallback: uniform time sampling ---
+    @debug "[PhaseSpace] No snapshot episodes; using all event timestamps as cells"
+    return _collect_cells_uniform(protein_series)
+end
+
+"""Read snapshot episodes (from == to) from index.arrow as exact cell observations.
+
+Only includes snapshots that follow the skip-pattern: a silent run episode
+(from < to, count == 0) immediately preceding a snapshot episode (from == to,
+count > 0) on the same path, where the silent run's `to` matches the snapshot's
+`from`. This excludes instant model adjustments (seed, add) which also have
+from == to but are not terminal observations.
+"""
+function _collect_snapshot_cells(result_path::String)::Vector{Tuple{String, Float64}}
+    index_file = joinpath(result_path, "index.arrow")
+    isfile(index_file) || return Tuple{String, Float64}[]
+    idx_tbl = Arrow.Table(index_file)
+
+    # Build set of (path, t) that end a silent run interval (from < to, count == 0).
+    # These are the candidate predecessor episodes for skip-based snapshots.
+    silent_run_ends = Set{Tuple{String, Float64}}()
+    for i in eachindex(idx_tbl.i)
+        f = Float64(idx_tbl.from[i])
+        t = Float64(idx_tbl.to[i])
+        c = Int(idx_tbl.count[i])
+        if f < t - 1e-9 && c == 0
+            push!(silent_run_ends, (string(idx_tbl.path[i]), t))
+        end
+    end
+
+    # Collect snapshots that are the terminal observation of a skip segment.
+    cells = Tuple{String, Float64}[]
+    for i in eachindex(idx_tbl.i)
+        f = Float64(idx_tbl.from[i])
+        t = Float64(idx_tbl.to[i])
+        c = Int(idx_tbl.count[i])
+        path = string(idx_tbl.path[i])
+        if abs(f - t) < 1e-9 && c > 0 && (path, t) in silent_run_ends
+            push!(cells, (path, t))
+        end
+    end
+
+    sort!(cells)
+    unique!(cells)
+    return cells
+end
+
+"""Fallback for continuous runs: use every recorded event timestamp as a cell.
+
+Each unique (path, t) in the protein timeseries corresponds to a real observed
+system state. The user is responsible for keeping run sizes manageable; no
+implicit subsampling is performed.
+"""
+function _collect_cells_uniform(
+    protein_series::Dict{Symbol, Dict{String, Vector{Tuple{Float64,Int}}}},
+)::Vector{Tuple{String, Float64}}
+    cell_set = Set{Tuple{String, Float64}}()
     for path_map in values(protein_series)
         for (path, pts) in path_map
             for (t, _) in pts
-                push!(cells_set, (path, t))
+                push!(cell_set, (path, t))
             end
         end
     end
-    sort!(collect(cells_set))
+    isempty(cell_set) && return Tuple{String, Float64}[]
+    cells = collect(cell_set)
+    sort!(cells)
+    return cells
 end
 
 """Last recorded value at or before `t` (step-function lookup)."""
@@ -449,6 +538,9 @@ function _compute_colours(
     coloured_idx = _coloured_gene_indices(gene_names, gene_colours)
     if !isempty(coloured_idx)
         return _softmax_colours(X, gene_names, coloured_idx, gene_colours)
+    elseif length(gene_names) == 2
+        # No saturated gene colours but exactly 2 genes: softmax with default palette.
+        return _softmax_colours_2_default(X)
     else
         return _path_colours(cells)
     end
@@ -464,6 +556,27 @@ function _coloured_gene_indices(
 )::Vector{Int}
     [j for (j, g) in enumerate(gene_names)
        if _is_saturated(get(gene_colours, replace(string(g), r"_protein$" => ""), "#888888"))]
+end
+
+"""
+Softmax blend for the 2-gene direct case when no saturated gene colours exist.
+Assigns two fixed contrasting colours (warm red / cool blue).
+"""
+function _softmax_colours_2_default(X::Matrix{Float64})::Vector{String}
+    default_rgb = ((0.88, 0.32, 0.32), (0.32, 0.52, 0.88))
+    n_cells = size(X, 1)
+    result  = Vector{String}(undef, n_cells)
+    for i in 1:n_cells
+        vals    = X[i, 1:2]
+        shifted = vals .- maximum(vals)
+        exps    = exp.(shifted)
+        w       = exps ./ sum(exps)
+        r = w[1] * default_rgb[1][1] + w[2] * default_rgb[2][1]
+        g = w[1] * default_rgb[1][2] + w[2] * default_rgb[2][2]
+        b = w[1] * default_rgb[1][3] + w[2] * default_rgb[2][3]
+        result[i] = _to_hex(r, g, b)
+    end
+    return result
 end
 
 """Per-cell softmax blend over non-grey gene hex colours."""

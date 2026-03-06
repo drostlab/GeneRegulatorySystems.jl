@@ -222,7 +222,7 @@ assemble_differentiation(
 function assemble_differentiation(
     node::Node;
     template,
-    name = "differentiator",
+    name = "diff",
     trigger = nothing,  # We special-case the root node by providing trigger.
     randomness::AbstractRNG,
 )

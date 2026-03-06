@@ -2,6 +2,8 @@ import { ChartModifierBase2D, NumberRange, SciChartSubSurface, type SciChartSurf
 import { getSciChartTheme } from "../theme";
 import { getTheme, type ThemeMode } from "@/config/theme";
 
+export const PATH_DIM_OPACITY = 0.2
+
 
 export interface BasePanelOptions {
     parentSurface: SciChartSurface
@@ -70,6 +72,22 @@ export abstract class BasePanel {
         for (const axis of this.surface.yAxes.asArray()) {
             axis.majorGridLineStyle = { color: this.theme.chart.gridLine }
             axis.minorGridLineStyle = { color: this.theme.chart.gridLine }
+        }
+    }
+
+    /**
+     * Dim all series except those belonging to `path`. Pass null to restore all.
+     * Series are identified by `<prefix>:<path>` in dataSeriesName.
+     * Skips internal series (prefixed `__`) and segment rectangles.
+     */
+    highlightPath(path: string | null): void {
+        for (const rs of this.surface.renderableSeries.asArray()) {
+            const name = rs.dataSeries?.dataSeriesName ?? ''
+            if (name.startsWith('__') || name.startsWith('segment:')) continue
+            const colonIdx = name.indexOf(':')
+            if (colonIdx < 0) continue
+            const seriesPath = name.substring(colonIdx + 1)
+            rs.opacity = (path === null || seriesPath === path) ? 1 : PATH_DIM_OPACITY
         }
     }
 

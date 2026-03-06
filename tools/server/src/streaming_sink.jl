@@ -190,8 +190,12 @@ function (sink::StreamingSimulationSink)(into, state; path, primitive!, from, se
     end
     sink.path_last_to[path] = to
 
-    # Stream at episode boundary if enough events accumulated
-    if sink.events_since_stream >= sink.stream_event_interval
+    # Stream at episode boundary.
+    # For step-based (snapshot) schedules, each snapshot has far fewer events
+    # than stream_event_interval so we stream unconditionally after every
+    # snapshot episode (from == to) to give one frame per step.
+    is_snapshot = from >= to - 1e-9
+    if is_snapshot || sink.events_since_stream >= sink.stream_event_interval
         _stream_update(sink, to)
         sink.events_since_stream = 0
     end

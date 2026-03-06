@@ -1,27 +1,36 @@
 /**
  * Custom SciChart modifier for phase-space hover interaction.
  *
- * Uses SciChart's built-in hitTestProvider per scatter series for reliable
- * coordinate conversion (handles sub-surface offsets and DPI scaling).
+ * Uses the shared hitTestNearest utility (which delegates to SciChart's
+ * hitTestProvider) for reliable sub-surface-aware hit-testing.
  * Provides path dimming, tooltip, and hover callback.
  */
 import {
     ChartModifierBase2D,
     EChart2DModifierType,
+    FastLineRenderableSeries,
+    XyScatterRenderableSeries,
     type ModifierMouseArgs,
-    type IRenderableSeries,
-    DpiHelper,
 } from "scichart"
+import { hitTestNearest, shouldProcessEvent } from "./hitTestUtils"
 
-const HIT_TEST_RADIUS_PX = 15
-const DIM_OPACITY = 0.12
+const HIT_TEST_RADIUS_CSS = 10
+const DIM_OPACITY = 0.1
+
+/** Stroke thickness: normal / highlighted path. */
+const LINE_THICKNESS_NORMAL = 3.0
+const LINE_THICKNESS_HOVER = 4.0
+
+/** Scatter point size: normal / highlighted / dimmed path. */
+const POINT_SIZE_NORMAL = 5
+const POINT_SIZE_HOVER = 7
+const POINT_SIZE_DIM = 3
 
 export type HoverInfo = { t: number; path: string }
 type HoverCallback = (info: HoverInfo | null) => void
 
 /** Extract path name from a scatter series dataSeriesName like "scatter:k3-1". */
-function extractPath(series: IRenderableSeries): string | null {
-    const name = series.dataSeries?.dataSeriesName
+function extractPath(name: string | undefined): string | null {
     if (!name?.startsWith('scatter:')) return null
     return name.substring(8)
 }
@@ -35,6 +44,9 @@ export class PhaseSpaceHoverModifier extends ChartModifierBase2D {
     /** Lookup from path -> time for each scatter data point index. */
     private pathTimeMap = new Map<string, number[]>()
 
+    /** Whether the modifier is currently hovering a path (used by PhaseSpacePanel to guard external highlight). */
+    get isHovering(): boolean { return this.hoveredPath !== null }
+
     /** Register the hover callback (fires with nearest point info, or null on leave). */
     onHover(cb: HoverCallback): void {
         this.hoverCallback = cb
@@ -47,29 +59,23 @@ export class PhaseSpaceHoverModifier extends ChartModifierBase2D {
 
     override modifierMouseMove(args: ModifierMouseArgs): void {
         super.modifierMouseMove(args)
+        if (!shouldProcessEvent(this.parentSurface, args)) return
         if (!this.mousePoint || !this.isAttached) return
 
-        const x = this.mousePoint.x * DpiHelper.PIXEL_RATIO
-        const y = this.mousePoint.y * DpiHelper.PIXEL_RATIO
-        const radius = HIT_TEST_RADIUS_PX * DpiHelper.PIXEL_RATIO
+        // Filter to scatter series only (one per path)
+        const scatterSeries = this.parentSurface.renderableSeries
+            .asArray()
+            .filter(rs => extractPath(rs.dataSeries?.dataSeriesName) !== null)
 
-        let bestDist = Infinity
-        let bestPath: string | null = null
-        let bestIndex = -1
+        const result = hitTestNearest(scatterSeries, this.mousePoint, HIT_TEST_RADIUS_CSS)
 
-        // Hit-test only scatter series (one per path)
-        for (const rs of this.parentSurface.renderableSeries.asArray()) {
-            const path = extractPath(rs)
-            if (!path) continue
-
-            const hitInfo = rs.hitTestProvider.hitTestDataPoint(x, y, radius)
-            if (hitInfo.isHit && hitInfo.distance < bestDist) {
-                bestDist = hitInfo.distance
-                bestPath = path
-                bestIndex = hitInfo.dataSeriesIndex
-            }
+        if (!result) {
+            this._clearHover(args)
+            return
         }
 
+        const bestPath = extractPath(result.series.dataSeries?.dataSeriesName)
+        const bestIndex = result.hitTestInfo.dataSeriesIndex
         if (!bestPath || bestIndex < 0) {
             this._clearHover(args)
             return
@@ -124,7 +130,16 @@ export class PhaseSpaceHoverModifier extends ChartModifierBase2D {
             const isScatter = name.startsWith('scatter:')
             if (!isLine && !isScatter) continue
             const path = name.substring(name.indexOf(':') + 1)
-            rs.opacity = path === activePath ? 1 : DIM_OPACITY
+            const active = path === activePath
+            rs.opacity = active ? 1 : DIM_OPACITY
+            if (isLine && rs instanceof FastLineRenderableSeries) {
+                rs.strokeThickness = active ? LINE_THICKNESS_HOVER : LINE_THICKNESS_NORMAL
+            }
+            if (isScatter && rs instanceof XyScatterRenderableSeries && rs.pointMarker) {
+                const sz = active ? POINT_SIZE_HOVER : POINT_SIZE_DIM
+                rs.pointMarker.width = sz
+                rs.pointMarker.height = sz
+            }
         }
     }
 
@@ -132,8 +147,18 @@ export class PhaseSpaceHoverModifier extends ChartModifierBase2D {
         if (!this.isAttached) return
         for (const rs of this.parentSurface.renderableSeries.asArray()) {
             const name = rs.dataSeries?.dataSeriesName ?? ''
-            if (name.startsWith('line:') || name.startsWith('scatter:')) {
+            if (name.startsWith('__')) continue
+            if (name.startsWith('line:')) {
                 rs.opacity = 1
+                if (rs instanceof FastLineRenderableSeries) {
+                    rs.strokeThickness = LINE_THICKNESS_NORMAL
+                }
+            } else if (name.startsWith('scatter:')) {
+                rs.opacity = 1
+                if (rs instanceof XyScatterRenderableSeries && rs.pointMarker) {
+                    rs.pointMarker.width = POINT_SIZE_NORMAL
+                    rs.pointMarker.height = POINT_SIZE_NORMAL
+                }
             }
         }
     }

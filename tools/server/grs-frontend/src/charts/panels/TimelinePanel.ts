@@ -6,7 +6,7 @@ import {
     NumberRange, TextAnnotation, Thickness, XyxyDataSeries,
     type AnnotationBase
 } from "scichart"
-import { BasePanel, type BasePanelOptions } from "./BasePanel"
+import { BasePanel, PATH_DIM_OPACITY, type BasePanelOptions } from "./BasePanel"
 import { layoutRectangles, type LayoutRectangle } from "../layout/rectangleLayout"
 import type { StructureNode, TimelineSegment } from "@/types/schedule"
 import { setSvgAnnotationsVisible } from "../svgAnnotationVisibility"
@@ -64,8 +64,8 @@ export class TimelinePanel extends BasePanel {
     private preSelectionTimeRange: { min: number; max: number } | null = null
     /** Stored rectangles for selection lookup. */
     private rectangles: LayoutRectangle[] = []
-    /** Currently hovered model path. */
-    private currentHoveredModel: string | null = null
+    /** Currently hovered execution path (guards against stale unhover events). */
+    private currentHoveredExecution: string | null = null
     /** Drag guard modifier for click-vs-drag discrimination. */
     private dragGuard: DragGuardModifier | null = null
     /** DOM tooltip for instant label hover (consistent with network viewer tooltip style). */
@@ -225,6 +225,27 @@ export class TimelinePanel extends BasePanel {
         return this.rectangles
     }
 
+    /**
+     * Dim all rectangle segments except those whose executionPath matches `path`.
+     * Pass null to restore all to normal opacity.
+     */
+    override highlightPath(path: string | null): void {
+        for (const rs of this.surface.renderableSeries.asArray()) {
+            if (!(rs instanceof FastRectangleRenderableSeries)) continue
+            const name = rs.dataSeries?.dataSeriesName ?? ''
+            if (!name.startsWith('segment:')) continue
+            const segId = parseInt(name.substring(8), 10)
+            // Don't touch the currently selected segment
+            if (segId === this.selectedSegmentId) continue
+
+            const rect = this.rectangles.find(r => r.segmentId === segId)
+            const matches = path === null || rect?.executionPath === path
+            rs.opacity = matches ? 1 : PATH_DIM_OPACITY
+            const lbl = this.segmentLabelMap.get(segId)
+            if (lbl) lbl.opacity = matches ? 1 : PATH_DIM_OPACITY
+        }
+    }
+
     /** Store full time extent so deselect can zoom back. */
     override setTimeExtent(minTime: number, maxTime: number): void {
         super.setTimeExtent(minTime, maxTime)
@@ -277,8 +298,11 @@ export class TimelinePanel extends BasePanel {
                     const lbl = this.segmentLabelMap.get(segmentId)
                     if (lbl) lbl.textColor = hovered ? this.theme.timeline.rect.hover.text : this.theme.timeline.rect.normal.text
                 }
-                // Suppress rect hover events while an instant annotation is hovered
-                if (this.isHoveringInstant) return
+                // When entering a new rect, always propagate even if an instant
+                // is still hovered (instant unhover fires after rect hover).
+                // Only suppress unhover events while an instant is active.
+                if (this.isHoveringInstant && !hovered) return
+                if (this.isHoveringInstant && hovered) this.isHoveringInstant = false
                 this.handleHover(hovered, modelPath, executionPath)
             },
             onSelectedChanged: (source) => {
@@ -420,10 +444,13 @@ export class TimelinePanel extends BasePanel {
     /** Unified hover handler for both rectangles and instant labels. */
     private handleHover(hovered: boolean, modelPath: string, executionPath: string): void {
         if (hovered) {
-            this.currentHoveredModel = modelPath
+            this.currentHoveredExecution = executionPath
             this.hoverChangeCallback?.(modelPath, executionPath)
-        } else {
-            this.currentHoveredModel = null
+        } else if (this.currentHoveredExecution === executionPath) {
+            // Only clear if WE are the one being unhovered — prevents a late
+            // unhover from rectangle A cancelling the hover on rectangle B
+            // when the mouse moves directly between them.
+            this.currentHoveredExecution = null
             this.hoverChangeCallback?.(null, null)
         }
     }

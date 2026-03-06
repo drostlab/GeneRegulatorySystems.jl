@@ -14,25 +14,43 @@ import {
     MouseWheelZoomModifier,
     ZoomPanModifier,
     ZoomExtentsModifier,
-    CustomAnnotation,
+    parseColorToUIntArgb,
+    EStrokePaletteMode,
+    type IPointMarkerPaletteProvider,
+    type TPointMarkerArgb,
+    type IRenderableSeries,
 } from "scichart"
-import { BasePanel, type BasePanelOptions } from "./BasePanel"
+import { BasePanel, PATH_DIM_OPACITY, type BasePanelOptions } from "./BasePanel"
 import type { PhaseSpacePoint, PhaseSpaceResult } from "@/types/simulation"
 import { CHART_FONT_SIZES } from "../chartConstants"
 import { PhaseSpaceHoverModifier } from "../modifiers/PhaseSpaceHoverModifier"
+import { GREY } from "@/config/theme"
 export type { HoverInfo } from "../modifiers/PhaseSpaceHoverModifier"
 
-const LINE_ALPHA = 0.45
-const POINT_SIZE = 4
+const LINE_ALPHA = 0.9
+const POINT_SIZE = 3.5
 const HIGHLIGHT_SIZE = 14
-const ARROW_SIZE = 8
 
-/** Build an SVG triangle pointing right, rotated to `angleDeg`, filled with `colour`. */
-function arrowSvg(colour: string, angleDeg: number): string {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${ARROW_SIZE * 2}" height="${ARROW_SIZE * 2}">` +
-        `<polygon points="${ARROW_SIZE},0 ${ARROW_SIZE * 2},${ARROW_SIZE} ${ARROW_SIZE},${ARROW_SIZE * 2}" ` +
-        `fill="${colour}" transform="rotate(${angleDeg}, ${ARROW_SIZE}, ${ARROW_SIZE})" />` +
-        `</svg>`
+/** Stroke thickness / point size for highlighted / dimmed path (external highlight). */
+const LINE_THICKNESS_NORMAL = 3
+const LINE_THICKNESS_HOVER = 5.0
+const POINT_SIZE_HOVER = 5
+const POINT_SIZE_DIM = 2
+
+/**
+ * Build a point-marker PaletteProvider that assigns each scatter point its own colour.
+ */
+function buildPointPalette(colours: string[]): IPointMarkerPaletteProvider {
+    const argbs = colours.map(c => parseColorToUIntArgb(c))
+    return {
+        strokePaletteMode: EStrokePaletteMode.SOLID,
+        onAttached(_series: IRenderableSeries): void {},
+        onDetached(): void {},
+        overridePointMarkerArgb(_x: number, _y: number, index: number): TPointMarkerArgb {
+            const c = argbs[index] ?? 0xffffffff
+            return { fill: c, stroke: c }
+        },
+    }
 }
 
 type PathSelectCallback = (path: string) => void
@@ -56,7 +74,6 @@ export class PhaseSpacePanel extends BasePanel {
     private pathScatterSeries = new Map<string, XyScatterRenderableSeries>()
     /** Pre-sorted (by t) points per path -- for highlight and hit-test. */
     private pathPoints = new Map<string, PhaseSpacePoint[]>()
-    private arrowAnnotations: CustomAnnotation[] = []
     private pathSelectCallback?: PathSelectCallback
     private hoverModifier: PhaseSpaceHoverModifier
 
@@ -124,7 +141,7 @@ export class PhaseSpacePanel extends BasePanel {
         byPath.forEach((pts, path) => {
             const xs = pts.map(p => p.x)
             const ys = pts.map(p => p.y)
-            const pathColour = pts[0]!.colour
+            const pathColour = GREY[300]
 
             const lineData = new XyDataSeries(this.wasmContext, {
                 isSorted: false,
@@ -148,10 +165,11 @@ export class PhaseSpacePanel extends BasePanel {
                 pointMarker: new EllipsePointMarker(this.wasmContext, {
                     width: POINT_SIZE,
                     height: POINT_SIZE,
-                    fill: pathColour,
-                    stroke: pathColour,
+                    fill: pathColour,  // fallback; overridden per-point by paletteProvider
+                    stroke: "transparent",
                     strokeThickness: 0,
                 }),
+                paletteProvider: buildPointPalette(pts.map(p => p.colour)),
             })
 
             this.surface.renderableSeries.add(lineSeries)
@@ -167,9 +185,6 @@ export class PhaseSpacePanel extends BasePanel {
         // Highlight always on top
         this.surface.renderableSeries.add(this.highlightSeries!)
 
-        // Arrowheads at the endpoint of each trajectory
-        this._addArrowheads(byPath)
-
         // Feed path -> time[] into hover modifier for tooltip resolution
         const pathTimes = new Map<string, number[]>()
         byPath.forEach((pts, path) => pathTimes.set(path, pts.map(p => p.t)))
@@ -183,6 +198,7 @@ export class PhaseSpacePanel extends BasePanel {
     setTimepoint(t: number): void {
         if (!this.highlightData) return
         this.highlightData.clear()
+        let resolvedT: number | undefined
         this.pathPoints.forEach(pts => {
             if (pts.length === 0) return
             let nearest = pts[0]!
@@ -192,6 +208,7 @@ export class PhaseSpacePanel extends BasePanel {
                 if (d < bestDist) { bestDist = d; nearest = pts[i]! }
             }
             this.highlightData!.append(nearest.x, nearest.y)
+            if (resolvedT === undefined) resolvedT = nearest.t
         })
     }
 
@@ -203,6 +220,32 @@ export class PhaseSpacePanel extends BasePanel {
     /** Register a callback fired on hover (nearest point info) or null on leave. */
     onHover(cb: (info: { t: number; path: string } | null) => void): void {
         this.hoverModifier.onHover(cb)
+    }
+
+    /**
+     * Override: skip when hover modifier is active (it manages its own dimming).
+     * Otherwise dim non-matching paths and boost the highlighted path.
+     */
+    override highlightPath(path: string | null): void {
+        if (this.hoverModifier.isHovering) return
+        for (const rs of this.surface.renderableSeries.asArray()) {
+            const name = rs.dataSeries?.dataSeriesName ?? ''
+            if (name.startsWith('__')) continue
+            const isLine = name.startsWith('line:')
+            const isScatter = name.startsWith('scatter:')
+            if (!isLine && !isScatter) continue
+            const seriesPath = name.substring(name.indexOf(':') + 1)
+            const matches = path === null || seriesPath === path
+            rs.opacity = matches ? 1 : PATH_DIM_OPACITY
+            if (isLine && rs instanceof FastLineRenderableSeries) {
+                rs.strokeThickness = (matches && path !== null) ? LINE_THICKNESS_HOVER : LINE_THICKNESS_NORMAL
+            }
+            if (isScatter && rs instanceof XyScatterRenderableSeries && rs.pointMarker) {
+                const sz = path === null ? POINT_SIZE : (matches ? POINT_SIZE_HOVER : POINT_SIZE_DIM)
+                rs.pointMarker.width = sz
+                rs.pointMarker.height = sz
+            }
+        }
     }
 
     override clearData(): void {
@@ -260,49 +303,11 @@ export class PhaseSpacePanel extends BasePanel {
     }
 
     // ------------------------------------------------------------------
-    // Arrowheads
-    // ------------------------------------------------------------------
-
-    /** Place a small SVG arrow at the last point of each path, pointing in the
-     *  direction of the final trajectory segment. */
-    private _addArrowheads(byPath: Map<string, PhaseSpacePoint[]>): void {
-        this._clearArrowheads()
-        byPath.forEach((pts) => {
-            if (pts.length < 2) return
-            const prev = pts[pts.length - 2]!
-            const last = pts[pts.length - 1]!
-            const dx = last.x - prev.x
-            const dy = last.y - prev.y
-            if (dx === 0 && dy === 0) return
-            // atan2 gives angle from positive x-axis; SVG triangle points right at 0deg
-            // Negate dy because data y increases upward but SVG y increases downward
-            const angleDeg = Math.atan2(-dy, dx) * (180 / Math.PI) - 90
-            const annotation = new CustomAnnotation({
-                x1: last.x,
-                y1: last.y,
-                svgString: arrowSvg(last.colour, angleDeg),
-                isEditable: false,
-            })
-            this.surface.annotations.add(annotation)
-            this.arrowAnnotations.push(annotation)
-        })
-    }
-
-    private _clearArrowheads(): void {
-        for (const ann of this.arrowAnnotations) {
-            this.surface.annotations.remove(ann)
-            ann.delete()
-        }
-        this.arrowAnnotations = []
-    }
-
-    // ------------------------------------------------------------------
     // Internals
     // ------------------------------------------------------------------
 
     /** Remove and delete all path series (line + scatter). Leaves highlight intact. */
     private _clearPathSeries(): void {
-        this._clearArrowheads()
         for (const [path, rs] of this.pathLineSeries) {
             this.surface.renderableSeries.remove(rs)
             rs.delete()

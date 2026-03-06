@@ -220,8 +220,12 @@ function run_simulation(result::SimulationResult, schedule::Models.Model, ws_cli
     state = Models.FlatState()
 
     # Execute schedule with sink as trace callback
+    # Note: do NOT pass `record = true` here -- the Primitive scheduler controls
+    # recording per-episode.  Passing it in the top-level context would leak
+    # `record = true` into step-based (skip) episodes, causing the model to
+    # save every stochastic event even for snapshot-only schedules.
     @info "[Simulation] Executing schedule" id=result.id
-    schedule(state, Inf; trace = sink, record = true)
+    schedule(state, Inf; trace = sink)
 
     # Flush remaining buffered events and stream frames
     @info "[Simulation] Flushing events" id=result.id

@@ -18,7 +18,7 @@ import Checkbox from 'primevue/checkbox'
 import * as simulationService from '@/services/simulationService'
 import { MainChart } from '@/charts/MainChart'
 import { useTheme } from '@/composables/useTheme'
-import { buildClientPhaseSpace } from '@/charts/phaseSpaceBuilder'
+import { buildClientPhaseSpace, recolourPhaseSpace } from '@/charts/phaseSpaceBuilder'
 import { GREEN } from '@/config/theme'
 
 const simulationStore = useSimulationStore()
@@ -128,7 +128,12 @@ const activePhaseSpaceResult = computed(() => {
     if (genes.length >= 1 && genes.length <= 2 && timeseries && metadata && resultId) {
         return buildClientPhaseSpace(timeseries, genes, metadata.gene_colours, resultId)
     }
-    return simulationStore.phaseSpaceResult
+
+    const serverResult = simulationStore.phaseSpaceResult
+    if (serverResult && genes.length >= 1 && timeseries && metadata) {
+        return recolourPhaseSpace(serverResult, genes, timeseries, metadata.gene_colours)
+    }
+    return serverResult
 })
 
 watch(
@@ -303,9 +308,16 @@ onMounted(async () => {
         if (info) {
             viewerStore.setTimepoint(info.t)
             viewerStore.setHoveredRectModel(null, info.path)
+            // Move the timeseries time cursor to match
+            chart.setCursorTime(info.t)
         } else {
             viewerStore.setHoveredRectModel(null, null)
         }
+    })
+
+    // Timeseries panel path hover -> store (bidirectional sync)
+    chart.onTimeseriesPathHover((path: string | null) => {
+        viewerStore.setHoveredRectModel(null, path)
     })
 
     window.addEventListener('keydown', handleEscapeKey)
@@ -324,6 +336,7 @@ async function loadResult(event: SelectChangeEvent) {
     }
     simulationStore.clearResult()
     chart.clearSimulationData()
+    showPhaseSpace.value = false
 
     await simulationStore.loadResult(selectedResultId)
 
@@ -338,6 +351,7 @@ async function loadResult(event: SelectChangeEvent) {
 
 async function runSimulation() {
     chart.clearSimulationData()
+    showPhaseSpace.value = false
     // Reset streaming buffer
     streamingBuffer = {}
     lastStreamCurrentTime = 0
@@ -397,6 +411,13 @@ function handleEscapeKey(event: KeyboardEvent) {
         }
     }
 }
+
+// Path highlight sync: when hoveredExecutionPath changes (from any source),
+// dim all panels to highlight just that path. null restores full opacity.
+watch(
+    () => viewerStore.hoveredExecutionPath,
+    (path) => chart.highlightPath(path ?? null),
+)
 
 watch(
     () => selectedTracks.value,

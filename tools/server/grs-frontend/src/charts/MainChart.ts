@@ -59,6 +59,7 @@ export class MainChart {
     private instantHoverChangeCallback?: (path: string | null) => void
     private phaseSpacePathSelectCallback?: (path: string) => void
     private phaseSpaceHoverCallback?: (info: HoverInfo | null) => void
+    private timeseriesPathHoverCallback?: (path: string | null) => void
 
     private isDark = false
 
@@ -136,6 +137,11 @@ export class MainChart {
             this.instantHoverChangeCallback?.(modelPath)
         })
 
+        // Wire timeseries path hover callback to all timeseries panels
+        for (const { panel } of this.getTimeseriesPanels()) {
+            panel.onPathHover(path => this.timeseriesPathHoverCallback?.(path))
+        }
+
         console.debug(`[MainChart] Initialised with ${this.tracks.length} tracks`)
     }
 
@@ -157,6 +163,22 @@ export class MainChart {
 
     onInstantHoverChange(callback: (path: string | null) => void): void {
         this.instantHoverChangeCallback = callback
+    }
+
+    /** Register a callback for when the user hovers over a path in a timeseries panel. */
+    onTimeseriesPathHover(callback: (path: string | null) => void): void {
+        this.timeseriesPathHoverCallback = callback
+    }
+
+    /**
+     * Dim all series in every panel except those belonging to `path`.
+     * Pass null to restore all panels to full opacity.
+     */
+    highlightPath(path: string | null): void {
+        for (const { panel } of this.tracks) {
+            panel.highlightPath(path)
+        }
+        this.phaseSpacePanel?.highlightPath(path)
     }
 
     /** Deselect any selected segment in the timeline panel. */
@@ -269,6 +291,7 @@ export class MainChart {
         this.selectSyncModifier?.clearSelection()
         this.timeCursorModifier?.hideCursor()
         this.getTimeseriesPanels().forEach(({ panel }) => panel.clearData())
+        this.hidePhaseSpace()
     }
 
     /**
@@ -342,6 +365,11 @@ export class MainChart {
     /** Update the current-timepoint highlight on the phase-space panel. */
     setPhaseSpaceTimepoint(t: number): void {
         this.phaseSpacePanel?.setTimepoint(t)
+    }
+
+    /** Programmatically move the timeseries time cursor to a given time. */
+    setCursorTime(t: number): void {
+        this.timeCursorModifier?.setCursorTime(t)
     }
 
     /** Register a callback for when the user clicks a path in the phase-space view. */

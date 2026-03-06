@@ -302,7 +302,8 @@ export function buildStylesheet(isDark = false): any[] {
         {
             selector: 'edge.peripheral',
             style: {
-                'opacity': PERIPHERAL_OPACITY * 0.5
+                'opacity': PERIPHERAL_OPACITY * 0.5,
+                'label': ''
             } as any,
         },
         // -- differentiation tree edges: invisible but kept in fcose layout as springs --

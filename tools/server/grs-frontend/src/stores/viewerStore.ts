@@ -166,6 +166,7 @@ export const useViewerStore = defineStore('viewer', () => {
         selectedSpeciesNodes,
         selectedSpeciesTypes,
         selectedSegmentIds,
+        hoveredExecutionPath,
         activeModelPath,
         editorHighlightModelPath,
         selectedPaths,
