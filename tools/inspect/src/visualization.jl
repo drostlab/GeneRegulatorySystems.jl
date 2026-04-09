@@ -118,7 +118,12 @@ function attach_trajectory_components!(
     group_colors,
     yscale,
 )
-    axis = Axis(figure, xticklabelsvisible = false; yscale)
+    axis = Axis(
+    	figure,
+    	xticksvisible = false,
+    	xticklabelsvisible = false;
+    	yscale,
+    )
 
     top = 0.0
     right = 1.0
@@ -140,8 +145,8 @@ function attach_trajectory_components!(
                         axis,
                         [previous_t, first(series.ts)],
                         [previous_y, first(series.ys)],
-                        markersize = 3,
-                        linewidth = 1,
+                        markersize = 2,
+                        linewidth = 0.5,
                         linestyle = :dash;
                         color,
                     )
@@ -173,8 +178,8 @@ function attach_trajectory_components!(
                     axis,
                     series.ts,
                     series.ys,
-                    markersize = 3,
-                    linewidth = 1,
+                    markersize = 2,
+                    linewidth = 0.5,
                     linestyle = :dash;
                     color,
                 )
@@ -197,6 +202,7 @@ function attach_trajectory_components!(
 )
     axis = Axis(
         figure;
+        xticksvisible = false,
         xticklabelsvisible = false,
         yticksvisible = false,
         yticklabelsvisible = false,
@@ -221,8 +227,8 @@ function attach_trajectory_components!(
                     [previous_t, segment.from],
                     [previous_y, segment.track + 1.0],
                     [-1.0, -1.0],
-                    markersize = 3,
-                    linewidth = 1,
+                    markersize = 2,
+                    linewidth = 0.5,
                     linestyle = :dash,
                     color = colorant"black",
                 )
@@ -290,6 +296,7 @@ function attach_trajectory!(figure; index, events, kinds, group_colors)
     if !isempty(axes)
         bottom = last(axes)
         bottom.xlabel = L"model time $t$"
+        bottom.xticksvisible = true
         bottom.xticklabelsvisible = true
         linkxaxes!(axes...)
     end

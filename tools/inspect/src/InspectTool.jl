@@ -532,6 +532,7 @@ function main(;
     displays,
     kinds,
     size,
+    out,
     wait_for_close,
 )
     warn_incompatible_versions(location)
@@ -552,11 +553,19 @@ function main(;
     GLMakie.activate!()
     screen = GLMakie.Screen()
 
+    if out !== nothing
+        wait_for_close = false
+    end
+
     on(selection) do selected
         empty!(screen)
         data = prepare(index, selection = selected; location)
         figure = build_figure(; data, displays, kinds, selection, size)
-        display(screen, figure)
+        if out === nothing
+            display(screen, figure)
+        else
+            save(out, figure, px_per_unit = 300/96)
+        end
     end
 
     notify(selection)
@@ -619,6 +628,7 @@ end
                 displays = "selector,trajectory,model,legend,info",
                 kinds = "log10(mrnas),proteins",
                 size = "1280x720",
+                out = nothing,
                 wait_for_close = false;
                 location,
             )
@@ -629,6 +639,7 @@ end
                 displays = "selector,trajectory,model,legend,info",
                 kinds = "activity",
                 size = "1280x720",
+                out = nothing,
                 wait_for_close = false;
                 location,
             )

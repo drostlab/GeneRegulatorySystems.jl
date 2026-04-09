@@ -43,6 +43,9 @@ settings() = @add_arg_table! ArgParseSettings(
         default = "1280x720"
         help = "The initial resolution of the window."
 
+    "--out", "-o"
+        help = "A file to save to, instead of displaying the window."
+
     "--no-wait-for-close"
         action = :store_false
         dest_name = "wait_for_close"
