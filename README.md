@@ -17,17 +17,17 @@ Features include:
 
 ## Setup
 
-The package can be used either as a library or as a standalone application via the command line. It requires a working installation of Julia ≥ v1.10.
+The package can be used either as a library or as a standalone application via the command line. It requires a working installation of Julia ≥ v1.11.
 
 As a library, it can be installed using Julia's package manager. For example, type
 ```
-]add https://github.com/lmshk/GeneRegulatorySystems.jl
+]add https://github.com/drostlab/GeneRegulatorySystems.jl
 ```
 in the REPL.
 
 With Git installed, the easiest way to get started using the command line interface is to clone this repository, e.g. like
 ```sh
-git clone https://github.com/lmshk/GeneRegulatorySystems.jl $HOME/src/grs
+git clone https://github.com/drostlab/GeneRegulatorySystems.jl $HOME/src/grs
 ```
 and then run the utilities via the (currently Unix-only) wrapper script. From the cloned directory, run
 ```sh
@@ -94,9 +94,9 @@ You can export results from their native (long) format to a wide format using th
 
 When used as a library, the package can just be updated using Julia's package manager. If it was installed by cloning this repository as described in [Setup](#setup), you can update by checking out the new version using Git. The `tools/grs` wrapper script will automatically re-instantiate the changed tools' environments on first use.
 
-[docs]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/
-[docs-overview]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/overview/
-[docs-experiment]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/
-[docs-experiment-results]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/#Results-format
-[docs-inspect]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/inspect/
-[docs-export]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/export/
+[docs]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/
+[docs-overview]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/overview/
+[docs-experiment]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/
+[docs-experiment-results]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/#Results-format
+[docs-inspect]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/inspect/
+[docs-export]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/export/

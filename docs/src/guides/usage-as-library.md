@@ -12,7 +12,7 @@ The package can simply be installed using Julia's package manager.
 Since it is not published to the General registry yet, you need to reference the package repository directly.
 For example, type
 ```
-]add https://github.com/lmshk/GeneRegulatorySystems.jl
+]add https://github.com/drostlab/GeneRegulatorySystems.jl
 ```
 in the Julia REPL after activating your work environment, like a toy environment (`]activate --temp`).
 You can then run the examples on this page.
@@ -38,7 +38,7 @@ begin
     import Pkg
     Pkg.activate(mktempdir())
 
-    Pkg.add(url = "https://github.com/lmshk/GeneRegulatorySystems.jl")
+    Pkg.add(url = "https://github.com/drostlab/GeneRegulatorySystems.jl")
     using GeneRegulatorySystems
 
     # maybe add other packages here...
@@ -264,8 +264,9 @@ using Plots
 (; system, method, parameters) = f!.model.model
 
 bootstrap = Models.load_defaults()[:bootstrap]
+normalize_name = GeneRegulatorySystems.Models.SciML.normalize_name
 u₀ = [
-    s => Int(get(bootstrap, ModelingToolkit.getname(s), 0))
+    s => Int(get(bootstrap, normalize_name(s), 0))
     for s in unknowns(system)
 ]
 discrete_problem = DiscreteProblem(system, u₀, (0.0, 3e4), parameters)
@@ -280,31 +281,34 @@ plot(solution, idxs = (:a₊proteins, :b₊proteins))
 But since intermediate definitions are retained as described above, we also have access to the `ReactionSystem` and can thus use it with the [tools Catalyst.jl provides](https://docs.sciml.ai/Catalyst/stable/). For example:
 
 ```@example usage
+using CairoMakie
 using Catalyst
+using GraphMakie
+using NetworkLayout
 
 reaction_system = f!.model.definition
-Graph(reaction_system)
+plot_network(reaction_system)
 ```
 
 ```@example usage
 conservationlaw_constants(flatten(reaction_system))
 ```
 
-This allows us to easily construct an ODE relaxation of the jump process dynamics
+This allows us to easily construct an ODE approximation of the jump process dynamics
 
 ```@example usage
-using DifferentialEquations
+using OrdinaryDiffEqTsit5
 
-relaxation = convert(ODESystem, reaction_system)
+approximation = convert(ODESystem, reaction_system)
 ```
 
 and simulate from it:
 
 ```@example usage
 u₀′ = map(x -> x.first => float(x.second), u₀)
-problem = ODEProblem(complete(relaxation), u₀′, (0.0, 3e4), parameters)
-solution = solve(problem)
-plot!(solution, idxs = (:a₊proteins, :b₊proteins))
+problem = ODEProblem(complete(approximation), u₀′, (0.0, 3e4), parameters)
+solution = solve(problem, Tsit5())
+Plots.plot!(solution, idxs = (:a₊proteins, :b₊proteins))
 ```
 
 ## Reifying `Model`s from `Schedule`s
@@ -342,9 +346,9 @@ And just [like above](@ref "Simulating models"), we can now use the contained `J
 ```@example usage
 (; system, method, parameters) = repressilator!.model.model.model
 
-start = merge(bootstrap, Dict(Symbol("1₊proteins") => 100))
+start = merge(bootstrap, Dict(Symbol("1.proteins") => 100))
 u₀ = [
-    s => Int(get(start, ModelingToolkit.getname(s), 0))
+    s => Int(get(start, normalize_name(s), 0))
     for s in unknowns(system)
 ]
 
@@ -354,7 +358,7 @@ problem = JumpProblem(system, discrete_problem, method; rng)
 
 solution = solve(problem, SSAStepper())
 
-plot(
+Plots.plot(
     solution,
     idxs = (Symbol("1₊proteins"), Symbol("2₊proteins"), Symbol("3₊proteins")),
     camera = (60, 60),
@@ -362,8 +366,8 @@ plot(
 
 u₀′ = map(x -> x.first => float(x.second), u₀)
 problem = ODEProblem(reaction_system, u₀′, (0.0, 1e5), parameters)
-solution = solve(problem)
-plot!(
+solution = solve(problem, Tsit5())
+Plots.plot!(
     solution,
     idxs = (Symbol("1₊proteins"), Symbol("2₊proteins"), Symbol("3₊proteins"))
 )

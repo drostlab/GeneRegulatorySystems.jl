@@ -4,7 +4,7 @@
 
 With [Git](https://git-scm.com/) installed, the easiest way to get started using the command line interface is to clone this repository, e.g. like
 ```sh
-git clone https://github.com/lmshk/GeneRegulatorySystems.jl $HOME/src/grs
+git clone https://github.com/drostlab/GeneRegulatorySystems.jl $HOME/src/grs
 ```
 and then run the utilities via the (currently Unix-only) wrapper script. From the cloned directory, run
 ```sh
