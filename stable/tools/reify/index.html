@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>reify tool · GeneRegulatorySystems.jl</title><meta name="title" content="reify tool · GeneRegulatorySystems.jl"/><meta property="og:title" content="reify tool · GeneRegulatorySystems.jl"/><meta property="twitter:title" content="reify tool · GeneRegulatorySystems.jl"/><meta name="description" content="Documentation for GeneRegulatorySystems.jl."/><meta property="og:description" content="Documentation for GeneRegulatorySystems.jl."/><meta property="twitter:description" content="Documentation for GeneRegulatorySystems.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">GeneRegulatorySystems.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><span class="tocitem">User guide</span><ul><li><a class="tocitem" href="../../">Overview</a></li><li><a class="tocitem" href="../../guides/getting-started/">Getting started</a></li><li><a class="tocitem" href="../../guides/usage-as-library/">Usage as a library</a></li></ul></li><li><span class="tocitem">Reference</span><ul><li><a class="tocitem" href="../../models/models/">Models</a></li><li><a class="tocitem" href="../../models/scheduling/">Scheduling</a></li><li><a class="tocitem" href="../../models/plumbing/">Plumbing</a></li><li><a class="tocitem" href="../../models/regulation/">Regulation</a></li><li><a class="tocitem" href="../../models/extraction/">Extraction</a></li></ul></li><li><span class="tocitem">CLI</span><ul><li><a class="tocitem" href="../experiment/"><code>experiment</code> tool</a></li><li><a class="tocitem" href="../inspect/"><code>inspect</code> tool</a></li><li class="is-active"><a class="tocitem" href><code>reify</code> tool</a></li><li><a class="tocitem" href="../export/"><code>export</code> tool</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">CLI</a></li><li class="is-active"><a href><code>reify</code> tool</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href><code>reify</code> tool</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/drostlab/GeneRegulatorySystems.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/drostlab/GeneRegulatorySystems.jl/blob/master/docs/src/tools/reify.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="reify-tool"><a class="docs-heading-anchor" href="#reify-tool"><code>reify</code> tool</a><a id="reify-tool-1"></a><a class="docs-heading-anchor-permalink" href="#reify-tool" title="Permalink"></a></h1><pre><code class="nohighlight hljs">usage: reify [-s SEED] [-r] [-x FORMAT] [-d MAXDEPTH] location [path]
+
+Recreate an object from a simulation schedule, identified by its path,
+and describe it to standard output.
+
+positional arguments:
+  location              Set the schedule to operate on, either as a
+                        results location as produced by the experiment
+                        tool or as the filesystem path to a schedule
+                        file.
+  path                  Set the path identifying, within the schedule,
+                        the object to be reified. See more info below.
+
+optional arguments:
+  -s, --seed SEED       Set the random seed to predefine before
+                        reification. (default: &quot;seed&quot;)
+  -r, --representation  Before output, transform the identified object
+                        to a structured representation that is
+                        equivalent to how it could have been defined
+                        in the scheduling language. This is currently
+                        only defined for special cases and fails with
+                        an error otherwise.
+  -x, --format FORMAT   Specify how to format the result: with
+                        `--format=dump`, print it using Julia&#39;s `dump`
+                        function; with `--format=julia`, print its
+                        Julia `repr`; with `--format=json`, output a
+                        JSON serialization; with `--format=tree`,
+                        pretty-print it as a tree. JSON output
+                        typically requires `--representation` as well.
+                        (type: Symbol, default: :tree)
+  -d, --maxdepth MAXDEPTH
+                        Specify the depth to descend to when
+                        `--format=dump` or `--format=tree` is used.
+                        (type: Int64, default: 8)
+
+This tool can be used to explore the semantics of the scheduling
+mechanism, or to obtain a concrete model specification that is
+otherwise available only indirectly where models are specified from
+templates.
+
+The format of the target path is described in detail the main
+documentation, but briefly, it starts with a component identifying the
+scope within the schedule (which may correspond to an individual
+simulation segment) and can optionally be suffixed by additional
+`.`-separated components allowing to index further into the identified
+object. Generally, given a results location as produced by the
+experiment tool, all values in the `path` and `model` columns in its
+index, as well as their prefixes, are valid targets for reification.
+
+Omitting the object path identifies the root `Schedule`. If an
+identified object is a `Schedule`: appending a `+` expands definitions
+if its specification is a `Scope`; appending a `-` or `/` and then an
+integer descends into the respective iteration if its specification is
+a `Sequence`; and appending a `.` followed by a name accesses the
+corresponding binding. If an identified object is a `Primitive`,
+appending a `+` accesses the wrapped model. Otherwise, appending a `.`
+followed by a name accesses the identified object&#39;s property by name,
+and appending a `.` followed by an integer indexes into a vector.
+
+</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../inspect/">« <code>inspect</code> tool</a><a class="docs-footer-nextpage" href="../export/"><code>export</code> tool »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 9 April 2026 20:13">Thursday 9 April 2026</span>. Using Julia version 1.12.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Usage as a library · GeneRegulatorySystems.jl</title><meta name="title" content="Usage as a library · GeneRegulatorySystems.jl"/><meta property="og:title" content="Usage as a library · GeneRegulatorySystems.jl"/><meta property="twitter:title" content="Usage as a library · GeneRegulatorySystems.jl"/><meta name="description" content="Documentation for GeneRegulatorySystems.jl."/><meta property="og:description" content="Documentation for GeneRegulatorySystems.jl."/><meta property="twitter:description" content="Documentation for GeneRegulatorySystems.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">GeneRegulatorySystems.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><span class="tocitem">User guide</span><ul><li><a class="tocitem" href="../../">Overview</a></li><li><a class="tocitem" href="../getting-started/">Getting started</a></li><li class="is-active"><a class="tocitem" href>Usage as a library</a><ul class="internal"><li><a class="tocitem" href="#Setup"><span>Setup</span></a></li><li><a class="tocitem" href="#Constructing-models"><span>Constructing models</span></a></li><li><a class="tocitem" href="#Simulating-models"><span>Simulating models</span></a></li><li><a class="tocitem" href="#Reifying-Models-from-Schedules"><span>Reifying <code>Model</code>s from <code>Schedule</code>s</span></a></li></ul></li></ul></li><li><span class="tocitem">Reference</span><ul><li><a class="tocitem" href="../../models/models/">Models</a></li><li><a class="tocitem" href="../../models/scheduling/">Scheduling</a></li><li><a class="tocitem" href="../../models/plumbing/">Plumbing</a></li><li><a class="tocitem" href="../../models/regulation/">Regulation</a></li><li><a class="tocitem" href="../../models/extraction/">Extraction</a></li></ul></li><li><span class="tocitem">CLI</span><ul><li><a class="tocitem" href="../../tools/experiment/"><code>experiment</code> tool</a></li><li><a class="tocitem" href="../../tools/inspect/"><code>inspect</code> tool</a></li><li><a class="tocitem" href="../../tools/reify/"><code>reify</code> tool</a></li><li><a class="tocitem" href="../../tools/export/"><code>export</code> tool</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">User guide</a></li><li class="is-active"><a href>Usage as a library</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Usage as a library</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/drostlab/GeneRegulatorySystems.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/drostlab/GeneRegulatorySystems.jl/blob/master/docs/src/guides/usage-as-library.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Usage-as-a-library"><a class="docs-heading-anchor" href="#Usage-as-a-library">Usage as a library</a><a id="Usage-as-a-library-1"></a><a class="docs-heading-anchor-permalink" href="#Usage-as-a-library" title="Permalink"></a></h1><p>Everything the CLI tools do can be replicated manually using the library interface, that is, <code>using GeneRegulatorySystems</code> from a Julia session or program. This includes the construction of the actual (Catalyst.jl-based) regulation models that are simulated as part of an experiment <code>Schedule</code>.</p><p>The following describes how to obtain these models so that they can be studied in isolation using tools from the SciML ecosystem. In principle, they could then also be used in larger constructions such as inference procedures.</p><h2 id="Setup"><a class="docs-heading-anchor" href="#Setup">Setup</a><a id="Setup-1"></a><a class="docs-heading-anchor-permalink" href="#Setup" title="Permalink"></a></h2><p>The package can simply be installed using Julia&#39;s package manager. Since it is not published to the General registry yet, you need to reference the package repository directly. For example, type</p><pre><code class="nohighlight hljs">]add https://github.com/drostlab/GeneRegulatorySystems.jl</code></pre><p>in the Julia REPL after activating your work environment, like a toy environment (<code>]activate --temp</code>). You can then run the examples on this page.</p><h3 id="Definition-of-new-model-templates"><a class="docs-heading-anchor" href="#Definition-of-new-model-templates">Definition of new model templates</a><a id="Definition-of-new-model-templates-1"></a><a class="docs-heading-anchor-permalink" href="#Definition-of-new-model-templates" title="Permalink"></a></h3><p>The CLI tools do not support an explicit extension mechanism, so if you indend to <a href="../../models/models/#The-Model-interface">define new model templates</a> and actually make them available as part of the scheduling language, you need to modify the the Git repository (and ideally contribute any new models upstream eventually).</p><p>If you have <a href="../getting-started/#CLI-setup">installed the CLI tools by cloning the Git repository</a>, it may make sense to <code>]</code><a href="https://pkgdocs.julialang.org/v1/repl/#repl-develop"><code>develop</code></a> that path directly. For example, in a Julia REPL after activating your work environment, type</p><pre><code class="nohighlight hljs">]develop ~/src/grs</code></pre><p>where you replace <code>~/src/grs</code> by the repository location. Changes to that repository then affect both the CLI tools and the work environment.</p><h3 id="Pluto.jl"><a class="docs-heading-anchor" href="#Pluto.jl">Pluto.jl</a><a id="Pluto.jl-1"></a><a class="docs-heading-anchor-permalink" href="#Pluto.jl" title="Permalink"></a></h3><p>If you intend to work on a <a href="https://github.com/fonsp/Pluto.jl">Pluto.jl</a> notebook, because its built-in package manager only allows registered packages, you need to use a <a href="https://plutojl.org/en/docs/packages-advanced/#pattern-the-pkg-cell">&quot;Pkg cell&quot;</a>. For example, you can define a cell</p><pre><code class="language-julia hljs">begin
+    import Pkg
+    Pkg.activate(mktempdir())
+
+    Pkg.add(url = &quot;https://github.com/drostlab/GeneRegulatorySystems.jl&quot;)
+    using GeneRegulatorySystems
+
+    # maybe add other packages here...
+end</code></pre><p>to add and load this package.</p><p>Like above, if you want to operate on a locally checked out repository (e.g. because you need access to new model templates that you have registered for the CLI tools), you can <code>]develop</code> that repository. For example, you can define a cell</p><pre><code class="language-julia hljs">begin
+    import Pkg
+    Pkg.activate(mktempdir())
+
+    Pkg.develop(path = joinpath(ENV[&quot;HOME&quot;], &quot;src&quot;, &quot;grs&quot;))
+    using GeneRegulatorySystems
+end</code></pre><p>(where you may need to change the path definition if you installed the package somewhere else). However, you may need to restart the notebook after making changes to the repository.</p><h2 id="Constructing-models"><a class="docs-heading-anchor" href="#Constructing-models">Constructing models</a><a id="Constructing-models-1"></a><a class="docs-heading-anchor-permalink" href="#Constructing-models" title="Permalink"></a></h2><pre><code class="language-julia hljs">using GeneRegulatorySystems</code></pre><p>The lowest-level way to construct a regulation model <code>f!</code> is to call a model constructor with a corresponding definition. For example,</p><pre><code class="language-julia hljs">base_rates = Models.V1.EukaryoteBaseRates(
+    activation = 2.5,
+    deactivation = 10.0,
+    trigger = 6.6e-7,
+    transcription = 0.001,
+    processing = 0.02,
+    translation = 2.5e-9,
+    abortion = 0.01,
+    premrna_decay = 0.001,
+    mrna_decay = 0.001,
+    protein_decay = 3.0e-10,
+)
+
+definition = Models.V1.Definition(genes = [
+    Models.V1.Gene(name = :a; base_rates)
+    Models.V1.Gene(
+        name = :b,
+        repression = Models.V1.Repression(slots = [
+            Models.V1.HillRegulator(from = :a, at = 2.0)
+        ]);
+        base_rates,
+    )
+])
+
+f! = Models.V1.build(definition)</code></pre><p>builds a simple 2-gene network where one gene represses the other. This same model can also be constructed from a JSON specification, either in its <code>JSON.parse</code>d form</p><pre><code class="language-julia hljs">base_rates = Dict(
+    :activation =&gt; 2.5,
+    :deactivation =&gt; 10.0,
+    :trigger =&gt; 6.6e-7,
+    :transcription =&gt; 0.001,
+    :processing =&gt; 0.02,
+    :translation =&gt; 2.5e-9,
+    :abortion =&gt; 0.01,
+    :premrna_decay =&gt; 0.001,
+    :mrna_decay =&gt; 0.001,
+    :protein_decay =&gt; 3.0e-10,
+)
+
+specification = Dict(:genes =&gt; [
+    Dict(:name =&gt; &quot;a&quot;, :base_rates =&gt; base_rates)
+    Dict(
+        :name =&gt; &quot;b&quot;,
+        :base_rates =&gt; base_rates,
+        :repression =&gt; [Dict(:from =&gt; &quot;a&quot;, :at =&gt; 2.0)],
+    )
+])
+
+f! = Models.V1.build(specification)</code></pre><p>or directly from raw JSON:</p><pre><code class="language-julia hljs">import JSON
+
+base_rates_json = &quot;&quot;&quot;
+{
+    &quot;activation&quot;: 2.5,
+    &quot;deactivation&quot;: 10.0,
+    &quot;trigger&quot;: 6.6e-7,
+    &quot;transcription&quot;: 0.001,
+    &quot;processing&quot;: 0.02,
+    &quot;translation&quot;: 2.5e-9,
+    &quot;abortion&quot;: 0.01,
+    &quot;premrna_decay&quot;: 0.001,
+    &quot;mrna_decay&quot;: 0.001,
+    &quot;protein_decay&quot;: 3e-10
+}
+&quot;&quot;&quot;
+
+specification_json = &quot;&quot;&quot;
+    {&quot;genes&quot;: [
+        {&quot;name&quot;: &quot;a&quot;, &quot;base_rates&quot;: $base_rates_json},
+        {
+            &quot;name&quot;: &quot;b&quot;,
+            &quot;base_rates&quot;: $base_rates_json,
+            &quot;repression&quot;: [{&quot;from&quot;: &quot;a&quot;, &quot;at&quot;: 2.0}]
+        }
+    ]}
+&quot;&quot;&quot;
+
+specification = JSON.parse(specification_json, dicttype = Dict{Symbol, Any})
+
+f! = Models.V1.build(specification)</code></pre><p>Note that the JSON <strong>must be parsed with <code>dicttype = Dict{Symbol, Any}</code></strong> and likewise any <code>Dict</code>/<code>Array</code>-specification as shown above must use <code>Dict{Symbol, Any}</code> for every <code>Dict</code>. Finally, a <code>Model</code> can be constructed via <a href="../../models/models/#GeneRegulatorySystems.Models.parse"><code>Models.parse</code></a> (or loaded from a model specification file using <a href="../../models/models/#GeneRegulatorySystems.Models.load"><code>Models.load</code></a>)</p><pre><code class="language-julia hljs">f! = Models.parse(&quot;&quot;&quot;
+    {&quot;{regulation/v1}&quot;: $specification_json}
+&quot;&quot;&quot;)</code></pre><p>which means that the JSON specification is interpreted as a literal of the <a href="../../models/scheduling/#Scheduling">scheduling language</a>. All of the above examples produce the same regulation model. The result <code>f!</code> is a <code>Wrapped</code> model that contains a <code>model::Model</code> tagged with an arbitrary <code>definition</code> object:</p><pre><code class="language-julia hljs">typeof(f!)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">GeneRegulatorySystems.Models.Wrapped{GeneRegulatorySystems.Models.SciML.JumpState}</code></pre><p>In this case, the model is twice-wrapped, where the outer definition</p><pre><code class="language-julia hljs">f!.definition</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">GeneRegulatorySystems.Models.V1.Definition(:polymerases, :ribosomes, :proteasomes, GeneRegulatorySystems.Models.V1.Gene[GeneRegulatorySystems.Models.V1.Gene{GeneRegulatorySystems.Models.V1.EukaryoteBaseRates}(:a, GeneRegulatorySystems.Models.V1.EukaryoteBaseRates(2.5, 10.0, 6.6e-7, 0.001, 0.02, 2.5e-9, 0.01, 0.001, 0.001, 3.0e-10), true, GeneRegulatorySystems.Models.V1.Activation(GeneRegulatorySystems.Models.V1.HillRegulator[], minimum), GeneRegulatorySystems.Models.V1.Repression(GeneRegulatorySystems.Models.V1.HillRegulator[], minimum), GeneRegulatorySystems.Models.V1.Proteolysis(GeneRegulatorySystems.Models.V1.DirectRegulator[])), GeneRegulatorySystems.Models.V1.Gene{GeneRegulatorySystems.Models.V1.EukaryoteBaseRates}(:b, GeneRegulatorySystems.Models.V1.EukaryoteBaseRates(2.5, 10.0, 6.6e-7, 0.001, 0.02, 2.5e-9, 0.01, 0.001, 0.001, 3.0e-10), true, GeneRegulatorySystems.Models.V1.Activation(GeneRegulatorySystems.Models.V1.HillRegulator[], minimum), GeneRegulatorySystems.Models.V1.Repression(GeneRegulatorySystems.Models.V1.HillRegulator[GeneRegulatorySystems.Models.V1.HillRegulator(:a, 2.0, -1.0)], minimum), GeneRegulatorySystems.Models.V1.Proteolysis(GeneRegulatorySystems.Models.V1.DirectRegulator[]))], GeneRegulatorySystems.Models.Reaction[])</code></pre><p>is the <code>V1.Definition</code> defining the model and the inner definition</p><pre><code class="language-julia hljs">f!.model.definition</code></pre><p class="math-container">\[ \begin{align*}
+\mathrm{\mathtt{a.active}} &amp;\xrightleftharpoons[2.5 \left( 1 - \mathtt{a.active} \right)]{10.0 \mathtt{a.active}} \varnothing \\
+\mathrm{\mathtt{b.active}} &amp;\xrightleftharpoons[\frac{2.5 \left( 1 - \mathtt{b.active} \right)}{1.0 + 0.5 \mathtt{a.proteins}}]{10.0 \mathtt{b.active}} \varnothing \\
+\mathrm{\mathtt{a.active}} + \mathrm{\mathtt{polymerases}} &amp;\xrightarrow{\mathtt{a.trigger}} \mathrm{\mathtt{a.active}} + \mathrm{\mathtt{a.elongations}} \\
+\mathrm{\mathtt{a.elongations}} &amp;\xrightarrow{\mathtt{a.transcription}} \mathrm{\mathtt{a.premrnas}} + \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{a.premrnas}} &amp;\xrightarrow{\mathtt{a.processing}} \mathrm{\mathtt{a.mrnas}} \\
+\mathrm{\mathtt{a.mrnas}} + \mathrm{\mathtt{ribosomes}} &amp;\xrightarrow{\mathtt{a.translation}} \mathrm{\mathtt{a.mrnas}} + \mathrm{\mathtt{a.proteins}} + \mathrm{\mathtt{ribosomes}} \\
+\mathrm{\mathtt{a.elongations}} &amp;\xrightarrow{\mathtt{a.abortion}} \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{a.premrnas}} &amp;\xrightarrow{\mathtt{a.premrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{a.mrnas}} &amp;\xrightarrow{\mathtt{a.mrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{a.proteins}} + \mathrm{\mathtt{proteasomes}} &amp;\xrightarrow{\mathtt{a.protein_{decay}}} \mathrm{\mathtt{proteasomes}} \\
+\mathrm{\mathtt{b.active}} + \mathrm{\mathtt{polymerases}} &amp;\xrightarrow{\mathtt{b.trigger}} \mathrm{\mathtt{b.active}} + \mathrm{\mathtt{b.elongations}} \\
+\mathrm{\mathtt{b.elongations}} &amp;\xrightarrow{\mathtt{b.transcription}} \mathrm{\mathtt{b.premrnas}} + \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{b.premrnas}} &amp;\xrightarrow{\mathtt{b.processing}} \mathrm{\mathtt{b.mrnas}} \\
+\mathrm{\mathtt{b.mrnas}} + \mathrm{\mathtt{ribosomes}} &amp;\xrightarrow{\mathtt{b.translation}} \mathrm{\mathtt{b.mrnas}} + \mathrm{\mathtt{b.proteins}} + \mathrm{\mathtt{ribosomes}} \\
+\mathrm{\mathtt{b.elongations}} &amp;\xrightarrow{\mathtt{b.abortion}} \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{b.premrnas}} &amp;\xrightarrow{\mathtt{b.premrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{b.mrnas}} &amp;\xrightarrow{\mathtt{b.mrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{b.proteins}} + \mathrm{\mathtt{proteasomes}} &amp;\xrightarrow{\mathtt{b.protein_{decay}}} \mathrm{\mathtt{proteasomes}}  
+ \end{align*}
+ \]</p><p>is the <code>Catalyst.ReactionSystem</code> intermediate representation. The inner model</p><pre><code class="language-julia hljs">typeof(f!.model.model)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">GeneRegulatorySystems.Models.SciML.JumpModel</code></pre><p>is the actual <a href="../../models/models/#GeneRegulatorySystems.Models.SciML.JumpModel"><code>JumpModel</code></a> containing the prepared <code>system</code> (a <code>ModelingToolkit.JumpSystem</code>), <code>method</code> (a <code>JumpProcesses.AbstractAggregatorAlgorithm</code>) and <code>parameters</code>.</p><p>See <a href="../../models/models/#Instantiating-models">Instantiating models</a> and <a href="../../models/regulation/#Regulation">Regulation</a> for information on how to construct other regulation models.</p><h2 id="Simulating-models"><a class="docs-heading-anchor" href="#Simulating-models">Simulating models</a><a id="Simulating-models-1"></a><a class="docs-heading-anchor-permalink" href="#Simulating-models" title="Permalink"></a></h2><p>Models can be simulated either using <a href="../../models/models/#The-Model-interface">The <code>Model</code> interface</a>, or directly via the contained SciML objects. The former is what the <a href="../../models/scheduling/#Scheduling">Scheduling</a> machinery and CLI tools use, while <a href="#Using-SciML-directly">the latter is probably what you want</a> if you are using this package from Julia. We will quickly start with the <code>Model</code> interface anyway for rough overview of what the <a href="../../tools/experiment/#experiment-tool"><code>experiment</code> tool</a> does internally.</p><h3 id="Using-the-Model-interface"><a class="docs-heading-anchor" href="#Using-the-Model-interface">Using the <code>Model</code> interface</a><a id="Using-the-Model-interface-1"></a><a class="docs-heading-anchor-permalink" href="#Using-the-Model-interface" title="Permalink"></a></h3><div class="admonition is-info" id="Implementation-note-798f8c84ff90ed5"><header class="admonition-header">Implementation note<a class="admonition-anchor" href="#Implementation-note-798f8c84ff90ed5" title="Permalink"></a></header><div class="admonition-body"><p>The reason this interface exists in the first place is because the package and its first-iteration base regulation model were originally not written in terms of Catalyst.jl/SciML. <a href="../../models/scheduling/#Scheduling">Scheduling</a> and, by extension, the <a href="../../tools/experiment/#experiment-tool">experiment runner</a>, can stitch together heterogeneous model types (besides SciML-based regulation models) along the time dimension. Another design goal was reproducibility and pervasive seed control in the presence of arbitrary intervention schedules and trajectory branching.</p><p>Even though all regulation is currently implemented exclusively using Catalyst.jl and JumpProcesses.jl, and interventions could probably now be implemented in that way as well, the current scheduling subsystem is by now quite flexible and not all of its constructs map one-to-one to equivalents in SciML-land in a straightforward way. Further, SciML is quite the moving target and some isolation seemed helpful.</p><p>However, in some situations this flexibility comes at the cost of performance, and duplicating complexity is always annoying, and further ModelingToolkit.jl seems to become more stable and complete, so I may still move the scheduling system closer to SciML eventually. In the meantime, as it is currently structured it still has lots of potential for optimization if performance becomes an issue in specific instances.</p></div></div><p>To simulate a trajectory, you need to first construct an initial state and then invoke the model <code>f!</code> as described in <a href="../../models/models/#Models">Models</a>:</p><pre><code class="language-julia hljs"># Initial state for V1 regulation requires some molecular species present;
+# defaults are:
+#     Dict(:polymerases =&gt; 5*10^5, :ribosomes =&gt; 2*10^6, :proteasomes =&gt; 10^6)
+x = Models.FlatState(counts = Models.load_defaults()[:bootstrap])
+
+# f! contains a JumpModel, which requires a JumpState; convert it:
+x = Models.adapt!(x, f!)
+
+x = f!(x, 100.0)  # step 100 time units
+
+Models.FlatState(x)  # show as FlatState</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">GeneRegulatorySystems.Models.FlatState(100.0, Dict(Symbol(&quot;b.premrnas&quot;) =&gt; 0, Symbol(&quot;a.proteins&quot;) =&gt; 0, Symbol(&quot;a.mrnas&quot;) =&gt; 0, Symbol(&quot;a.active&quot;) =&gt; 0, :polymerases =&gt; 499993, Symbol(&quot;a.elongations&quot;) =&gt; 2, Symbol(&quot;b.mrnas&quot;) =&gt; 0, :proteasomes =&gt; 1000000, Symbol(&quot;b.proteins&quot;) =&gt; 0, Symbol(&quot;b.elongations&quot;) =&gt; 5…), Random.Xoshiro(0x4a19d6d88c9037b6, 0xeb414cc3934a942d, 0x03db59e0a8491dd9, 0xd7667567574c8fb6, 0x619add5c6a2ec5e5))</code></pre><p>This will however not record the trajectories but only keep the final counts. The <code>JumpState</code> holds the SciML <code>x.integrator</code> and thus its solution object <code>x.integrator.sol</code>, but it will only contain values for the final timepoint:</p><pre><code class="language-julia hljs">x.integrator.sol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">retcode: Default
+Interpolation: Piecewise constant interpolation
+t: 1-element Vector{Float64}:
+ 100.0
+u: 1-element Vector{Vector{Int64}}:
+ [0, 0, 0, 499993, 2000000, 1000000, 2, 0, 0, 5, 0, 0, 0]</code></pre><p>To retain intermediate jump events, the model can be invoked with the <code>record</code> keyword argument:</p><pre><code class="language-julia hljs">x = f!(x, 1.0, record = true)
+x.integrator.sol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">retcode: Default
+Interpolation: Piecewise constant interpolation
+t: 6-element Vector{Float64}:
+ 100.0
+ 100.16951231824979
+ 100.18144154975192
+ 100.88211763575994
+ 100.92434544369601
+ 101.0
+u: 6-element Vector{Vector{Int64}}:
+ [0, 0, 0, 499993, 2000000, 1000000, 2, 0, 0, 5, 0, 0, 0]
+ [0, 1, 0, 499993, 2000000, 1000000, 2, 0, 0, 5, 0, 0, 0]
+ [0, 0, 0, 499993, 2000000, 1000000, 2, 0, 0, 5, 0, 0, 0]
+ [1, 0, 0, 499993, 2000000, 1000000, 2, 0, 0, 5, 0, 0, 0]
+ [0, 0, 0, 499993, 2000000, 1000000, 2, 0, 0, 5, 0, 0, 0]
+ [0, 0, 0, 499993, 2000000, 1000000, 2, 0, 0, 5, 0, 0, 0]</code></pre><p>The contained integrator will then contain the trajectory segment for this invocation, (unfortunately) in a dense format. The <a href="../../tools/experiment/#experiment-tool"><code>experiment</code> tool</a> accesses this segment via <a href="../../models/models/#GeneRegulatorySystems.Models.each_event"><code>Models.each_event</code></a>, which calls back for each initial value and then for each jump event:</p><pre><code class="language-julia hljs">Models.each_event(x) do t, name, value
+    @show (; t, name, value)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(; t, name, value) = (t = 100.0, name = Symbol(&quot;a.active&quot;), value = 0)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;b.active&quot;), value = 0)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;a.proteins&quot;), value = 0)
+(; t, name, value) = (t = 100.0, name = :polymerases, value = 499993)
+(; t, name, value) = (t = 100.0, name = :ribosomes, value = 2000000)
+(; t, name, value) = (t = 100.0, name = :proteasomes, value = 1000000)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;a.elongations&quot;), value = 2)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;a.premrnas&quot;), value = 0)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;a.mrnas&quot;), value = 0)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;b.elongations&quot;), value = 5)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;b.premrnas&quot;), value = 0)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;b.mrnas&quot;), value = 0)
+(; t, name, value) = (t = 100.0, name = Symbol(&quot;b.proteins&quot;), value = 0)
+(; t, name, value) = (t = 100.16951231824979, name = Symbol(&quot;b.active&quot;), value = 1)
+(; t, name, value) = (t = 100.18144154975192, name = Symbol(&quot;b.active&quot;), value = 0)
+(; t, name, value) = (t = 100.88211763575994, name = Symbol(&quot;a.active&quot;), value = 1)
+(; t, name, value) = (t = 100.92434544369601, name = Symbol(&quot;a.active&quot;), value = 0)</code></pre><p>Between saving nothing and everything, other saving options from SciML are not supported here; they are all emulated via the <a href="../../models/scheduling/#Scheduling">Scheduling system</a>. For example, to record the state only at a single time slice, we can advance to that timepoint without recording and then record without advancing:</p><pre><code class="language-julia hljs">x = f!(x, 99.0)
+x = f!(x, 0.0, record = true)
+x.integrator.sol</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">retcode: Default
+Interpolation: Piecewise constant interpolation
+t: 1-element Vector{Float64}:
+ 200.0
+u: 1-element Vector{Vector{Int64}}:
+ [0, 0, 0, 499987, 2000000, 1000000, 6, 0, 0, 7, 0, 0, 0]</code></pre><p>Note that each invocation of the <code>JumpModel</code> <code>f!</code> will initially clear the previously recorded trajectory segment, which therefore needs to be extracted immediately.</p><h3 id="Using-SciML-directly"><a class="docs-heading-anchor" href="#Using-SciML-directly">Using SciML directly</a><a id="Using-SciML-directly-1"></a><a class="docs-heading-anchor-permalink" href="#Using-SciML-directly" title="Permalink"></a></h3><p>As previously noted, the actual regulation <code>JumpModel</code> is defined by a <code>method</code> applied to a <code>system</code> along with a set of <code>parameters</code>. These can be used directly to sample trajectories using the standard JumpProcesses.jl interface:</p><pre><code class="language-julia hljs">using JumpProcesses
+using ModelingToolkit
+using Plots
+
+(; system, method, parameters) = f!.model.model
+
+bootstrap = Models.load_defaults()[:bootstrap]
+normalize_name = GeneRegulatorySystems.Models.SciML.normalize_name
+u₀ = [
+    s =&gt; Int(get(bootstrap, normalize_name(s), 0))
+    for s in unknowns(system)
+]
+discrete_problem = DiscreteProblem(system, u₀, (0.0, 3e4), parameters)
+rng = GeneRegulatorySystems.randomness(&quot;&quot;)
+problem = JumpProblem(system, discrete_problem, method; rng)
+
+solution = solve(problem, SSAStepper())
+
+plot(solution, idxs = (:a₊proteins, :b₊proteins))</code></pre><img src="60fa3ba9.svg" alt="Example block output"/><p>But since intermediate definitions are retained as described above, we also have access to the <code>ReactionSystem</code> and can thus use it with the <a href="https://docs.sciml.ai/Catalyst/stable/">tools Catalyst.jl provides</a>. For example:</p><pre><code class="language-julia hljs">using CairoMakie
+using Catalyst
+using GraphMakie
+using NetworkLayout
+
+reaction_system = f!.model.definition
+plot_network(reaction_system)</code></pre><img src="6f71374a.png" alt="Example block output"/><pre><code class="language-julia hljs">conservationlaw_constants(flatten(reaction_system))</code></pre><p class="math-container">\[ \begin{align}
+\Gamma_{1} &amp;= \mathtt{proteasomes}\left( t \right) \\
+\Gamma_{2} &amp;= \mathtt{ribosomes}\left( t \right) \\
+\Gamma_{3} &amp;= \mathtt{b.elongations}\left( t \right) + \mathtt{a.elongations}\left( t \right) + \mathtt{polymerases}\left( t \right)
+\end{align}
+ \]</p><p>This allows us to easily construct an ODE approximation of the jump process dynamics</p><pre><code class="language-julia hljs">using OrdinaryDiffEqTsit5
+
+approximation = convert(ODESystem, reaction_system)</code></pre><p class="math-container">\[ \begin{align}
+\frac{\mathrm{d} \mathtt{a.active}\left( t \right)}{\mathrm{d}t} &amp;=  - 10 \mathtt{a.active}\left( t \right) + 2.5 \left( 1 - \mathtt{a.active}\left( t \right) \right) \\
+\frac{\mathrm{d} \mathtt{b.active}\left( t \right)}{\mathrm{d}t} &amp;=  - 10 \mathtt{b.active}\left( t \right) + \frac{2.5 \left( 1 - \mathtt{b.active}\left( t \right) \right)}{1 + \frac{\mathtt{a.proteins}\left( t \right)}{2}} \\
+\frac{\mathrm{d} \mathtt{a.proteins}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{a.protein\_decay} \mathtt{a.proteins}\left( t \right) \mathtt{proteasomes}\left( t \right) + \mathtt{a.translation} \mathtt{a.mrnas}\left( t \right) \mathtt{ribosomes}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{polymerases}\left( t \right)}{\mathrm{d}t} &amp;= \mathtt{a.abortion} \mathtt{a.elongations}\left( t \right) + \mathtt{a.transcription} \mathtt{a.elongations}\left( t \right) + \mathtt{b.abortion} \mathtt{b.elongations}\left( t \right) + \mathtt{b.transcription} \mathtt{b.elongations}\left( t \right) - \mathtt{a.trigger} \mathtt{a.active}\left( t \right) \mathtt{polymerases}\left( t \right) - \mathtt{b.trigger} \mathtt{b.active}\left( t \right) \mathtt{polymerases}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{ribosomes}\left( t \right)}{\mathrm{d}t} &amp;= 0 \\
+\frac{\mathrm{d} \mathtt{proteasomes}\left( t \right)}{\mathrm{d}t} &amp;= 0 \\
+\frac{\mathrm{d} \mathtt{a.elongations}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{a.abortion} \mathtt{a.elongations}\left( t \right) - \mathtt{a.transcription} \mathtt{a.elongations}\left( t \right) + \mathtt{a.trigger} \mathtt{a.active}\left( t \right) \mathtt{polymerases}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{a.premrnas}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{a.premrna\_decay} \mathtt{a.premrnas}\left( t \right) - \mathtt{a.processing} \mathtt{a.premrnas}\left( t \right) + \mathtt{a.transcription} \mathtt{a.elongations}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{a.mrnas}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{a.mrna\_decay} \mathtt{a.mrnas}\left( t \right) + \mathtt{a.processing} \mathtt{a.premrnas}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{b.elongations}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{b.abortion} \mathtt{b.elongations}\left( t \right) - \mathtt{b.transcription} \mathtt{b.elongations}\left( t \right) + \mathtt{b.trigger} \mathtt{b.active}\left( t \right) \mathtt{polymerases}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{b.premrnas}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{b.premrna\_decay} \mathtt{b.premrnas}\left( t \right) - \mathtt{b.processing} \mathtt{b.premrnas}\left( t \right) + \mathtt{b.transcription} \mathtt{b.elongations}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{b.mrnas}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{b.mrna\_decay} \mathtt{b.mrnas}\left( t \right) + \mathtt{b.processing} \mathtt{b.premrnas}\left( t \right) \\
+\frac{\mathrm{d} \mathtt{b.proteins}\left( t \right)}{\mathrm{d}t} &amp;=  - \mathtt{b.protein\_decay} \mathtt{b.proteins}\left( t \right) \mathtt{proteasomes}\left( t \right) + \mathtt{b.translation} \mathtt{b.mrnas}\left( t \right) \mathtt{ribosomes}\left( t \right)
+\end{align}
+ \]</p><p>and simulate from it:</p><pre><code class="language-julia hljs">u₀′ = map(x -&gt; x.first =&gt; float(x.second), u₀)
+problem = ODEProblem(complete(approximation), u₀′, (0.0, 3e4), parameters)
+solution = solve(problem, Tsit5())
+Plots.plot!(solution, idxs = (:a₊proteins, :b₊proteins))</code></pre><img src="fdbc4ec0.svg" alt="Example block output"/><h2 id="Reifying-Models-from-Schedules"><a class="docs-heading-anchor" href="#Reifying-Models-from-Schedules">Reifying <code>Model</code>s from <code>Schedule</code>s</a><a id="Reifying-Models-from-Schedules-1"></a><a class="docs-heading-anchor-permalink" href="#Reifying-Models-from-Schedules" title="Permalink"></a></h2><p>The regulation <code>JumpModel</code>s that a <code>Schedule</code> constructs during its execution can be plucked out and used in isolation. A <code>Schedule</code> can be loaded from its JSON specification using the <a href="../../models/models/#GeneRegulatorySystems.Models.load"><code>Models.load</code></a> function:</p><pre><code class="language-julia hljs">source = &quot;../../../examples/toy/repressilator.schedule.json&quot;
+schedule! = Models.load(source, seed = &quot;(ignored)&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Schedule{GeneRegulatorySystems.Specifications.Scope}(GeneRegulatorySystems.Specifications.Scope(Dict{Symbol, Specification}(:label =&gt; GeneRegulatorySystems.Specifications.Template(&quot;repressilator-plain&quot;, identity, Set{Symbol}())), GeneRegulatorySystems.Specifications.Scope(Dict{Symbol, Specification}(:do =&gt; GeneRegulatorySystems.Specifications.Template(Dict{Symbol, Any}(:genes =&gt; Any[Dict{Symbol, Any}(:activation =&gt; Any[Dict{Symbol, Any}(:from =&gt; 1, :at =&gt; 2.0)], :repression =&gt; Any[Dict{Symbol, Any}(:from =&gt; 3, :at =&gt; 4.0)], :$ =&gt; Any[&quot;defaults&quot;, &quot;gene&quot;]), Dict{Symbol, Any}(:activation =&gt; Any[Dict{Symbol, Any}(:from =&gt; 2, :at =&gt; 2.0)], :repression =&gt; Any[Dict{Symbol, Any}(:from =&gt; 1, :at =&gt; 4.0)], :$ =&gt; Any[&quot;defaults&quot;, &quot;gene&quot;]), Dict{Symbol, Any}(:activation =&gt; Any[Dict{Symbol, Any}(:from =&gt; 3, :at =&gt; 2.0)], :repression =&gt; Any[Dict{Symbol, Any}(:from =&gt; 2, :at =&gt; 4.0)], :$ =&gt; Any[&quot;defaults&quot;, &quot;gene&quot;])]), GeneRegulatorySystems.Models.V1.build, Set([:defaults]))), GeneRegulatorySystems.Specifications.List(Specification[GeneRegulatorySystems.Specifications.Template(&quot;\${seed}-rep&quot;, GeneRegulatorySystems.Models.Plumbing.Seed, Set([:seed])), GeneRegulatorySystems.Specifications.Template(Dict{Symbol, Any}(Symbol(&quot;1.proteins&quot;) =&gt; 100, :$ =&gt; Any[&quot;defaults&quot;, &quot;bootstrap&quot;]), GeneRegulatorySystems.Models.Plumbing.adder, Set([:defaults])), GeneRegulatorySystems.Specifications.Scope(Dict{Symbol, Specification}(:to =&gt; GeneRegulatorySystems.Specifications.Template(455000.0, identity, Set{Symbol}())), GeneRegulatorySystems.Specifications.Slice(), false, false, Set{Symbol}()), GeneRegulatorySystems.Specifications.Scope(Dict{Symbol, Specification}(), GeneRegulatorySystems.Specifications.Each(GeneRegulatorySystems.Specifications.Template(Base.OneTo(5), identity, Set{Symbol}()), :i, GeneRegulatorySystems.Specifications.List(Specification[GeneRegulatorySystems.Specifications.Template(&quot;\${seed}-repress-\${i}&quot;, GeneRegulatorySystems.Models.Plumbing.Seed, Set([:i, :seed])), GeneRegulatorySystems.Specifications.Scope(Dict{Symbol, Specification}(:to =&gt; GeneRegulatorySystems.Specifications.Template(455000.0, identity, Set{Symbol}())), GeneRegulatorySystems.Specifications.Slice(), false, false, Set{Symbol}())], Set([:i, :seed])), Set([:seed])), false, true, Set([:seed]))], Set([:seed, :defaults])), false, false, Set([:defaults, :seed])), false, false, Set([:defaults, :seed])), Dict{Symbol, Any}(:into =&gt; &quot;&quot;, :channel =&gt; &quot;&quot;, :defaults =&gt; Dict{Symbol, Any}(:gene =&gt; Dict{Symbol, Any}(:base_rates =&gt; Dict{Symbol, Any}(:activation =&gt; 2.5, :processing =&gt; 0.02, :transcription =&gt; 0.001, :protein_decay =&gt; 3.0e-10, :trigger =&gt; 6.6e-7, :mrna_decay =&gt; 0.001, :deactivation =&gt; 10.0, :translation =&gt; 2.5e-9, :abortion =&gt; 0.01, :premrna_decay =&gt; 0.001…)), :differentiation =&gt; Dict{Symbol, Any}(:timer_deposit =&gt; Dict{Symbol, Any}(:mrnas =&gt; 5, :proteins =&gt; 30), :buffer_deposit =&gt; 500, :differentiator =&gt; Dict{Symbol, Any}(:base_rates =&gt; Dict{Symbol, Any}(:activation =&gt; 2.5, :processing =&gt; 0.02, :transcription =&gt; 0.015, :protein_decay =&gt; 2.0e-10, :trigger =&gt; 6.6e-7, :mrna_decay =&gt; 0.0075, :deactivation =&gt; 10.0, :translation =&gt; 2.5e-9, :abortion =&gt; 0.01, :premrna_decay =&gt; 0.001…)), :timer =&gt; Dict{Symbol, Any}(:base_rates =&gt; Dict{Symbol, Any}(:activation =&gt; 0.1, :processing =&gt; 0.02, :transcription =&gt; 2.5e7, :protein_decay =&gt; 1.0, :trigger =&gt; 6.6e-7, :mrna_decay =&gt; 0.01, :deactivation =&gt; 0.1, :translation =&gt; 1.0e-9, :abortion =&gt; 0.01, :premrna_decay =&gt; 0.001…)), :buffer =&gt; Any[0.002, 0.008]), :bootstrap =&gt; Dict{Symbol, Any}(:polymerases =&gt; 500000.0, :proteasomes =&gt; 1.0e6, :ribosomes =&gt; 2.0e6)), :seed =&gt; &quot;(ignored)&quot;), false, &quot;&quot;)</code></pre><p>In principle, <code>Models.load</code> can load regulation model specifications directly as shown above, but since the specification is interpreted as an expression of the <a href="../../models/scheduling/#Schedule-specification">scheduling language</a>, it may contain references that need to be substituted in to make it a complete model specification. The referenced values need to be provided as bindings to <code>Models.load</code> so that it can create a closed <code>Schedule</code>. The schedule specification loaded in the preceding example</p><pre><code class="language-julia hljs">read(source, String) |&gt; print</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+    &quot;label&quot;: &quot;repressilator-plain&quot;,
+    &quot;step&quot;: {
+        &quot;do&quot;: {&quot;{regulation/v1}&quot;: {
+            &quot;genes&quot;: [
+                {
+                    &quot;$&quot;: [&quot;defaults&quot;, &quot;gene&quot;],
+                    &quot;activation&quot;: [{&quot;from&quot;: 1, &quot;at&quot;: 2.0}],
+                    &quot;repression&quot;: [{&quot;from&quot;: 3, &quot;at&quot;: 4.0}]
+                },
+                {
+                    &quot;$&quot;: [&quot;defaults&quot;, &quot;gene&quot;],
+                    &quot;activation&quot;: [{&quot;from&quot;: 2, &quot;at&quot;: 2.0}],
+                    &quot;repression&quot;: [{&quot;from&quot;: 1, &quot;at&quot;: 4.0}]
+                },
+                {
+                    &quot;$&quot;: [&quot;defaults&quot;, &quot;gene&quot;],
+                    &quot;activation&quot;: [{&quot;from&quot;: 3, &quot;at&quot;: 2.0}],
+                    &quot;repression&quot;: [{&quot;from&quot;: 2, &quot;at&quot;: 4.0}]
+                }
+            ]
+        }},
+        &quot;step&quot;: [
+            {&quot;{seed}&quot;: &quot;${seed}-rep&quot;},
+            {&quot;{add}&quot;: {
+                &quot;$&quot;: [&quot;defaults&quot;, &quot;bootstrap&quot;],
+                &quot;1.proteins&quot;: 100
+            }},
+            {&quot;to&quot;: 455000.0},
+            {
+                &quot;branch&quot;: true,
+                &quot;each&quot;: {&quot;length&quot;: 5},
+                &quot;as&quot;: &quot;i&quot;,
+                &quot;step&quot;: [
+                    {&quot;{seed}&quot;: &quot;${seed}-repress-${i}&quot;},
+                    {&quot;to&quot;: 455000.0}
+                ]
+            }
+        ]
+    }
+}</code></pre><p>refers to the <code>seed</code>, which is why it needs to be provided as a keyword argument, even though we will not actually use it in the following.</p><p>The actual regulation model can now be <a href="../../models/scheduling/#GeneRegulatorySystems.Models.Scheduling.reify">reified</a> from its path within the schedule:</p><pre><code class="language-julia hljs">repressilator! = Scheduling.reify(schedule!, &quot;+.do&quot;)
+reaction_system = repressilator!.model.model.definition</code></pre><p class="math-container">\[ \begin{align*}
+\mathrm{\mathtt{1.active}} &amp;\xrightleftharpoons[\frac{2.5 \left( 1 - \mathtt{1.active} \right)}{1.0 + 0.25 \mathtt{3.proteins}}]{\frac{10.0 \mathtt{1.active}}{1.0 + 0.5 \mathtt{1.proteins}}} \varnothing \\
+\mathrm{\mathtt{2.active}} &amp;\xrightleftharpoons[\frac{2.5 \left( 1 - \mathtt{2.active} \right)}{1.0 + 0.25 \mathtt{1.proteins}}]{\frac{10.0 \mathtt{2.active}}{1.0 + 0.5 \mathtt{2.proteins}}} \varnothing \\
+\mathrm{\mathtt{3.active}} &amp;\xrightleftharpoons[\frac{2.5 \left( 1 - \mathtt{3.active} \right)}{1.0 + 0.25 \mathtt{2.proteins}}]{\frac{10.0 \mathtt{3.active}}{1.0 + 0.5 \mathtt{3.proteins}}} \varnothing \\
+\mathrm{\mathtt{1.active}} + \mathrm{\mathtt{polymerases}} &amp;\xrightarrow{\mathtt{1.trigger}} \mathrm{\mathtt{1.active}} + \mathrm{\mathtt{1.elongations}} \\
+\mathrm{\mathtt{1.elongations}} &amp;\xrightarrow{\mathtt{1.transcription}} \mathrm{\mathtt{1.premrnas}} + \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{1.premrnas}} &amp;\xrightarrow{\mathtt{1.processing}} \mathrm{\mathtt{1.mrnas}} \\
+\mathrm{\mathtt{1.mrnas}} + \mathrm{\mathtt{ribosomes}} &amp;\xrightarrow{\mathtt{1.translation}} \mathrm{\mathtt{1.mrnas}} + \mathrm{\mathtt{1.proteins}} + \mathrm{\mathtt{ribosomes}} \\
+\mathrm{\mathtt{1.elongations}} &amp;\xrightarrow{\mathtt{1.abortion}} \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{1.premrnas}} &amp;\xrightarrow{\mathtt{1.premrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{1.mrnas}} &amp;\xrightarrow{\mathtt{1.mrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{1.proteins}} + \mathrm{\mathtt{proteasomes}} &amp;\xrightarrow{\mathtt{1.protein_{decay}}} \mathrm{\mathtt{proteasomes}} \\
+\mathrm{\mathtt{2.active}} + \mathrm{\mathtt{polymerases}} &amp;\xrightarrow{\mathtt{2.trigger}} \mathrm{\mathtt{2.active}} + \mathrm{\mathtt{2.elongations}} \\
+\mathrm{\mathtt{2.elongations}} &amp;\xrightarrow{\mathtt{2.transcription}} \mathrm{\mathtt{2.premrnas}} + \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{2.premrnas}} &amp;\xrightarrow{\mathtt{2.processing}} \mathrm{\mathtt{2.mrnas}} \\
+\mathrm{\mathtt{2.mrnas}} + \mathrm{\mathtt{ribosomes}} &amp;\xrightarrow{\mathtt{2.translation}} \mathrm{\mathtt{2.mrnas}} + \mathrm{\mathtt{2.proteins}} + \mathrm{\mathtt{ribosomes}} \\
+\mathrm{\mathtt{2.elongations}} &amp;\xrightarrow{\mathtt{2.abortion}} \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{2.premrnas}} &amp;\xrightarrow{\mathtt{2.premrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{2.mrnas}} &amp;\xrightarrow{\mathtt{2.mrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{2.proteins}} + \mathrm{\mathtt{proteasomes}} &amp;\xrightarrow{\mathtt{2.protein_{decay}}} \mathrm{\mathtt{proteasomes}} \\
+\mathrm{\mathtt{3.active}} + \mathrm{\mathtt{polymerases}} &amp;\xrightarrow{\mathtt{3.trigger}} \mathrm{\mathtt{3.active}} + \mathrm{\mathtt{3.elongations}} \\
+\mathrm{\mathtt{3.elongations}} &amp;\xrightarrow{\mathtt{3.transcription}} \mathrm{\mathtt{3.premrnas}} + \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{3.premrnas}} &amp;\xrightarrow{\mathtt{3.processing}} \mathrm{\mathtt{3.mrnas}} \\
+\mathrm{\mathtt{3.mrnas}} + \mathrm{\mathtt{ribosomes}} &amp;\xrightarrow{\mathtt{3.translation}} \mathrm{\mathtt{3.mrnas}} + \mathrm{\mathtt{3.proteins}} + \mathrm{\mathtt{ribosomes}} \\
+\mathrm{\mathtt{3.elongations}} &amp;\xrightarrow{\mathtt{3.abortion}} \mathrm{\mathtt{polymerases}} \\
+\mathrm{\mathtt{3.premrnas}} &amp;\xrightarrow{\mathtt{3.premrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{3.mrnas}} &amp;\xrightarrow{\mathtt{3.mrna_{decay}}} \varnothing \\
+\mathrm{\mathtt{3.proteins}} + \mathrm{\mathtt{proteasomes}} &amp;\xrightarrow{\mathtt{3.protein_{decay}}} \mathrm{\mathtt{proteasomes}}  
+ \end{align*}
+ \]</p><p>The specification path refers to a named binding <code>:do</code> defined within a sub-schedule (in this case, the one nested inside the top-level <code>Scope</code>/<code>{}</code>); reification will first create that nested <code>Schedule</code>, evaluating the definition in the process, and then look up the resulting binding by name. For more on this, see <a href="../../models/scheduling/#Paths-and-reification">Paths and reification</a>.</p><p>Compared to the directly constructed models <a href="#Constructing-models">from above</a>, it is wrapped once more, now additionally recording its definition location within <code>schedule!</code>:</p><pre><code class="language-julia hljs">repressilator!.definition</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">GeneRegulatorySystems.Models.Scheduling.Locator(&quot;+.do&quot;)</code></pre><p>And just <a href="#Simulating-models">like above</a>, we can now use the contained <code>JumpModel</code>, for example to manually run simulations:</p><pre><code class="language-julia hljs">(; system, method, parameters) = repressilator!.model.model.model
+
+start = merge(bootstrap, Dict(Symbol(&quot;1.proteins&quot;) =&gt; 100))
+u₀ = [
+    s =&gt; Int(get(start, normalize_name(s), 0))
+    for s in unknowns(system)
+]
+
+discrete_problem = DiscreteProblem(system, u₀, (0.0, 1e5), parameters)
+rng = GeneRegulatorySystems.randomness(&quot;seed&quot;)
+problem = JumpProblem(system, discrete_problem, method; rng)
+
+solution = solve(problem, SSAStepper())
+
+Plots.plot(
+    solution,
+    idxs = (Symbol(&quot;1₊proteins&quot;), Symbol(&quot;2₊proteins&quot;), Symbol(&quot;3₊proteins&quot;)),
+    camera = (60, 60),
+)
+
+u₀′ = map(x -&gt; x.first =&gt; float(x.second), u₀)
+problem = ODEProblem(reaction_system, u₀′, (0.0, 1e5), parameters)
+solution = solve(problem, Tsit5())
+Plots.plot!(
+    solution,
+    idxs = (Symbol(&quot;1₊proteins&quot;), Symbol(&quot;2₊proteins&quot;), Symbol(&quot;3₊proteins&quot;))
+)</code></pre><img src="f50f1c58.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../getting-started/">« Getting started</a><a class="docs-footer-nextpage" href="../../models/models/">Models »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Thursday 9 April 2026 20:14">Thursday 9 April 2026</span>. Using Julia version 1.12.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
