@@ -269,9 +269,9 @@ u₀ = [
     s => Int(get(bootstrap, normalize_name(s), 0))
     for s in unknowns(system)
 ]
-discrete_problem = DiscreteProblem(system, u₀, (0.0, 3e4), parameters)
+aggregator = method
 rng = GeneRegulatorySystems.randomness("")
-problem = JumpProblem(system, discrete_problem, method; rng)
+problem = JumpProblem(system, vcat(u₀, parameters), (0.0, 3e4); aggregator, rng)
 
 solution = solve(problem, SSAStepper())
 
@@ -299,7 +299,7 @@ This allows us to easily construct an ODE approximation of the jump process dyna
 ```@example usage
 using OrdinaryDiffEqTsit5
 
-approximation = convert(ODESystem, reaction_system)
+approximation = ode_model(reaction_system)
 ```
 
 and simulate from it:
@@ -352,9 +352,9 @@ u₀ = [
     for s in unknowns(system)
 ]
 
-discrete_problem = DiscreteProblem(system, u₀, (0.0, 1e5), parameters)
+aggregator = method
 rng = GeneRegulatorySystems.randomness("seed")
-problem = JumpProblem(system, discrete_problem, method; rng)
+problem = JumpProblem(system, vcat(u₀, parameters), (0.0, 1e5); aggregator, rng)
 
 solution = solve(problem, SSAStepper())
 

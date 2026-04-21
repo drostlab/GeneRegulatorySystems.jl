@@ -53,13 +53,13 @@ julia> typeof(model.model.definition)
 GeneRegulatorySystems.Models.V1.Definition
 
 julia> typeof(model.model.model.definition)
-Catalyst.ReactionSystem{Catalyst.NetworkProperties{Int64, SymbolicUtils.BasicSymbolic{Real}}}
+Catalyst.ReactionSystem{Catalyst.NetworkProperties{Int64, SymbolicUtils.BasicSymbolicImpl.var"typeof(BasicSymbolicImpl)"{SymbolicUtils.SymReal}}}
 
 julia> typeof(model.model.model.model)
 GeneRegulatorySystems.Models.SciML.JumpModel
 
 julia> typeof(model.model.model.model.system)
-ModelingToolkit.JumpSystem{RecursiveArrayTools.ArrayPartition{Any, Tuple{Vector{JumpProcesses.MassActionJump}, Vector{JumpProcesses.ConstantRateJump}, Vector{JumpProcesses.VariableRateJump}, Vector{Symbolics.Equation}}}}
+ModelingToolkitBase.System
 ```
 
 Higher-order model blueprints such [Differentiation](@ref) are expressed in terms of a common first-iteration model of simplified gene regulation defined in the [`Models.V1`](@ref) module.

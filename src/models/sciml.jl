@@ -1,6 +1,7 @@
 module SciML
 
 import ..Models: Models, Model, FlatState
+import Catalyst
 import JumpProcesses
 import ModelingToolkit
 
@@ -83,7 +84,7 @@ FlatState(x::JumpState) = FlatState(
 
 Represents the stochastic dynamics of applying a
 `JumpProcesses.AbstractAggregatorAlgorithm` `method` to a
-`ModelingToolkit.JumpSystem` `system` with a set of `parameters`.
+`ModelingToolkit.System` `system` with a set of `parameters`.
 
 Gene regulation models in this package ultimately get compiled to `JumpModel`s.
 
@@ -114,7 +115,7 @@ the recorded trajectory information is highly redundant and needs to be filtered
 by `each_event` for output in sparse long format. 
 """
 @kwdef struct JumpModel <: Model{JumpState}
-    system::ModelingToolkit.JumpSystem
+    system::ModelingToolkit.System
     method::JumpProcesses.AbstractAggregatorAlgorithm
     parameters
 end
@@ -138,19 +139,19 @@ Models.adapt!(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
     end
 
 Models.adapt!(x::FlatState, f!::JumpModel, _copy) = JumpState(
-    problem = JumpProcesses.JumpProblem(
+    problem = ModelingToolkit.JumpProblem(
         f!.system,
-        JumpProcesses.DiscreteProblem(
-            f!.system,
+        vcat(
+            f!.parameters,
             [
                 s => get(x.counts, normalize_name(s), 0)
                 for s in ModelingToolkit.unknowns(f!.system)
-            ],
-            (x.t, Inf),
-            f!.parameters,
+            ]
         ),
-        f!.method,
+        (x.t, Inf),
+        aggregator = f!.method,
         rng = x.randomness,
+        u0_eltype = Int,
     );
     f!,
 )

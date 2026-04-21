@@ -764,15 +764,15 @@ function build(definition::Definition; method::Symbol = :default)
         model = Models.Wrapped(
             definition = reaction_system,
             model = SciML.JumpModel(
-                system = complete(convert(JumpSystem, reaction_system)),
+                system = complete(jump_model(reaction_system)),
                 method = pick_method(reaction_system; method)(),
-                parameters = Tuple(
+                parameters = [
                     getproperty(genes[g.name], kind) =>
                         getfield(g.base_rates, kind)
                     for g in definition.genes
                     for kind in fieldnames(typeof(g.base_rates))
                     if kind ∉ (:activation, :deactivation)
-                ),
+                ],
             ),
         ),
     )
