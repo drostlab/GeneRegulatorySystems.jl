@@ -8,24 +8,32 @@ matrices).
 """
 
 EPILOG = """
-This will produce a counts matrix with trajectory components as rows, simulation
-segments as columns, and values ending the respective segments.
-Values that have no events in their segment will be empty (for CSV) or null
-(for Arrow).
-The rows are named in the first column, and the column names are set according
-to the segment's label with its ending time appended.
-If these column names are not unique, labels will be dropped and the segment id
-will be included.
+This will produce a counts matrix with trajectory components (dimensions) as
+columns, and observations as rows. One observation is produced for each distinct
+label among the included simulation segments, with values determined at the end
+of the final corresponding segment. By default, this means that intermediate
+observations are only possible if they are distinctly labeled. If this was not
+specified in the simulation schedule, the `--relabel-with-segment-id` option may
+be used to uniquely relabel all simulation segments.
 
 
 
 The segments and trajectory components to include can (and typically need to) be
 filtered, for example by selecting only the segments corresponding to extraction
-models.
-The easiest way to achieve this is to already prepare the simulation schedule
-such that it redirects the targeted segments into a separate events stream by
-defining `"into"`, and then to filter for that stream using the `--events`
-option.
+models. This is easiest to achieve by already preparing the simulation schedule
+appropriately. Besides labeling the segments, the schedule might redirect any
+targeted segments into a separate events stream by defining `"into"`. Segments
+can then simply be chosen by the `--model`, `--events` and `--labeled` options.
+Likewise, the trajectory dimensions to include in observations can be selected
+through the `--kinds` option.
+
+
+
+If the identity of an observation's final segment is ambiguous (because of
+unresolved trajectory branching), an error will be raised. This can be
+side-stepped through the `--relabel-with-segment-id` option. Dimensions that
+have no events in the observation's final segment but that have events in any
+other included segment will be zeroed.
 """
 
 settings() = @add_arg_table! ArgParseSettings(
@@ -48,7 +56,7 @@ settings() = @add_arg_table! ArgParseSettings(
     "--format", "-x"
         arg_type = Symbol
         help = """
-            Choose the output format: one of `csv`, `tsv` or `arrow`. \
+            Choose the output format: one of `csv`, `tsv`, `arrow` or `h5ad`. \
             If missing, it will be determined from the SINK filename \
             extension, falling back to `csv` if SINK is also missing.\
         """
@@ -66,15 +74,31 @@ settings() = @add_arg_table! ArgParseSettings(
         action = :append_arg
         help = """
             Filter for simulation segments that have a model path starting \
-            with this prefix.\
+            with this prefix. This option can be repeated to include \
+            additional segments.\
         """
 
-    "--label", "-l"
+    "--labeled", "-l"
         arg_type = Regex
         action = :append_arg
         help = """
             Filter for simulation segments that have a label matching this \
-            regular expression anywhere.\
+            regular expression anywhere. This option can be repeated to \
+            include additional segments.\
+        """
+
+    "--relabel-with-segment-id", "-s"
+        action = :store_true
+        help = """
+            Automatically append each segment's id to its label. \
+            (This prevents non-final segments from being filtered out.)\
+        """
+
+    "--relabel-with-timestamp", "-t"
+        action = :store_true
+        help = """
+            Automatically append each segment's end timestamp to its label \
+            *after* non-final segments have been filtered out.\
         """
 
     "--events", "-e"
@@ -82,20 +106,31 @@ settings() = @add_arg_table! ArgParseSettings(
         action = :append_arg
         help = """
             Filter for simulation segments that have a an events stream name \
-            matching this regular expression anywhere.\
+            matching this regular expression anywhere. This option can be \
+            repeated to include additional event streams.\
         """
 
     "--kinds", "-k"
         arg_type = Regex
-        default = r""
+        action = :append_arg
         help = """
             Filter for trajectory dimensions that have names matching this \
-            regular expression anywhere.\
+            regular expression anywhere. This option can be repeated to \
+            include additional dimensions. If such an expression contains a \
+            single capture group, matching dimensions will be renamed to the \
+            captured match. If such a capture group is named, the matching \
+            dimensions will be collected into a thus-named layer; matches are \
+            attempted in order, and the first match determines which layer the \
+            dimension will be attached to. If the output format supports it, \
+            layers directly represented in the output. (Currently, this only \
+            applies only to the `h5ad` format.) The set of (renamed) \
+            dimensions must be homogenous between all layers, or an error will \
+            be raised. 
         """
 
     "--dry"
         action = :store_true
-        help = "Don't export, only pring matching simulation segments."
+        help = "Don't export, only print matching simulation segments."
 end
 
 function run(arguments = ARGS)

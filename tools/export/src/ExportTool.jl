@@ -8,9 +8,37 @@ using Chain
 import CSV
 using DataFrames
 import JSON
+import Muon
 using PrecompileTools
 
-function load_wide(index; source, kinds, names)
+ensure_binary(sink) =
+    if sink isa Base.TTY
+        @error "Refusing to write binary data to terminal."
+        @info "Either provide `sink`, redirect output, or use another format."
+        throw(:help)
+    end
+
+branch(path; pattern = r"^(?:.*/\d+)?") = match(pattern, path).match
+
+function matchfirst(name; kinds)
+    for kind in kinds
+        m = match(kind, string(name))
+        m !== nothing && return m
+    end
+    return nothing
+end
+
+renamed(name, match) =
+    isempty(match.captures) ? String(name) : first(match.captures)
+
+function getlayer(match)
+    d = Dict(match)
+    isempty(d) && return ""  # no match groups: "" is the base layer
+    haskey(d, 1) && return ""  # unnamed match group: also base layer
+    return first(only(d))  # single match group's name determines layer
+end
+
+function load_wide(index; source, kinds)
     is = unique(index.i)
     channels = unique(index.into)
     @chain begin
@@ -20,20 +48,22 @@ function load_wide(index; source, kinds, names)
                 joinpath(channel)
                 Arrow.Table
                 DataFrame
-                subset(
-                    :i => ByRow(in(is)),
-                    :name => ByRow(contains(kinds) ∘ string)
+                subset(:i => ByRow(in(is)))
+                transform(:name => (ns -> matchfirst.(ns; kinds)) => :match)
+                subset(:match => ByRow(!isnothing))
+                transform(
+                    [:name, :match] => ByRow(renamed) => :dimension,
+                    :match => ByRow(getlayer) => :layer,
                 )
             end
         end
-        groupby([order(:i), order(:name)])
-        combine(_, valuecols(_) .=> last .=> valuecols(_))
-        unstack(:i, :name, :value)
-        select(:i => ByRow(i -> names[i]) => :name, Not(:i))
-        permutedims(:name)
-        sort!(:name)
+        innerjoin(select(index, :i, :label), on = :i)
+        unstack([:layer, :dimension], :label, :value, combine = last, fill = 0)
+        sort([:layer, :dimension])
     end
 end
+
+fuse(dimension, layer) = isempty(layer) ? dimension : "$dimension.$layer"
 
 function main(;
     source,
@@ -41,7 +71,9 @@ function main(;
     format,
     path,
     model,
-    label,
+    labeled,
+    relabel_with_segment_id,
+    relabel_with_timestamp,
     events,
     kinds,
     dry
@@ -50,16 +82,20 @@ function main(;
 
     path = [Regex("^\\Q$prefix\\E(?=[/+-]|\$)") for prefix in path]
     model = [Regex("^\\Q$prefix\\E(?=[/+-]|\$)") for prefix in model]
+    isempty(labeled) && push!(labeled, r".")  # Only labeled segments by default
+
     criteria = Dict{Symbol, Base.Callable}(
         column => ByRow(x -> any(contains(x, r) for r in rs))
         for (column, rs) in [
             (:path, path)
             (:model, model)
-            (:label, label)
+            (:label, labeled)
             (:into, events)
         ]
         if !isempty(rs)
     )
+
+    isempty(kinds) && push!(kinds, r"")  # Include all by default
 
     index = @chain begin
         artifact(:index; prefix = source)
@@ -67,6 +103,33 @@ function main(;
         DataFrame
         subset(:count => ByRow(>(0)))
         subset(criteria...)
+    end
+
+    if relabel_with_segment_id
+        index.label .= index.label .* "_" .* repr.(index.i)
+    end
+
+    by_label = groupby(index, :label)
+    for group in by_label
+        branches = unique(branch.(group.path))
+        if length(branches) > 1
+            @error(
+                "Multiple branches share the same label.",
+                first(group.label),
+                branches,
+            )
+            @info "This is disallowed because it easy to get wrong as only the \
+                final segment is retained for each label to create any output \
+                observation. You can use the `--relabel-with-segment-id` \
+                option to make the labels unique, but be aware that this might \
+                create a large number of output observations."
+            throw(:help)
+        end
+    end
+    index = combine(by_label, last)
+
+    if relabel_with_timestamp
+        index.label .= index.label .* "_" .* repr.(index.to)
     end
 
     if dry
@@ -83,47 +146,80 @@ function main(;
         return nothing
     end
 
-    names = Dict(
-        segment.i => "\
-            $(isempty(segment.label) ? "unlabeled" : segment.label)\
-            -$(segment.to)\
-        "
-        for segment in eachrow(index)
-    )
-    if !allunique(values(names))
-        @warn "Slice labels are not unique, dropping labels..."
-        names = Dict(
-            segment.i => "unlabeled-$(segment.i)-$(segment.to)"
-            for segment in eachrow(index)
-        )
-    end
-    result = load_wide(index; source, kinds, names)
+    result = load_wide(index; source, kinds)
 
+    sink = @something(sink, stdout)
     if format === nothing
-        if sink === nothing
-            format = :csv
-        else
+        if sink isa AbstractString
             _, extension = splitext(sink)
             if startswith(extension, '.')
                 format = Symbol(extension[2:end])
             end
+        else
+            format = :csv
         end
     end
 
-    if format == :arrow
-        if sink === nothing
-            @error "Refusing to write Arrow to standard output."
-            @info "Either provide `sink` or use another format."
+    if format == :h5ad  # (layered format)
+        layers = groupby(result, :layer)
+        for layer in layers
+            sort!(layer, :dimension)
+        end
+        if !allequal(l -> l.dimension, layers)
+            @error("Extracted AnnData layers are not homogeneous.")
+            @info "This means that the layers describe distinct sets of genes."
+            @info "Thus they cannot be stored in a single AnnData object."
             throw(:help)
         end
-        Arrow.write(sink, result)
-    elseif format == :csv
-        CSV.write(something(sink, stdout), result)
-    elseif format == :tsv
-        CSV.write(something(sink, stdout), result, delim = '\t')
-    else
-        @error "Cannot export to unknown format `$format`."
-        throw(:help)
+
+        baselayer = get(layers, ("",), first(layers))
+        h5ad = Muon.AnnData(
+            X = Array(select(baselayer, Not(:dimension, :layer)))'
+        )
+        h5ad.obs_names .= names(baselayer, Not(:dimension, :layer))
+        h5ad.var_names .= String.(baselayer.dimension)
+
+        for (groupkey, layer) in pairs(layers)
+            layername = first(groupkey)
+            layername == "" && continue
+            h5ad.layers[layername] =
+                Array(select(layer, Not(:dimension, :layer)))'
+        end
+
+        if !haskey(layers, ("",))
+            # Base layer had no data so a provisional arbitrary layer was used.
+            # Now replace its values.
+            h5ad.X = sum(values(h5ad.layers))
+        end
+
+        if sink isa AbstractString
+            Muon.writeh5ad(sink, h5ad)
+        else
+            ensure_binary(sink)
+            mktemp() do temporary, _io
+                Muon.writeh5ad(temporary, h5ad)
+                write(sink, read(temporary))
+            end
+        end
+    else  # (flat formats)
+        select!(
+            result,
+            [:dimension, :layer] => ByRow(fuse) => :name,
+            Not(:dimension, :layer),
+        )
+        result = permutedims(result, :name)
+
+        if format == :arrow
+            ensure_binary(sink)
+            Arrow.write(sink, result)
+        elseif format == :csv
+            CSV.write(sink, result)
+        elseif format == :tsv
+            CSV.write(sink, result, delim = '\t')
+        else
+            @error "Cannot export to unknown format `$format`."
+            throw(:help)
+        end
     end
 
     nothing
@@ -169,29 +265,28 @@ end
         )
 
         write(artifact(:specification, prefix = location), "[]")
+        defaults = (;
+            source = location,
+            format = nothing,
+            path = String[],
+            model = String[],
+            labeled = Regex[],
+            relabel_with_segment_id = false,
+            relabel_with_timestamp = false,
+            events = Regex[],
+            kinds = Regex[],
+            dry = false,
+        )
 
         @compile_workload begin
-            main(
-                source = location,
-                sink = "$location/export.csv",
-                format = nothing,
-                path = String[],
-                model = String[],
-                label = Regex[],
-                events = Regex[],
-                kinds = r"",
-                dry = false,
-            )
-            main(
-                source = location,
-                sink = "$location/export.arrow",
-                format = nothing,
-                path = String[],
-                model = String[],
-                label = Regex[],
-                events = Regex[],
-                kinds = r"",
-                dry = false,
+            main(; defaults..., sink = "$location/export.csv")
+            main(; defaults..., sink = "$location/export.arrow")
+            main(; defaults..., sink = "$location/export.h5ad")
+            main(;
+                defaults...,
+                sink = "$location/export.anndata",
+                format = :h5ad,
+                kinds = [r"(\d+)\.proteins", r"(?<transcripts>\d+)\.mrnas"],
             )
         end
     end
