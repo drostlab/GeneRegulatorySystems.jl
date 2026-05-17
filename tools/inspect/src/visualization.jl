@@ -17,19 +17,23 @@ end
 GroupColors(::Nothing; _...) = GroupColors(Dict{String, Color}())
 GroupColors(
     groups::AbstractVector{String};
-    seed = [colorant"white", colorant"black", colorant"crimson"]
-) = GroupColors(
-    Dict(
-        zip(
-            groups,
-            Colors.distinguishable_colors(
-                length(groups),
-                seed,
-                dropseed = true
-            )
-        )
-    )
-)
+    reserved = [colorant"white", colorant"black", colorant"crimson"],
+    fixed = [
+        colorant"#4196FF"
+        colorant"#3CBC0B"
+        colorant"#E38600"
+        colorant"#D864F1"
+        colorant"#A07CFF"
+        colorant"#00C1D3"
+        colorant"#A9A600"
+        colorant"#FB53B1"
+    ],
+    seed = vcat(reserved, fixed),
+    drop = length(reserved),
+) = GroupColors(Dict(zip(
+    groups,
+    Colors.distinguishable_colors(length(groups) + drop, seed)[(drop + 1):end]
+)))
 
 Base.getindex(colors::GroupColors, group::Symbol) = colors[string(group)]
 Base.getindex(colors::GroupColors, group::String) =
