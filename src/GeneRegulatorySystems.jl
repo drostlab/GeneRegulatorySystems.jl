@@ -14,6 +14,16 @@ randomness(seed::AbstractString) =
 seed(::Random.AbstractRNG) = nothing
 seed(r::Random.Xoshiro) = [r.s0, r.s1, r.s2, r.s3]
 
+"Temporarily override the task-global randomness state."
+function shadow_task_randomness!(callback, imposed::Random.AbstractRNG)
+    hidden = Random.getstate(Random.default_rng())
+    Random.setstate!(Random.default_rng(), Random.getstate(imposed))
+    result = callback(Random.default_rng())
+    Random.setstate!(imposed, Random.getstate(Random.default_rng()))
+    Random.setstate!(Random.default_rng(), hidden)
+    result
+end
+
 σ(x) = inv(one(x) + exp(-x))
 logit(p) = log(p / (one(p) - p))
 
