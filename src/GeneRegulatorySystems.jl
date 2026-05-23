@@ -43,7 +43,7 @@ export Schedule
 
 @compile_workload begin
     dryrun(_primitive!, _x, _Δt; _...) = nothing
-    trace(_into, _state; _...) = nothing
+    trace(_state; _...) = nothing
 
     # Load and dry-run all specification examples:
     for filename in readdir(SPECIFICATION_EXAMPLES)

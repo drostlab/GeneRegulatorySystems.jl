@@ -19,19 +19,25 @@ end
 
 function (trigger::TriggerProgress)(_u, _t, _integrator)
     trigger.i += 1
-    trigger.i % 10000 == 0
+    trigger.i % 100000 == 0
 end
 
 @kwdef mutable struct EmitProgress
     t0::Float64 = 0.0
+    override = nothing
 end
 
-(progress::EmitProgress)(integrator) = @logmsg(
-    Progress,
-    :stepping,
-    at = "JumpModel",
-    done = integrator.t - progress.t0,
-)
+(progress::EmitProgress)(integrator) =
+    if progress.override === nothing
+        @logmsg(
+            Progress,
+            :advancing,
+            at = "JumpModel",
+            done = integrator.t - progress.t0,
+        )
+    else
+        progress.override(:advancing, done = integrator.t)
+    end
 
 """
     JumpState
@@ -185,25 +191,37 @@ function Models.each_event(callback::Function, x::JumpState)
     end
 end
 
-function (f!::JumpModel)(x::JumpState, Δt::Float64; record = false, _...)
+function (f!::JumpModel)(
+    x::JumpState,
+    Δt::Float64;
+    record = false,
+    consolidated_progress = nothing,
+    verbose = consolidated_progress === nothing,
+    _...
+)
     f! === x.f! || error("incompatible JumpState, must call adapt!(x, f!)")
     isfinite(Δt) || error("cannot do this forever")
 
     empty!(x.integrator.sol.u)
     empty!(x.integrator.sol.t)
-    x.integrator.opts.callback.discrete_callbacks[1].affect!.t0 = Models.t(x)
 
-    @logmsg Progress :stepping at = "JumpModel" todo = Δt
+    emit = x.integrator.opts.callback.discrete_callbacks[1].affect!
+    if verbose
+        emit.t0 = Models.t(x)
+    else
+        emit.override = consolidated_progress
+    end
+
+    verbose && @logmsg Progress :advancing at = "JumpModel" todo = Δt
+    x.integrator.save_everystep = record
     if record
-        x.integrator.save_everystep = true
         ModelingToolkit.savevalues!(x.integrator, true)
         ModelingToolkit.step!(x.integrator, Δt, true)
     else
-        x.integrator.save_everystep = false
         ModelingToolkit.step!(x.integrator, Δt, true)
         ModelingToolkit.savevalues!(x.integrator, true)
     end
-    @logmsg Progress :done at = "JumpModel"
+    verbose && @logmsg Progress :done at = "JumpModel"
 
     x
 end

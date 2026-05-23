@@ -47,9 +47,17 @@ Wraps a non-`Schedule` `Model` to be invoked in the process of executing a
 
 # Invocation
 
-    (f!::Primitive)(x, Δt; path, trace = nothing, dryrun = nothing, context...)
+    (primitive!::Primitive)(
+        x,
+        Δt;
+        path,
+        trace = nothing,
+        dryrun = nothing,
+        consolidated_progress = nothing,
+        context...,
+    )
 
-Delegate to another `Model` `f!.f!`, adding pre- and post-processing.
+Delegate to another `Model` `primitive!.f!`, adding pre- and post-processing.
 
 This produces a single simulation segment; it
 - converts the simulation state to the representation required by the wrapped
@@ -61,9 +69,12 @@ This produces a single simulation segment; it
 
 The wrapped models are expected to retain intermediate results for their last
 invocation in the simulation state `x` if `into` is not `nothing` so they can be
-saved in the `trace` callback.
+saved during the `trace` callback.
 
-If `dryrun` is given, execution short-circuits by calling that back instead.
+If `dryrun` is given, execution short-circuits by calling that back instead. If
+`consolidated_progress` is given, progress logging is suppressed and the
+argument is forwarded to `primitive!.f!` and `trace`, instructing them to only
+report progress by calling back.
 """
 @kwdef struct Primitive <: Model{Any}
     f!::Model
@@ -82,8 +93,11 @@ function (primitive!::Primitive)(
     path,
     trace = nothing,
     dryrun = nothing,
+    consolidated_progress = nothing,
     context...,
 )
+    verbose = consolidated_progress === nothing
+
     f! = Models.unwrap(primitive!)
     if primitive!.skip > 0.0
         Δt = min(Δt, primitive!.skip)
@@ -101,7 +115,7 @@ function (primitive!::Primitive)(
         return x′
     end
 
-    @logmsg(
+    verbose && @logmsg(
         Progress,
         :adapting,
         at = path,
@@ -113,28 +127,34 @@ function (primitive!::Primitive)(
     x = Models.adapt!(x, f!)
     record = primitive!.into !== nothing
 
-    @logmsg Progress :advancing at = path
+    verbose && @logmsg Progress :advancing at = path
+    traced = (;
+        path,
+        from,
+        primitive!,
+        primitive!.into,
+        seed,
+        consolidated_progress,
+    )
     if trace === nothing
-        x = f!(x, Δt; path, context...)
+        x = f!(x, Δt; path, consolidated_progress, context...)
     elseif primitive!.skip > 0.0
-        x = f!(x, Δt; path, context...)
-        trace(nothing, x; path, primitive!, from, seed)
+        x = f!(x, Δt; path, consolidated_progress, context...)
+        trace(x; traced..., into = nothing)
         if record
             trace(
-                primitive!.into,
-                x,
+                x;
+                traced...,
                 from = Models.t(x),
-                seed = GeneRegulatorySystems.seed(Models.randomness(x));
-                path,
-                primitive!,
+                seed = GeneRegulatorySystems.seed(Models.randomness(x)),
             )
         end
     else
-        x = f!(x, Δt; path, context..., record)
-        trace(primitive!.into, x; path, primitive!, from, seed)
+        x = f!(x, Δt; path, consolidated_progress, context..., record)
+        trace(x; traced...)
     end
 
-    @logmsg Progress :done at = path
+    verbose && @logmsg Progress :done at = path
     x
 end
 
@@ -392,6 +412,12 @@ load_schedule(f!::Schedule{Load}; load) = Schedule(
     f!.path,
 )
 
+consolidate_progress(::Model) = false
+consolidate_progress(f!::Primitive) = !(Models.unwrap(f!.f!) isa Instant)
+consolidate_progress(f!::Schedule{Scope}) =
+    f!.specification.step isa Slice &&
+    !haskey(f!.specification.definitions, :do)
+
 function (f!::Schedule{Slice})(x, Δt::Float64; context...)
     path =
         if haskey(f!.bindings, :do)
@@ -418,10 +444,17 @@ end
         path,
     )(x, Δt; path, context...)
 
-function (f!::Schedule{Scope})(x, Δt::Float64; context...)
-    f!.branch && error("cannot branch here: not a Sequence")
+function (f!::Schedule{Scope})(
+    x,
+    Δt::Float64;
+    trace = nothing,
+    consolidated_progress = nothing,
+    context...,
+)
+    f!.branch && error("cannot branch at '$(f!.path)': not a Sequence")
+    verbose = consolidated_progress === nothing
 
-    @logmsg Progress :preparing at = f!.path
+    verbose && @logmsg Progress :preparing at = f!.path
     x = Models.adapt!(x, f!)  # potentially unwrap Branched
     bindings = evaluate_bindings(f!)
     path = "$(f!.path)$(f!.specification.branch ? '/' : '+')"
@@ -434,23 +467,33 @@ function (f!::Schedule{Scope})(x, Δt::Float64; context...)
 
     if haskey(bindings, :to) && bindings[Symbol("^to")].path == f!.path
         Δt = min(Δt, bindings[:to])
-        @logmsg Progress :repeating at = f!.path todo = Δt
+        verbose && @logmsg Progress :preparing at = f!.path todo = Δt
+        if verbose && consolidate_progress(step!)
+            consolidated_progress =
+                (message; todo = nothing, done = 0) ->
+                    @logmsg Progress message at = f!.path todo done
+        end
         done = 0.0
         while 0.0 < Δt
             current = Models.t(x)
-            x = step!(x, Δt; context..., path)
+            x = step!(x, Δt; trace, consolidated_progress, context..., path)
             advance = Models.t(x) - current
             0.0 < advance || error("cannot progress")
             Δt -= advance
             done += advance
-            @logmsg Progress :repeating at = f!.path done
+            if consolidated_progress === nothing
+                @logmsg Progress :repeating at = f!.path done
+            end
         end
     else
-        @logmsg Progress :descending at = f!.path
-        x = step!(x, Δt; context..., path)
+        verbose && @logmsg Progress :descending at = f!.path
+        x = step!(x, Δt; trace, context..., path)
     end
 
-    @logmsg Progress :done at = f!.path
+    if haskey(f!.specification.definitions, :flush) && trace !== nothing
+        trace(into = sink(bindings), flush = bindings[:flush]; f!.path)
+    end
+    verbose && @logmsg Progress :done at = f!.path
 
     x
 end

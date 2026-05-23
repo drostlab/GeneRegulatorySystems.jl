@@ -66,7 +66,7 @@ function Logging.handle_message(
 
     id = get!(uuid4, logger.ids, at)
 
-    if message == :done || message == :advanced || message == :descending
+    if message == :done || message == :descending
         @info ProgressLogging.Progress(id, done = true, name = "$at $message")
         delete!(logger.ids, at)
         delete!(logger.todo, at)
@@ -158,15 +158,11 @@ function prepare!(; location, specifications, seed)
     else
         paths = realpath.(specifications)
         artifacts = map_artifacts(paths)
-        wrapped = mapreduce(vcat, paths) do p
+        wrapped = map(paths) do p
             into = "-" * replace(artifacts[p], r"(\.schedule)?(\.json)$" => "")
             filename = basename("$(location)$(artifacts[p])")
-            [
-                Dict(:< => filename, :into => into)
-                Dict(Symbol("{flush}") => "^$into")
-            ]
+            Dict(:< => filename, :into => into, :flush => true)
         end
-        wrapped = wrapped[1:(end - 1)]
 
         mkpath(dirname(specification_path))
         for (source, target) in artifacts
@@ -212,7 +208,7 @@ function flush!(sink::Sink; matching = nothing, finalize = false)
     sink.i > 0 || return
 
     for into in keys(sink.channels)
-        if matching === nothing || match(matching, into) !== nothing
+        if matching === nothing || startswith(into, matching)
             flush!(sink, into)
         end
     end
@@ -235,12 +231,6 @@ function flush!(sink::Sink; matching = nothing, finalize = false)
     )
 end
 
-function flush!(sink, streams::Regex)
-    for into in keys(sink.channels)
-        flush!(sink, into)
-    end
-end
-
 function flush!(sink::Sink, into::AbstractString)
     channel = pop!(sink.channels, into)
     filename = artifact(:events, into, prefix = sink.location)
@@ -259,14 +249,23 @@ function flush!(sink::Sink, into::AbstractString)
     @logmsg(Scheduling.Progress, :saved, at = filename, done = count)
 end
 
-function (sink::Sink)(into, state; path, primitive!, from, seed, _...)
-    sink.i += 1
+function (sink::Sink)(; path, into = nothing, flush = nothing, _...)
+    @logmsg Scheduling.Progress :flushing at = path
+    matching = flush === true ? into : flush
+    matching !== nothing && flush!(sink; matching)
+end
 
-    f! = Models.unwrap(primitive!)
-    if f! isa Models.Plumbing.Flush
-        flush!(sink, matching = f!.streams)
-        into = nothing
-    end
+function (sink::Sink)(
+    state;
+    path,
+    from,
+    primitive!,
+    into = nothing,
+    seed,
+    consolidated_progress = nothing,
+    _...
+)
+    sink.i += 1
 
     to = Models.t(state)
     model = primitive!.path
@@ -280,7 +279,11 @@ function (sink::Sink)(into, state; path, primitive!, from, seed, _...)
         return
     end
 
-    @logmsg Scheduling.Progress :collecting at = path todo = "into $into"
+    if consolidated_progress === nothing
+        @logmsg Scheduling.Progress :collecting at = path todo = "into $into"
+    else
+        consolidated_progress(:collecting, done = to)
+    end
     channel = get!(Channel, sink.channels, into)
     count = 0
     Models.each_event(state) do t::Float64, name::Symbol, value::Int64
