@@ -1,7 +1,7 @@
 module Scheduling
 
 using ...GeneRegulatorySystems: GeneRegulatorySystems
-using ..Models: Models, Model, FlatState, Branched
+using ..Models: Models, Model, Instant, FlatState
 using ..Models.Plumbing: Wait
 using ...Specifications:
     Specifications,
@@ -138,6 +138,21 @@ function (primitive!::Primitive)(
     x
 end
 
+struct Branched
+    stem
+    branches::Vector
+end
+
+Branched(x) = Branched(x, [])
+Models.randomness(x::Branched) = Models.randomness(x.stem)
+Models.t(x::Branched) = Models.t(x.stem)
+each_event(callback::Function, x::Branched) = each_event(callback, x.stem)
+
+Models.FlatState(x::Branched) = Models.FlatState(x.stem)
+Models._adapt!(x::Branched, ::Model{Branched}, ::Val{false}) = x
+Models._adapt!(x::Branched, f!::Model, copy::Val) =
+    Models._adapt!(x.stem, f!, copy)
+
 """
     Schedule{S <: Specification} <: Model{Any}
 
@@ -218,8 +233,8 @@ enclosing `Scope`):
   their trajectories will start to differ at the branch (copy) time point. All
   advanced copies will be returned together with the original `x` as a
   `Branched` state so that they can optionally be merged (see
-  [`Merge`](@ref Models.Plumbing.Merge)), but typically the branched components
-  will instead be dropped downstream. (Note that by this point, their
+  [`Merge`](@ref Models.Scheduling.Merge)), but typically the branched
+  components will instead be dropped downstream. (Note that by this point, their
   trajectories likely already have been `trace`d in the respective `Primitive`
   invocations.)
 - Otherwise, the items are invoked in turn on the same state `x`. After each
@@ -444,7 +459,6 @@ function (f!::Schedule{<:Sequence})(x, Δt::Float64; context...)
     path = f!.branch ? f!.path : "$(f!.path)-"
     @logmsg Progress :preparing at = path
 
-    x = Models.adapt!(x, f!)  # potentially unwrap Branched
     steps = models(f!.specification; f!.bindings, path)
 
     @logmsg Progress :iterating at = path todo = length(steps)
@@ -453,7 +467,7 @@ function (f!::Schedule{<:Sequence})(x, Δt::Float64; context...)
         for (i, step!) in enumerate(steps)
             x′ = Models.adapt!(x.stem, step!, copy = true)
             x′ = step!(x′, Inf; context..., path = "$path$i")
-            push!(x.branches, x′)
+            push!(x.branches, FlatState(x′))
             @logmsg Progress :iterating at = path done = i
         end
     else
@@ -601,6 +615,45 @@ function reify(primitive!::Primitive, path::AbstractString; _...)
     else
         error("cannot descend to '$path' in Primitive at '$(primitive!.path)'")
     end
+end
+
+"""
+    Merge <: Instant{Branched}
+
+Instantly collapse a `Branched` state to a `FlatState` by replacing the `stem`
+with aggregated counts from the `branches`.
+
+# Specification
+
+Currently, only `+` is supported as aggregation. Specified in JSON as
+`{"{merge}": "+"}`.
+
+# Invocation
+
+    (f!::Merge)(x::Branched, _Δt::Float64; _...)
+
+Use the function `f!.merge` to aggregate all of the `x.branches` and return a
+new `FlatState` with the aggregated counts, but retaining `x.stem.t` and
+`x.stem.randomness`.
+"""
+struct Merge <: Instant{Branched}
+    merge::Function
+end
+
+Merge(operation::AbstractString) = operation |> Symbol |> Val |> Merge
+Merge(::Val{:+}) = Merge(+)
+
+Specifications.constructor(::Val{:merge}) = Merge
+
+function (f!::Merge)(x::Branched, _Δt::Float64; _...)
+    accumulator = FlatState(
+        t = Models.t(x.stem),
+        randomness = Models.randomness(x.stem),
+    )
+    for b in x.branches
+        mergewith!(f!.merge, accumulator.counts, b.counts)
+    end
+    accumulator
 end
 
 end

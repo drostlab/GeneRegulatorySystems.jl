@@ -29,11 +29,6 @@ FlatState(x::FlatState) = FlatState(
     x.randomness
 )
 
-struct Branched
-    stem
-    branches::Vector
-end
-Branched(x) = Branched(x, [])
 
 """
     t(x)
@@ -42,7 +37,6 @@ Access the current simulation time of state `x`.
 """
 function t end
 t(x::FlatState) = x.t
-t(x::Branched) = t(x.stem)
 
 """
     randomness(x)
@@ -51,7 +45,6 @@ Access the random number generator instance of state `x`.
 """
 function randomness end
 randomness(x::FlatState) = x.randomness
-randomness(x::Branched) = randomness(x.stem)
 
 """
     Model{State}
@@ -181,8 +174,6 @@ adapt!(x, f!::Model, _copy) = _adapt!(FlatState(x), f!, Val(false))
 adapt!(x, f!::Wrapped, copy) = _adapt!(x, f!.model, copy)
 
 _adapt!(x, f!::Model, copy::Val) = adapt!(x, f!, copy)
-_adapt!(x::Branched, ::Model{Branched}, ::Val{false}) = x
-_adapt!(x::Branched, f!::Model, copy::Val) = _adapt!(x.stem, f!, copy)
 _adapt!(x::FlatState, ::Model{FlatState}, ::Val{false}) = x
 _adapt!(x::FlatState, ::Model{Any}, ::Val{false}) = x
 _adapt!(x::FlatState, f!::Model, ::Val{true}) = _adapt!(
@@ -224,7 +215,6 @@ each_event(callback::Function, x::FlatState) =
         callback(x.t, key, value)
     end
 
-each_event(callback::Function, x::Branched) = each_event(callback, x.stem)
 
 """
     Reagents
