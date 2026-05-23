@@ -18,8 +18,7 @@ import Dates
 
 abstract type ProgressLogger <: AbstractLogger end
 
-Logging.min_enabled_level(::ProgressLogger) =
-    GeneRegulatorySystems.Scheduling.Progress
+Logging.min_enabled_level(::ProgressLogger) = Scheduling.Progress
 
 Logging.shouldlog(::ProgressLogger, level, module_, _group, _id) =
     level == Scheduling.Progress && (
@@ -159,16 +158,15 @@ function prepare!(; location, specifications, seed)
     else
         paths = realpath.(specifications)
         artifacts = map_artifacts(paths)
-        wrapped = [
-            Dict(
-                :< => basename("$(location)$(artifacts[p])"),
-                :into => "-" * replace(
-                    artifacts[p],
-                    r"(\.schedule)?(\.json)$" => "",
-                )
-            )
-            for p in paths
-        ]
+        wrapped = mapreduce(vcat, paths) do p
+            into = "-" * replace(artifacts[p], r"(\.schedule)?(\.json)$" => "")
+            filename = basename("$(location)$(artifacts[p])")
+            [
+                Dict(:< => filename, :into => into)
+                Dict(Symbol("{flush}") => "^$into")
+            ]
+        end
+        wrapped = wrapped[1:(end - 1)]
 
         mkpath(dirname(specification_path))
         for (source, target) in artifacts
@@ -210,13 +208,16 @@ end
     channels::Dict{String, Channel} = Dict{String, Channel}()
 end
 
-function flush!(sink::Sink)
+function flush!(sink::Sink; matching = nothing, finalize = false)
     sink.i > 0 || return
 
     for into in keys(sink.channels)
-        flush!(sink, into)
+        if matching === nothing || match(matching, into) !== nothing
+            flush!(sink, into)
+        end
     end
 
+    finalize || return
     index = Tables.columntable(sink.index)
     Arrow.write(
         artifact(:index; prefix = sink.location),
@@ -234,7 +235,13 @@ function flush!(sink::Sink)
     )
 end
 
-function flush!(sink::Sink, into)
+function flush!(sink, streams::Regex)
+    for into in keys(sink.channels)
+        flush!(sink, into)
+    end
+end
+
+function flush!(sink::Sink, into::AbstractString)
     channel = pop!(sink.channels, into)
     filename = artifact(:events, into, prefix = sink.location)
     events = (;
@@ -243,17 +250,23 @@ function flush!(sink::Sink, into)
         name = channel.names,
         value = channel.values,
     )
+    count = length(events.t)
     if isfile(filename)
         Arrow.append(filename, events)
     else
         Arrow.write(filename, events, file = false)
     end
-    count = length(events.t)
     @logmsg(Scheduling.Progress, :saved, at = filename, done = count)
 end
 
 function (sink::Sink)(into, state; path, primitive!, from, seed, _...)
     sink.i += 1
+
+    f! = Models.unwrap(primitive!)
+    if f! isa Models.Plumbing.Flush
+        flush!(sink, matching = f!.streams)
+        into = nothing
+    end
 
     to = Models.t(state)
     model = primitive!.path
@@ -342,7 +355,7 @@ function simulate!(; location, progress, dry)
         state = Models.Plumbing.Seed(specification[:seed])(state)
         sink = Sink(; location)
         schedule!(state; load, trace = sink, dryrun = dry ? dryrun : nothing)
-        flush!(sink)
+        flush!(sink, finalize = true)
     end
 end
 

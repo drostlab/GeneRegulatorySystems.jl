@@ -32,6 +32,40 @@ Specifications.constructor(::Val{:pass}) = Pass
 (::Pass)(x, _Δt::Float64; _...) = x
 
 """
+    Flush <: Instant{Any}
+
+This is a hint to the execution engine that the output streams with names
+matching the `streams` pattern anywhere are not scheduled to be appended to
+again, so that any in-progress batch should be written now and the streams can
+then be closed. This is not guaranteed though, and streams might have to be
+reopened later, potentially causing a shortened intermediate batch to be
+written; this is acceptable.
+
+# Specification
+
+Specified in JSON as `{"{flush}": "<regex>"}` where `<regex>` is any JSON string
+that represents a valid Julia regular expression
+([in PCRE2 syntax](https://www.pcre.org/current/doc/html/pcre2syntax.html)).
+`\` characters must be escaped by `\\`.
+
+# Invocation
+
+    (::Flush)(x, _Δt::Float64; _...) = x
+
+This will neither advance simulation time nor change state, and record no
+events.
+"""
+struct Flush <: Instant{Any}
+    streams::Regex
+end
+
+Flush(s::AbstractString) = Flush(Regex(s))
+
+Specifications.constructor(::Val{:flush}) = Flush
+
+(::Flush)(x, _Δt::Float64; _...) = x
+
+"""
     Wait <: Model{FlatState}
 
 Do nothing for a while.

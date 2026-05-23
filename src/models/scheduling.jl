@@ -73,6 +73,7 @@ If `dryrun` is given, execution short-circuits by calling that back instead.
     bindings::Dict{Symbol, Any}
 end
 
+Models.unwrap(primitive!::Primitive) = Models.unwrap(primitive!.f!)
 Models.describe(primitive!::Primitive) = Models.describe(primitive!.f!)
 
 function (primitive!::Primitive)(
@@ -83,7 +84,7 @@ function (primitive!::Primitive)(
     dryrun = nothing,
     context...,
 )
-    f! = Models.unwrap(primitive!.f!)
+    f! = Models.unwrap(primitive!)
     if primitive!.skip > 0.0
         Δt = min(Δt, primitive!.skip)
     end
