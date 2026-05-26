@@ -69,7 +69,7 @@ This produces a single simulation segment; it
 
 The wrapped models are expected to retain intermediate results for their last
 invocation in the simulation state `x` if `into` is not `nothing` so they can be
-saved during the `trace` callback.
+saved during the `trace` callback, after which they will be dropped.
 
 If `dryrun` is given, execution short-circuits by calling that back instead. If
 `consolidated_progress` is given, progress logging is suppressed and the
@@ -153,6 +153,7 @@ function (primitive!::Primitive)(
         x = f!(x, Δt; path, consolidated_progress, context..., record)
         trace(x; traced...)
     end
+    Models.empty_trajectory!(x)
 
     verbose && @logmsg Progress :done at = path
     x
@@ -510,6 +511,8 @@ function (f!::Schedule{<:Sequence})(x, Δt::Float64; context...)
         for (i, step!) in enumerate(steps)
             x′ = Models.adapt!(x.stem, step!, copy = true)
             x′ = step!(x′, Inf; context..., path = "$path$i")
+            # In case the branch itself ended with a Branched state: it had its
+            # chance for Merge... the following will implicitly unwrap it.
             push!(x.branches, FlatState(x′))
             @logmsg Progress :iterating at = path done = i
         end

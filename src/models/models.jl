@@ -47,6 +47,14 @@ function randomness end
 randomness(x::FlatState) = x.randomness
 
 """
+    empty_trajectory!(x)
+
+If `x` recorded a trajectory, drop it.
+"""
+function empty_trajectory! end
+empty_trajectory!(x::FlatState) = nothing
+
+"""
     Model{State}
 
 Abstract supertype of all models.
@@ -170,17 +178,26 @@ used.
 """
 function adapt! end
 adapt!(x, f!::Model; copy = false) = _adapt!(x, f!, Val(copy))
-adapt!(x, f!::Model, _copy) = _adapt!(FlatState(x), f!, Val(false))
 adapt!(x, f!::Wrapped, copy) = _adapt!(x, f!.model, copy)
+adapt!(::FlatState, ::Model, _copy) = error("unimplemented")
+adapt!(x, f!::Model, ::Val{Copy}) where {Copy} =
+    # No other module has registered a specializion for this pairing. The
+    # fallback behavior is to copy-convert to a FlatState and then to try again:
+    _adapt!(FlatState(x), f!, Val(false))
 
+# We have right of first refusal. But unless any of the following special cases
+# apply, we will allow new modules to override `adapt!`.
 _adapt!(x, f!::Model, copy::Val) = adapt!(x, f!, copy)
-_adapt!(x::FlatState, ::Model{FlatState}, ::Val{false}) = x
-_adapt!(x::FlatState, ::Model{Any}, ::Val{false}) = x
-_adapt!(x::FlatState, f!::Model, ::Val{true}) = _adapt!(
-    FlatState(counts = deepcopy(x.counts); x.t, x.randomness),
-    f!,
-    Val(false)
-)
+
+# A copy was requested, x is still needed elsewhere.
+_adapt!(x::FlatState, f!::Model, _copy::Val{true}) =
+    _adapt!(FlatState(x), f!, Val(false))
+
+# Simple passthrough:
+_adapt!(x::FlatState, ::Model{FlatState}, _copy::Val{false}) = x
+
+# Pass through into agnostic Model:
+_adapt!(x::FlatState, ::Model{Any}, _copy::Val{false}) = x
 
 """
     each_event(callback::Function, x)

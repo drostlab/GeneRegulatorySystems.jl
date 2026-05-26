@@ -1,9 +1,10 @@
 module SciML
 
+import ....GeneRegulatorySystems
 import ..Models: Models, Model, FlatState
 import Catalyst
 import JumpProcesses
-import ModelingToolkit
+using ModelingToolkit: ModelingToolkit, SymbolicIndexingInterface
 
 using Random
 using Logging: LogLevel, @logmsg
@@ -22,67 +23,82 @@ function (trigger::TriggerProgress)(_u, _t, _integrator)
     trigger.i % 100000 == 0
 end
 
+# Since SciMLBase.DiscreteCallback is immutable, but we want to adjust progress
+# reporting after construction, we wrap the progress reporter (emit directly or
+# call back) in a mutable affect! of type ReportProgress.
+
 @kwdef mutable struct EmitProgress
     t0::Float64 = 0.0
-    override = nothing
 end
 
-(progress::EmitProgress)(integrator) =
-    if progress.override === nothing
-        @logmsg(
-            Progress,
-            :advancing,
-            at = "JumpModel",
-            done = integrator.t - progress.t0,
-        )
-    else
-        progress.override(:advancing, done = integrator.t)
-    end
+(progress::EmitProgress)(integrator) = @logmsg(
+    Progress,
+    :advancing,
+    at = "JumpModel",
+    done = integrator.t - progress.t0,
+)
+
+@kwdef struct CallbackProgress
+    callback
+end
+
+function (progress::CallbackProgress)(integrator)
+    progress.callback(:advancing, done = integrator.t)
+    JumpProcesses.u_modified!(integrator, false)
+end
+
+@kwdef mutable struct ReportProgress
+    reporter::Union{EmitProgress, CallbackProgress} = EmitProgress()
+end
+
+function (progress::ReportProgress)(integrator)
+    progress.reporter(integrator)
+    JumpProcesses.u_modified!(integrator, false)
+end
 
 """
     JumpState
 
-Contains the prepared `JumpProcesses.JumpProblem` `problem` and an associated
-`JumpProcesses.SSAIntegrator` `integrator` to be advanced by a `JumpModel`.
+Contains the prepared `JumpProcesses.SSAIntegrator` `integrator` to be advanced
+by a `JumpModel`.
 
-Since in JumpProcesses.jl the problem and integrator objects are tightly coupled
-(because they alias various components), `JumpState` holds both of them. The
-current time and state as well as the (potentially) recorded trajectory are
-contained in the integrator, while the random number generator is part of the
-problem object.
+In JumpProcesses.jl, the problem and integrator objects are tightly coupled. The
+current time, values, RNG instance and (potentially) the recorded trajectories
+are all contained in the integrator, but many mutable properties are usually
+aliased from the problem, so we would typically consider both to be state.
 
-To be compatible with a `JumpModel` `f!`, the `JumpState`'s `problem` (and
-`integrator`) must have been constructed from the same `f!.system`. To check
+However, since `JumpProblem` construction is expensive, we instead instruct
+the `integrator` to perform a deepcopy the whole `JumpProblem` before using any
+of its resources. Except for the `JumpProblem`'s RNG, which we will re-seed
+before `integrator` initialization, we can thus consider the `JumpProblem`s
+immutable. This is still faster than rebuilding the whole `JumpProblem`.
+
+To be compatible with a `JumpModel` `f!`, the `integrator` must have been
+constructed for the same `f!.system` (i.e., from its `f!.problem`). To check
 whether this is actually the case, `JumpState` also contains a reference to the
 corresponding `f!`.
 """
 @kwdef struct JumpState
     f!::Model{JumpState}
-    problem::JumpProcesses.JumpProblem
-    integrator::JumpProcesses.SSAIntegrator = ModelingToolkit.init(
-        problem,
-        JumpProcesses.SSAStepper(),
-        save_start = false,
-        callback = JumpProcesses.DiscreteCallback(
-            TriggerProgress(),
-            EmitProgress(),
-            save_positions = (false, false),
-        ),
-    )
+    randomness::AbstractRNG  # the upstream RNG that will be synchronized to
+    integrator::JumpProcesses.SSAIntegrator
 end
 
 Models.t(x::JumpState) = x.integrator.t
-Models.randomness(x::JumpState) = x.problem.rng
+Models.randomness(x::JumpState) = x.randomness
+
+function Models.empty_trajectory!(x::JumpState)
+    empty!(x.integrator.sol.u)
+    empty!(x.integrator.sol.t)
+end
 
 FlatState(x::JumpState) = FlatState(
+    t = Models.t(x),
     counts = Dict(
         normalize_name(s) => x.integrator[s]
-        for s in ModelingToolkit.SymbolicIndexingInterface.variable_symbols(
-            x.integrator
-        )
+        for s in SymbolicIndexingInterface.variable_symbols(x.integrator)
     ),
-    randomness = x.problem.rng;
-    x.integrator.t,
+    randomness = Models.randomness(x),
 )
 
 """
@@ -93,6 +109,7 @@ Represents the stochastic dynamics of applying a
 `ModelingToolkit.System` `system` with a set of `parameters`.
 
 Gene regulation models in this package ultimately get compiled to `JumpModel`s.
+An appropriate (but incomplete) `JumpProblem` is opportunistically built here.
 
 # Specification
 
@@ -124,53 +141,81 @@ by `each_event` for output in sparse long format.
     system::ModelingToolkit.System
     method::JumpProcesses.AbstractAggregatorAlgorithm
     parameters
+    problem::JumpProcesses.JumpProblem = ModelingToolkit.JumpProblem(
+        system,
+        vcat(
+            parameters,
+            [s => 0 for s in ModelingToolkit.unknowns(system)],
+            # ^ We will initialize these directly on the integrator.
+        ),
+        (0.0, Inf),
+        aggregator = method,
+        # Weirdly, constructing a `JumpProblem` consumes entropy. But everything
+        # derived from it is supposed to be evanescent, so here we assign it a
+        # new (deterministically seeded) RNG will take care to reseed it before
+        # initializing any integrator. This allows us to treat the `JumpProblem`
+        # as effectively immutable. The RNG still needs to be an independent
+        # instance (instead of its default TaskLocalRNG) so that the deepcopy at
+        # integrator initialization will likewise produce independent instances,
+        # and further to prevent any pollution of the task-global entropy pool.
+        # All of this will become unnecessary at some point, follow
+        # https://github.com/SciML/JumpProcesses.jl/issues/554 to track
+        # progress.
+        rng = GeneRegulatorySystems.randomness(),
+        u0_eltype = Int,
+    )
 end
 
 Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")
 
-Models.adapt!(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
-    if x.f! === f! && !Copy
-        x
-    else
-        # Since SciML problems and integrators are tightly coupled we need to
-        # remake the problem and then reinitialize the integrator if we want
-        # a Model copy. Remaking JumpProblem only allows changing a limited
-        # subset of the properties, and I am unsure which ones are aliased in
-        # the process. To avoid trouble, we choose to simply extract the
-        # current state to a FlatState and then proceed as if this were a new
-        # model. Presumably this is slower than calling remake, yet safer, and
-        # anyway could only be avoided when we are branching the simulation
-        # without changing models.
-        Models.adapt!(FlatState(x), f!)
-    end
+function JumpState(x::FlatState; f!::JumpModel)
+    Random.setstate!(
+        f!.problem.jump_callback.discrete_callbacks[1].condition.rng,
+        Random.getstate(Models.randomness(x)),
+    )
+    # ^ The integrator will use a copied instance of f!.problem's RNG. The
+    # original x.randomness cannot be redefined at this point, so we will need
+    # to synchronize the integrator's RNG state back into x.randomness, both
+    # here and at the end of every simulation segment.
 
-Models.adapt!(x::FlatState, f!::JumpModel, _copy) = JumpState(
-    problem = ModelingToolkit.JumpProblem(
-        f!.system,
-        vcat(
-            f!.parameters,
-            [
-                s => get(x.counts, normalize_name(s), 0)
-                for s in ModelingToolkit.unknowns(f!.system)
-            ]
+    integrator = ModelingToolkit.init(
+        f!.problem,
+        JumpProcesses.SSAStepper(),
+        save_start = false,
+        callback = JumpProcesses.DiscreteCallback(
+            TriggerProgress(),
+            ReportProgress(),
+            save_positions = (false, false),
         ),
-        (x.t, Inf),
-        aggregator = f!.method,
-        rng = x.randomness,
-        u0_eltype = Int,
-    );
-    f!,
-)
+        alias_jump = false,
+        # ^ Ensure that f!.problem immutability is upheld so that we can still
+        # create reproducible integrators going forward.
+    )
+    integrator.t = Models.t(x)
+    for s in SymbolicIndexingInterface.variable_symbols(integrator)
+        integrator[s] = get(x.counts, normalize_name(s), 0)
+    end
+    JumpProcesses.reset_aggregated_jumps!(integrator)
+    Random.setstate!(x.randomness, Random.getstate(integrator.cb.affect!.rng))
+
+    JumpState(; f!, x.randomness, integrator)
+end
+
+Models.adapt!(x::FlatState, f!::JumpModel, ::Val{_Copy}) where {_Copy} =
+    JumpState(x; f!)
+Models.adapt!(x::JumpState, f!::JumpModel, ::Val{Copy}) where {Copy} =
+    x.f! === f! && !Copy ? x : JumpState(FlatState(x); f!)
 
 function Models.each_event(callback::Function, x::JumpState)
     solution = x.integrator.sol
 
     names = normalize_name.(
-        ModelingToolkit.SymbolicIndexingInterface.variable_symbols(solution)
+        SymbolicIndexingInterface.variable_symbols(solution)
     )
     # ^ We assume that this access is safe and the order agrees with the values
     # in x.integrator.sol.u because this is how SciMLBase constructs the Table
     # reinterpretation in Tables.rows(::AbstractTimeseriesSolution).
+    # ^ TODO: Check if this is still the case for newer versions of SciML!
 
     isempty(solution.u) && return
     (t, previous), rest = Iterators.peel(zip(solution.t, solution.u))
@@ -202,14 +247,11 @@ function (f!::JumpModel)(
     f! === x.f! || error("incompatible JumpState, must call adapt!(x, f!)")
     isfinite(Δt) || error("cannot do this forever")
 
-    empty!(x.integrator.sol.u)
-    empty!(x.integrator.sol.t)
-
-    emit = x.integrator.opts.callback.discrete_callbacks[1].affect!
+    progress = x.integrator.opts.callback.discrete_callbacks[1].affect!
     if verbose
-        emit.t0 = Models.t(x)
+        progress.reporter.t0 = Models.t(x)
     else
-        emit.override = consolidated_progress
+        progress.reporter = CallbackProgress(consolidated_progress)
     end
 
     verbose && @logmsg Progress :advancing at = "JumpModel" todo = Δt
@@ -222,6 +264,8 @@ function (f!::JumpModel)(
         ModelingToolkit.savevalues!(x.integrator, true)
     end
     verbose && @logmsg Progress :done at = "JumpModel"
+
+    Random.setstate!(x.randomness, Random.getstate(x.integrator.cb.affect!.rng))
 
     x
 end
