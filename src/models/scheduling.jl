@@ -15,7 +15,7 @@ using ...Specifications:
     Template
 
 using Logging: LogLevel, @logmsg
-using Random
+import Random
 
 Progress = LogLevel(-2)
 
@@ -62,10 +62,31 @@ Delegate to another `Model` `primitive!.f!`, adding pre- and post-processing.
 This produces a single simulation segment; it
 - converts the simulation state to the representation required by the wrapped
   `Model`,
-- reports progress via `@logmsg`, and
+- potentially reseeds `x`'s randomness,
+- reports progress via `@logmsg` or `consolidated_progress`, and
 - if `trace` is given, calls it back with the new simulation state and appends
   various ancillary information in that call, including `into` to signal if and
   where results should be saved.
+
+The reseeding happens if `seed` is set on construction, which is always the case
+when the `Primitive` is executed as part of a `Schedule`. The seed is then
+accumulated on descent by appending any iteration indices. On invocation, the
+`Primitive`'s seed will further be suffixed by `"+"` and then the current model
+time `Models.t(x)` (if it is nonzero) to ensure that every segment has a unique
+seed even if the `Primitive` is nested within a repeating `Scope`, unless
+otherwise specified by the user. There are two exceptions to this policy.
+
+Firstly, as a convenience to enable iterative development of a schedule
+specification, the first `Primitive`'s `seed` in any `Sequence` will be
+automatically replaced by its parent's, potentially recursively (that is,
+trailing `"-1"`s will be clipped); in this way, breaking up any `Primitive` into
+a new `Sequence` will ensure that its first segment keeps its trajectory
+unchanged up to the first new segment boundary.
+
+Secondly, reseeding is suppressed in a directly enclosing repeating `Scope`,
+except for its first invocation. This only applies to regularly sampled stepping
+(i.e., `{"to" ⟨number⟩, "step": ⟨number⟩}`) and is meant to align the
+trajectories with the contiguous case.
 
 The wrapped models are expected to retain intermediate results for their last
 invocation in the simulation state `x` if `into` is not `nothing` so they can be
@@ -79,9 +100,10 @@ report progress by calling back.
 @kwdef struct Primitive <: Model{Any}
     f!::Model
     skip::Float64 = 0.0
-    into::Union{String, Nothing}
     path::String
     bindings::Dict{Symbol, Any}
+    into::Union{String, Nothing} = sink(bindings)
+    seed::Union{String, Nothing} = replace(bindings[:seed], r"(-1)+$" => "")
 end
 
 Models.unwrap(primitive!::Primitive) = Models.unwrap(primitive!.f!)
@@ -94,6 +116,7 @@ function (primitive!::Primitive)(
     trace = nothing,
     dryrun = nothing,
     consolidated_progress = nothing,
+    done = 0.0,
     context...,
 )
     verbose = consolidated_progress === nothing
@@ -123,17 +146,19 @@ function (primitive!::Primitive)(
             ($(primitive!.path))",
     )
     from = Models.t(x)
-    seed = GeneRegulatorySystems.seed(Models.randomness(x))
+    seed = primitive!.seed
+    if seed !== nothing && done == 0.0
+        Random.seed!(Models.randomness(x), from > 0.0 ? "$seed+$from" : seed)
+    end
     x = Models.adapt!(x, f!)
-    record = primitive!.into !== nothing
 
     verbose && @logmsg Progress :advancing at = path
+    record = primitive!.into !== nothing
     traced = (;
         path,
         from,
         primitive!,
         primitive!.into,
-        seed,
         consolidated_progress,
     )
     if trace === nothing
@@ -141,14 +166,7 @@ function (primitive!::Primitive)(
     elseif primitive!.skip > 0.0
         x = f!(x, Δt; path, consolidated_progress, context...)
         trace(x; traced..., into = nothing)
-        if record
-            trace(
-                x;
-                traced...,
-                from = Models.t(x),
-                seed = GeneRegulatorySystems.seed(Models.randomness(x)),
-            )
-        end
+        record && trace(x; traced..., from = Models.t(x))
     else
         x = f!(x, Δt; path, consolidated_progress, context..., record)
         trace(x; traced...)
@@ -266,8 +284,10 @@ enclosing `Scope`):
 
 The nested `Model`s' `path`s will be suffixed by their iteration index,
 separated either by `"/"` if `f!.branch` was set or by `"-"` otherwise.
-Additionally, `f!.bindings[:channel]` will be suffixed by `"-"` and the
-iteration index.
+Additionally, `f!.bindings[:channel]` and `f!.bindings[:seed]` will be suffixed
+by `"-"` and the iteration index. This extension will be skipped for `:channel`
+if the `Sequence` contains pure replicates (i.e., it is an `Each` that does not
+bind its iteration variable.)
 
 ---
     (f!::Schedule{Scope})(x, Δt::Float64; context...)
@@ -278,8 +298,8 @@ Advance by constructing a nested `Model`, optionally evaluating and adding new
 
 The new `bindings` are determined by merging (the prior) `f!.bindings` and new
 entries obtained from `f!.specification.definitions`. If `f!.barrier` is set,
-this will only include `:seed`, `:into`, `:channel` and `:defaults` from
-`f!.bindings`. In either case, the definitions may contain references to
+this will only include `:rootseed`, `:seed`, `:into`, `:channel` and `:defaults`
+from `f!.bindings`. In either case, the definitions may contain references to
 `f!.bindings`, and new definitions will shadow prior bindings of the same name.
 (`f!.barrier` is currently only set when parsing a `Load`/`:<` literal from the
 JSON representation.)
@@ -291,17 +311,18 @@ unless `f!.branch` is set (because then the information is redundant since
 branching can only be specified in a `Scope` and the next path component is then
 guaranteed to start with `"/"`).
 
-If `f!.specification.definitions[:to]` is not set (i.e. directly in this
+If `f!.specification.definitions[:to]` is not set (i.e. defined directly in this
 `Scope`), the call is just forwarded to that new `Model`. Otherwise, the
 simulation time budget `Δt` is clipped to that value and the new `Model` is then
 invoked repeatedly, each time deducting the actually advanced simulation time
 from `Δt`, until it is exhausted. (The invocation will pass the full remaining
 `Δt` each time, but the nested `Model` is allowed to advance less than that, for
-example because it is a `Schedule` that has `:to` defined itself.)
+example because it is a `Schedule` that itself defines `:to`.)
 """
 @kwdef struct Schedule{S <: Specification} <: Model{Any}
     specification::S
     bindings::Dict{Symbol, Any} = Dict{Symbol, Any}(
+        :rootseed => "",
         :seed => "",
         :into => "",
         :channel => "",
@@ -323,11 +344,6 @@ function sink(bindings::Dict{Symbol, Any})
     into
 end
 
-descended(bindings::Dict{Symbol, Any}, segment) = merge(
-    bindings,
-    Dict(:channel => "$(bindings[:channel])-$segment"),
-)
-
 evaluate_bindings(f!::Schedule{Scope}) = merge(
     # from outer scope:
     if f!.specification.barrier
@@ -336,7 +352,7 @@ evaluate_bindings(f!::Schedule{Scope}) = merge(
         # available in the loaded specification.
         Dict{Symbol, Any}(
             keep => f!.bindings[keep]
-            for keep in (:seed, :into, :channel, :defaults)
+            for keep in (:rootseed, :seed, :into, :channel, :defaults)
             if haskey(f!.bindings, keep)
         )
     else
@@ -373,33 +389,44 @@ model(specification::Specification; bindings, branch, path) =
 
 function model(f!::Model; bindings, branch, path)
     branch && error("cannot branch here: not a Sequence")
-    Primitive(into = sink(bindings); f!, path, bindings)
+    Primitive(; f!, path, bindings)
 end
 
 function model(at::Real; bindings, branch, path)
     branch && error("cannot branch here: not a Sequence")
     f! = get(bindings, :do, Wait())
     path = "$(bindings[Symbol("^do")].path).do"
-    Primitive(skip = Float64(at), into = sink(bindings); f!, path, bindings)
+    Primitive(skip = Float64(at); f!, path, bindings)
 end
 
-item(x; i, inject = nothing, as = Symbol(), bindings, path) = model(
-    x,
-    bindings = as == Symbol() ? bindings : merge(
-        descended(bindings, i),
-        Dict(as => evaluate(inject, path = "$path$i"; bindings)),
-    ),
-    branch = false,
-    path = "$path$i",
+function item(
+    step;
+    i,
+    x = nothing,
+    as = Symbol(""),
+    isinline,
+    bindings,
+    path,
 )
+    redefinitions = Dict{Symbol, Any}(:seed => "$(bindings[:seed])-$i")
+    if isinline || as != Symbol("")
+        redefinitions[:channel] = "$(bindings[:channel])-$i"
+    end
+    if as != Symbol("")
+        redefinitions[as] = evaluate(x, path = "$path$i"; bindings)
+    end
+
+    bindings = merge(bindings, redefinitions)
+    model(step; bindings, branch = false, path = "$path$i")
+end
 
 models(list::List; bindings, path) = (
-    item(specification; i, bindings = descended(bindings, i), path)
+    item(specification; i, bindings, path, isinline = true)
     for (i, specification) in enumerate(list.items)
 )
 
 models(each::Each; bindings, path) = (
-    item(each.step; i, inject = x, each.as, bindings, path)
+    item(each.step; i, x, each.as, bindings, path, isinline = false)
     for (i, x) in enumerate(evaluate(each.items; bindings, path))
 )
 
@@ -477,7 +504,15 @@ function (f!::Schedule{Scope})(
         done = 0.0
         while 0.0 < Δt
             current = Models.t(x)
-            x = step!(x, Δt; trace, consolidated_progress, context..., path)
+            x = step!(
+                x,
+                Δt;
+                trace,
+                consolidated_progress,
+                context...,
+                path,
+                done,
+            )
             advance = Models.t(x) - current
             0.0 < advance || error("cannot progress")
             Δt -= advance
@@ -619,12 +654,9 @@ function reify(
     tail::AbstractString;
     context...,
 )
-    step! = item(
-        f!.specification.items[i];
-        i,
-        bindings = descended(f!.bindings, i),
-        path = "$(f!.path)$prefix",
-    )
+    path = "$(f!.path)$prefix"
+    step = f!.specification.items[i]
+    step! = item(step; i, isinline = true, f!.bindings, path)
     reify(step!, tail; context...)
 end
 
@@ -639,8 +671,9 @@ function reify(
     step! = item(
         each.step;
         i,
-        inject = evaluate(each.items; f!.bindings, f!.path)[i],
+        x = evaluate(each.items; f!.bindings, f!.path)[i],
         each.as,
+        isinline = false,
         f!.bindings,
         path = "$(f!.path)$prefix",
     )

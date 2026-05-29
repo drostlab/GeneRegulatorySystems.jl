@@ -21,12 +21,12 @@ dimension names in `FlatState` are flattened by joining on `"."`.
 @kwdef mutable struct FlatState
     t::Float64 = 0.0
     counts::Dict{Symbol, Int} = Dict{Symbol, Int}()
-    randomness::AbstractRNG = Random.Xoshiro()
+    randomness::AbstractRNG = Xoshiro()
 end
-FlatState(x::FlatState) = FlatState(
-    counts = deepcopy(x.counts);
+FlatState(x::FlatState) = FlatState(;
     x.t,
-    x.randomness
+    counts = deepcopy(x.counts),
+    randomness = copy(x.randomness),
 )
 
 
@@ -69,16 +69,16 @@ If `State` is a newly defined type (that is, specific to `M` and e.g. not
 methods:
 - [`each_event(callback::Function, x::State)`](@ref each_event) to extract the
   state (and, if contained, trajectory) in long format.
-- [`t(x::State)`](@ref t) to access the current simulation time.
+- [`t(x::State)`](@ref t) to access the current model time.
 - [`randomness(x::State)`](@ref randomness) to access the contained random
-  number generator.
+  number generator instance.
 - [`adapt!(x::FlatState, f!::M, copy::Val)`](@ref adapt!) to convert a
-  `FlatState` to a `State` and return it. The result must alias `x.randomness`.
-  If `copy` is `Val(true)`, the result must otherwise be an independent deep
-  copy of `x`.
+  `FlatState` to a `State` and return it. If `copy` is `Val(true)`, the result
+  must be an independent deep copy of `x`. Otherwise, the result may arbitrarily
+  alias (parts of) `x`, which should then no longer be used.
 - [`FlatState(x::State)`](@ref FlatState) to allow `adapt!` for subsequent
-  models to fall back on converting to `FlatState` and retrying if there is no
-  more specific `adapt!` method defined.
+  models to fall back on copy-converting to `FlatState` and retrying if there is
+  no more specific `adapt!` method defined.
 However, implementing `adapt!` methods for more specific state-model-pairs may
 allow for more efficient state conversion between model invocations, for example
 because a copy isn't required or parts of another state type can be reused.
@@ -179,8 +179,7 @@ used.
 function adapt! end
 adapt!(x, f!::Model; copy = false) = _adapt!(x, f!, Val(copy))
 adapt!(x, f!::Wrapped, copy) = _adapt!(x, f!.model, copy)
-adapt!(::FlatState, ::Model, _copy) = error("unimplemented")
-adapt!(x, f!::Model, ::Val{Copy}) where {Copy} =
+adapt!(x, f!::Model, _copy) =
     # No other module has registered a specializion for this pairing. The
     # fallback behavior is to copy-convert to a FlatState and then to try again:
     _adapt!(FlatState(x), f!, Val(false))
@@ -378,6 +377,7 @@ include("extraction.jl")
 """
     parse(
         definition;
+        seed = "seed",
         into = "",
         channel = "",
         defaults = load_defaults(),
@@ -417,13 +417,21 @@ GeneRegulatorySystems.Models.Plumbing.Adjust(+, Dict(:a => 10))
 """
 parse(
     definition;
+    seed = "seed",
     into = "",
     channel = "",
     defaults = load_defaults(),
     others...,
 ) = Model(
     JSON.parse(definition, dicttype = Dict{Symbol, Any}),
-    bindings = (; into, channel, defaults, others...) |> pairs |> Dict
+    bindings = Dict(pairs((;
+        rootseed = seed,
+        seed,
+        into,
+        channel,
+        defaults,
+        others...
+    )))
 )
 
 """

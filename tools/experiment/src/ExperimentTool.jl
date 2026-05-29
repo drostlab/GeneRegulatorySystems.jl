@@ -159,9 +159,14 @@ function prepare!(; location, specifications, seed)
         paths = realpath.(specifications)
         artifacts = map_artifacts(paths)
         wrapped = map(paths) do p
-            into = "-" * replace(artifacts[p], r"(\.schedule)?(\.json)$" => "")
+            name = replace(artifacts[p], r"(\.schedule)?(\.json)$" => "")
             filename = basename("$(location)$(artifacts[p])")
-            Dict(:< => filename, :into => into, :flush => true)
+            Dict(
+                :< => filename,
+                :seed => "\${rootseed}-$name",
+                :into => "-$name",
+                :flush => true,
+            )
         end
 
         mkpath(dirname(specification_path))
@@ -173,12 +178,13 @@ function prepare!(; location, specifications, seed)
                 file,
                 merge(
                     Dict(
-                        :seed => seed,
+                        :rootseed => seed,
                         :_version => repository_version(),
                         :_julia_version => "v$VERSION",
                     ),
                     if length(wrapped) == 1
-                        Dict(:step => Dict(:< => only(wrapped)[:<]))
+                        s = only(wrapped)
+                        Dict(:step => Dict(:< => s[:<], :seed => s[:seed]))
                     else
                         Dict(:step => wrapped, :branch => true)
                     end,
@@ -226,7 +232,6 @@ function flush!(sink::Sink; matching = nothing, finalize = false)
             label = Arrow.DictEncode(index.label),
             index.count,
             into = Arrow.DictEncode(index.into),
-            index.seed,
         )
     )
 end
@@ -261,7 +266,6 @@ function (sink::Sink)(
     from,
     primitive!,
     into = nothing,
-    seed,
     consolidated_progress = nothing,
     _...
 )
@@ -274,7 +278,7 @@ function (sink::Sink)(
     if into === nothing
         push!(
             sink.index,
-            (; sink.i, path, from, to, model, label, count = 0, into = "", seed)
+            (; sink.i, path, from, to, model, label, count = 0, into = "")
         )
         return
     end
@@ -301,7 +305,7 @@ function (sink::Sink)(
     filename = basename(artifact(:events, into, prefix = sink.location))
     push!(
         sink.index,
-        (; sink.i, path, from, to, model, label, count, into = filename, seed),
+        (; sink.i, path, from, to, model, label, count, into = filename),
     )
 end
 
@@ -345,6 +349,7 @@ function simulate!(; location, progress, dry)
         bindings = Dict(
             :into => "",
             :channel => "",
+            :seed => "",
             :defaults => Models.load_defaults(),
         ),
     )
@@ -355,7 +360,6 @@ function simulate!(; location, progress, dry)
 
     with_progress(progress) do
         state = Models.FlatState()
-        state = Models.Plumbing.Seed(specification[:seed])(state)
         sink = Sink(; location)
         schedule!(state; load, trace = sink, dryrun = dry ? dryrun : nothing)
         flush!(sink, finalize = true)

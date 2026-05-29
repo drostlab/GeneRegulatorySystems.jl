@@ -7,23 +7,6 @@ import SHA
 
 const SPECIFICATION_EXAMPLES = "$(@__DIR__)/../examples/specification"
 
-randomness(seed::AbstractVector{UInt64}) = Random.Xoshiro(seed...)
-randomness(seed::AbstractString = "") =
-    randomness(reinterpret(UInt64, SHA.sha256(seed)))
-
-seed(::Random.AbstractRNG) = nothing
-seed(r::Random.Xoshiro) = [r.s0, r.s1, r.s2, r.s3]
-
-"Temporarily override the task-global randomness state."
-function shadow_task_randomness!(callback, imposed::Random.Xoshiro)
-    hidden = Random.getstate(Random.default_rng())
-    Random.setstate!(Random.default_rng(), Random.getstate(imposed))
-    result = callback(Random.default_rng())
-    Random.setstate!(imposed, Random.getstate(Random.default_rng()))
-    Random.setstate!(Random.default_rng(), hidden)
-    result
-end
-
 σ(x) = inv(one(x) + exp(-x))
 logit(p) = log(p / (one(p) - p))
 
@@ -47,7 +30,7 @@ export Schedule
 
     # Load and dry-run all specification examples:
     for filename in readdir(SPECIFICATION_EXAMPLES)
-        schedule! = Models.load("$SPECIFICATION_EXAMPLES/$filename", seed = "")
+        schedule! = Models.load("$SPECIFICATION_EXAMPLES/$filename")
         schedule!(; dryrun)
     end
 
@@ -58,7 +41,7 @@ export Schedule
         (filename = "differentiation.schedule.json", path = "+.do"),
     ]
     for (; filename, path) in examples
-        schedule! = Models.load("$SPECIFICATION_EXAMPLES/$filename", seed = "")
+        schedule! = Models.load("$SPECIFICATION_EXAMPLES/$filename")
         Models.describe(Scheduling.reify(schedule!, path))
         schedule!(; trace)
     end

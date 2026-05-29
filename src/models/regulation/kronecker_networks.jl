@@ -9,7 +9,7 @@ parameters are sampled independently for each link.
 """
 module KroneckerNetworks
 
-using ...GeneRegulatorySystems: randomness, shadow_task_randomness!, σ, logit
+using ...GeneRegulatorySystems: σ, logit
 using ..Models: Models, V1
 using ..Sampling: Nonnegative, BaseRatesTemplate
 import ..Specifications
@@ -20,6 +20,15 @@ using SparseArrays
 using Distributions
 using Kronecker
 using Roots
+
+function shadow_task_randomness!(callback, imposed::Random.Xoshiro)
+    hidden = Random.getstate(Random.default_rng())
+    Random.setstate!(Random.default_rng(), Random.getstate(imposed))
+    result = callback(Random.default_rng())
+    Random.setstate!(imposed, Random.getstate(Random.default_rng()))
+    Random.setstate!(Random.default_rng(), hidden)
+    result
+end
 
 """
     NetworkTemplate
@@ -417,7 +426,7 @@ build(definition::Definition; method::Symbol = :default) = Models.Wrapped(
     model = V1.build(
         # Deterministically fill in the template to create a concrete
         # V1.Definition from it:
-        rand(randomness(definition.seed), definition.template);
+        rand(Xoshiro(definition.seed), definition.template);
         method,
     );
     definition,

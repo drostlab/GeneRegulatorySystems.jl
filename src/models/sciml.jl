@@ -6,7 +6,7 @@ import Catalyst
 import JumpProcesses
 using ModelingToolkit: ModelingToolkit, SymbolicIndexingInterface
 
-using Random
+import Random
 using Logging: LogLevel, @logmsg
 
 Progress = LogLevel(-2)
@@ -68,8 +68,8 @@ are all contained in the integrator, but many mutable properties are usually
 aliased from the problem, so we would typically consider both to be state.
 
 However, since `JumpProblem` construction is expensive, we instead instruct
-the `integrator` to perform a deepcopy the whole `JumpProblem` before using any
-of its resources. Except for the `JumpProblem`'s RNG, which we will re-seed
+the `integrator` to perform a deepcopy of the whole `JumpProblem` before using
+any of its resources. Except for the `JumpProblem`'s RNG, which we will re-seed
 before `integrator` initialization, we can thus consider the `JumpProblem`s
 immutable. This is still faster than rebuilding the whole `JumpProblem`.
 
@@ -80,12 +80,11 @@ corresponding `f!`.
 """
 @kwdef struct JumpState
     f!::Model{JumpState}
-    randomness::AbstractRNG  # the upstream RNG that will be synchronized to
     integrator::JumpProcesses.SSAIntegrator
 end
 
 Models.t(x::JumpState) = x.integrator.t
-Models.randomness(x::JumpState) = x.randomness
+Models.randomness(x::JumpState) = x.integrator.cb.affect!.rng
 
 function Models.empty_trajectory!(x::JumpState)
     empty!(x.integrator.sol.u)
@@ -98,7 +97,7 @@ FlatState(x::JumpState) = FlatState(
         normalize_name(s) => x.integrator[s]
         for s in SymbolicIndexingInterface.variable_symbols(x.integrator)
     ),
-    randomness = Models.randomness(x),
+    randomness = copy(Models.randomness(x)),
 )
 
 """
@@ -161,7 +160,7 @@ by `each_event` for output in sparse long format.
         # All of this will become unnecessary at some point, follow
         # https://github.com/SciML/JumpProcesses.jl/issues/554 to track
         # progress.
-        rng = GeneRegulatorySystems.randomness(),
+        rng = Random.Xoshiro(),
         u0_eltype = Int,
     )
 end
@@ -169,17 +168,25 @@ end
 Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")
 
 function JumpState(x::FlatState; f!::JumpModel)
+    problem = deepcopy(f!.problem)
+    # ^ Given that ModelingToolkit.init below with alias_jump = false would just
+    # deepcopy the whole JumpProblem anyway, we will do it ourselves here so we
+    # can rest easy in the knowledge that f!.problem is never mutated.
+
     Random.setstate!(
-        f!.problem.jump_callback.discrete_callbacks[1].condition.rng,
+        problem.jump_callback.discrete_callbacks[1].condition.rng,
         Random.getstate(Models.randomness(x)),
     )
-    # ^ The integrator will use a copied instance of f!.problem's RNG. The
-    # original x.randomness cannot be redefined at this point, so we will need
-    # to synchronize the integrator's RNG state back into x.randomness, both
-    # here and at the end of every simulation segment.
+    # ^ The integrator below will alias this RNG instance, which will then
+    # become the returned JumpState's authoritative randomness. We need to
+    # control it here already because integrator initialization below will
+    # consume entropy! (Part of it will even taint problem, but we will then
+    # make no further reference to it.) We know that the two RNGs have the same
+    # type because we ensured that at construction. The Models.randomness(x)
+    # instance will no longer be carried forward.
 
     integrator = ModelingToolkit.init(
-        f!.problem,
+        problem,
         JumpProcesses.SSAStepper(),
         save_start = false,
         callback = JumpProcesses.DiscreteCallback(
@@ -187,18 +194,16 @@ function JumpState(x::FlatState; f!::JumpModel)
             ReportProgress(),
             save_positions = (false, false),
         ),
-        alias_jump = false,
-        # ^ Ensure that f!.problem immutability is upheld so that we can still
-        # create reproducible integrators going forward.
+        alias_jump = true,
+        # ^ Might as well allow aliasing since we cloned the JumpProblem anyway.
     )
     integrator.t = Models.t(x)
     for s in SymbolicIndexingInterface.variable_symbols(integrator)
         integrator[s] = get(x.counts, normalize_name(s), 0)
     end
     JumpProcesses.reset_aggregated_jumps!(integrator)
-    Random.setstate!(x.randomness, Random.getstate(integrator.cb.affect!.rng))
 
-    JumpState(; f!, x.randomness, integrator)
+    JumpState(; f!, integrator)
 end
 
 Models.adapt!(x::FlatState, f!::JumpModel, ::Val{_Copy}) where {_Copy} =
@@ -264,8 +269,6 @@ function (f!::JumpModel)(
         ModelingToolkit.savevalues!(x.integrator, true)
     end
     verbose && @logmsg Progress :done at = "JumpModel"
-
-    Random.setstate!(x.randomness, Random.getstate(x.integrator.cb.affect!.rng))
 
     x
 end

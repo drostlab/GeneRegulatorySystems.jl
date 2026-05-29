@@ -57,32 +57,6 @@ function (::Wait)(x::FlatState, Δt::Float64; _...)
     x
 end
 
-"""
-    Seed <: Instant{FlatState}
-
-Instantly reseed the current `randomness`.
-
-# Specification
-
-Specified in JSON as `{"{seed}": <seed>}` where `<seed>` is any JSON string.
-
-# Invocation
-
-    (f!::Seed)(x::FlatState, _Δt::Float64 = Inf; _...)
-
-Reseed `x.randomness` but otherwise leave `x` unchanged.
-"""
-struct Seed <: Instant{FlatState}
-    seed::String
-end
-
-Specifications.constructor(::Val{:seed}) = Seed
-
-function (f!::Seed)(x::FlatState, _Δt::Float64 = Inf; _...)
-    x.randomness = GeneRegulatorySystems.randomness(f!.seed)
-    x
-end
-
 @doc raw"""
     Filter <: Instant{FlatState}
 
