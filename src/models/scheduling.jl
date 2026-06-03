@@ -244,7 +244,7 @@ Specifically, depending on the expanded value,
 
 Look up a `Model` in `f!.bindings[:do]` and forward the call to it.
 
-Read this as "step in infinitesimal slices until the simulatation budget `Δt` is
+Read this as "step in infinitesimal slices until the simulation budget `Δt` is
 exhausted". If `:do` is not bound, fall back to
 [`Wait`](@ref Models.Plumbing.Wait)).
 
@@ -267,15 +267,12 @@ invoke them in sequence.
 The exact behavior depends on whether `f!.branch` was set (by the directly
 enclosing `Scope`):
 - If so, simulation will not advance the state `x`, but will advance copies
-  instead, one for each item in the sequence. The copies will share the same
-  `randomness` instance, so because they draw from that randomness in order,
-  their trajectories will start to differ at the branch (copy) time point. All
-  advanced copies will be returned together with the original `x` as a
-  `Branched` state so that they can optionally be merged (see
-  [`Merge`](@ref Models.Scheduling.Merge)), but typically the branched
-  components will instead be dropped downstream. (Note that by this point, their
-  trajectories likely already have been `trace`d in the respective `Primitive`
-  invocations.)
+  instead, one for each item in the sequence. All advanced copies will be
+  returned together with the original `x` as a `Branched` state so that they
+  can optionally be merged (see [`Merge`](@ref Models.Scheduling.Merge)), but
+  typically the branched components will instead be dropped downstream. (Note
+  that by this point, their trajectories likely already have been `trace`d in
+  the respective `Primitive` invocations.)
 - Otherwise, the items are invoked in turn on the same state `x`. After each
   step, the remaining simulation budget `Δt` will be decreased by the advanced
   time interval. This means that steps may be invoked with `Δt == 0.0`, which
