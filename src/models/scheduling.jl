@@ -495,7 +495,7 @@ function (f!::Schedule{Scope})(
 
     if haskey(bindings, :to) && bindings[Symbol("^to")].path == f!.path
         Δt = min(Δt, bindings[:to])
-        verbose && @logmsg Progress :preparing at = f!.path todo = Δt
+        verbose && @logmsg Progress :repeating at = f!.path todo = Δt
         if verbose && consolidate_progress(step!)
             consolidated_progress =
                 let t0 = Models.t(x)
