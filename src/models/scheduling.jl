@@ -498,8 +498,10 @@ function (f!::Schedule{Scope})(
         verbose && @logmsg Progress :preparing at = f!.path todo = Δt
         if verbose && consolidate_progress(step!)
             consolidated_progress =
-                (message; todo = nothing, done = 0) ->
-                    @logmsg Progress message at = f!.path todo done
+                let t0 = Models.t(x)
+                    (message; done) ->
+                        @logmsg Progress message at = f!.path done = (done - t0)
+                end
         end
         done = 0.0
         while 0.0 < Δt
