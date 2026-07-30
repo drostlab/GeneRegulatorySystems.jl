@@ -1,7 +1,7 @@
 {
     "label": "size_15_32768g",
     "realizations": {"count": 1, "size": 15},
-    "replicates": {"count": 5, "to": 72000.0, "step": 3600.0},
+    "replicates": {"count": 3, "to": 172800.0, "step": 3600.0},
     "step": {
         "each": {"length": {"$": ["realizations", "count"]}},
         "as": "i",
