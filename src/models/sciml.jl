@@ -100,6 +100,30 @@ FlatState(x::JumpState) = FlatState(
     randomness = copy(Models.randomness(x)),
 )
 
+JumpProblem(; system, method, parameters, more...) =
+    ModelingToolkit.JumpProblem(
+        system,
+        vcat(
+            parameters,
+            [s => 0 for s in ModelingToolkit.unknowns(system)],
+            # ^ We will initialize these directly on the integrator.
+        ),
+        (0.0, Inf),
+        aggregator = method,
+        # Weirdly, constructing a `JumpProblem` consumes entropy. But everything
+        # derived from it is supposed to be evanescent, so here we assign it a
+        # new (deterministically seeded) RNG and will take care to reseed it
+        # before initializing any integrator. This allows us to treat the
+        # `JumpProblem` as effectively immutable. The RNG still needs to be an
+        # independent instance (instead of its default TaskLocalRNG) so that the
+        # deepcopy at integrator initialization will likewise produce
+        # independent instances, and further to prevent any pollution of the
+        # task-global entropy pool.
+        rng = Random.Xoshiro(),
+        u0_eltype = Int;
+        more...,
+    )
+
 """
     JumpModel <: Model{JumpState}
 
@@ -140,29 +164,8 @@ by `each_event` for output in sparse long format.
     system::ModelingToolkit.System
     method::JumpProcesses.AbstractAggregatorAlgorithm
     parameters
-    problem::JumpProcesses.JumpProblem = ModelingToolkit.JumpProblem(
-        system,
-        vcat(
-            parameters,
-            [s => 0 for s in ModelingToolkit.unknowns(system)],
-            # ^ We will initialize these directly on the integrator.
-        ),
-        (0.0, Inf),
-        aggregator = method,
-        # Weirdly, constructing a `JumpProblem` consumes entropy. But everything
-        # derived from it is supposed to be evanescent, so here we assign it a
-        # new (deterministically seeded) RNG will take care to reseed it before
-        # initializing any integrator. This allows us to treat the `JumpProblem`
-        # as effectively immutable. The RNG still needs to be an independent
-        # instance (instead of its default TaskLocalRNG) so that the deepcopy at
-        # integrator initialization will likewise produce independent instances,
-        # and further to prevent any pollution of the task-global entropy pool.
-        # All of this will become unnecessary at some point, follow
-        # https://github.com/SciML/JumpProcesses.jl/issues/554 to track
-        # progress.
-        rng = Random.Xoshiro(),
-        u0_eltype = Int,
-    )
+    problem::JumpProcesses.JumpProblem =
+        JumpProblem(; system, method, parameters)
 end
 
 Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")

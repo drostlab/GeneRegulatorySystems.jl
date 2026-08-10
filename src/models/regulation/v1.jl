@@ -759,20 +759,40 @@ function build(definition::Definition; method::Symbol = :default)
     )
     reaction_system = complete(reaction_system)
 
+    system = complete(jump_model(reaction_system))
+    method = pick_method(reaction_system; method)()
+    parameters = [
+        getproperty(genes[g.name], kind) => getfield(g.base_rates, kind)
+        for g in definition.genes
+        for kind in fieldnames(typeof(g.base_rates))
+        if kind ∉ (:activation, :deactivation)
+    ]
+
+    # JumpProcesses has an undocumented assumption that all rate functions are
+    # monotonic in all of their arguments in the same direction. The promoter
+    # states' tempering functions are monotonically decreasing in their
+    # arguments, but the results then get multiplied with the species count in
+    # at least one of each species' reaction.
+    # As a hacky fix, we just zero out the RSSA brackets of all promoter states
+    # for now.
+    bracketed = map(unknowns(system)) do u
+        !endswith("active", string(ModelingToolkit.getname(u)))
+    end
+    prototype = BracketData{Float64, Int}()
+    bracket_data = BracketData{AbstractVector{Float64}, AbstractVector{Int}}(
+        bracketed .* prototype.fluctrate,
+        ifelse.(bracketed, prototype.threshold, typemax(Int)),
+        bracketed .* prototype.Δu,
+    )
+
+    model = (; system, method, parameters)
     Models.Wrapped(;
         definition,
         model = Models.Wrapped(
             definition = reaction_system,
-            model = SciML.JumpModel(
-                system = complete(jump_model(reaction_system)),
-                method = pick_method(reaction_system; method)(),
-                parameters = [
-                    getproperty(genes[g.name], kind) =>
-                        getfield(g.base_rates, kind)
-                    for g in definition.genes
-                    for kind in fieldnames(typeof(g.base_rates))
-                    if kind ∉ (:activation, :deactivation)
-                ],
+            model = SciML.JumpModel(;
+                model...,
+                problem = SciML.JumpProblem(; model..., bracket_data),
             ),
         ),
     )
