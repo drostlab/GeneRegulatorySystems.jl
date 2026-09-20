@@ -1,6 +1,6 @@
 {   "gene": {"base_rates": {
         "$": ["defaults", "gene", "base_rates"],
-        "activation": 1.0, "deactivation": 1000.0, "trigger": 6.6e-6
+        "activation": 1.0, "deactivation": 1000.0, "initiation": 6.6e-6
     }},
     "step": {
         "do": {"{regulation/v1}": {"genes": [

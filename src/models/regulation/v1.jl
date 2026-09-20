@@ -41,7 +41,7 @@ They are specified in JSON as a JSON object
 {
     "activation": <...>,
     "deactivation": <...>,
-    "trigger": <...>,
+    "initiation": <...>,
     "transcription": <...>,
     "translation": <...>,
     "abortion": <...>,
@@ -55,7 +55,7 @@ constants.
 @kwdef struct ProkaryoteBaseRates
     activation::Float64
     deactivation::Float64
-    trigger::Float64
+    initiation::Float64
     transcription::Float64
     translation::Float64
     abortion::Float64
@@ -75,7 +75,7 @@ They are specified in JSON as a JSON object
 {
     "activation": <...>,
     "deactivation": <...>,
-    "trigger": <...>,
+    "initiation": <...>,
     "transcription": <...>,
     "processing": <...>,
     "translation": <...>,
@@ -91,7 +91,7 @@ constants.
 @kwdef struct EukaryoteBaseRates
     activation::Float64
     deactivation::Float64
-    trigger::Float64
+    initiation::Float64
     transcription::Float64
     processing::Float64
     translation::Float64
@@ -236,7 +236,7 @@ instantiate a corresponding reaction cascade for this `Gene`. The cascade will
 include the following reactions:
 ```
 @reaction_network begin
-    trigger, active + \$polymerases --> active + elongations
+    initiation, active + \$polymerases --> active + elongations
     transcription, elongations --> premrnas + \$polymerases
     processing, premrnas --> mrnas
     translation, mrnas + \$ribosomes --> mrnas + proteins + \$ribosomes
@@ -514,7 +514,7 @@ function cascade(
 )
     name = definition.name
     @network_component $name begin
-        trigger, active + $polymerases --> active + elongations
+        initiation, active + $polymerases --> active + elongations
         transcription, elongations --> mrnas + $polymerases
         translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
         abortion, elongations --> $polymerases
@@ -531,7 +531,7 @@ function cascade(
 )
     name = definition.name
     @network_component $name begin
-        trigger, active + $polymerases --> active + elongations
+        initiation, active + $polymerases --> active + elongations
         transcription, elongations --> premrnas + $polymerases
         processing, premrnas --> mrnas
         translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
