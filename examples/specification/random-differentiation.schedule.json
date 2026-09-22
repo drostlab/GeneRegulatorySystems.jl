@@ -18,6 +18,7 @@
             {"to": 100000.0, "step": 100.0}
         ],
         "do": {"{regulation/random-differentiation}": {
+            "profile_reactions": true,
             "seed": "differentiation-${rootseed}",
             "differentiation": {
                 "ratios": ["Dirichlet", 6, 5.0],

@@ -1,0 +1,23 @@
+[
+    {"{add}": {"$": ["defaults", "bootstrap"]}},
+    {"to": 5000.0, "step": {"{regulation/v1}": {
+        "profile_reactions": true,
+        "genes": [
+            {   "$": ["defaults", "gene"],
+                "proteolysis": [{"from": 2, "k": 0.00001}]
+            },
+            {   "$": ["defaults", "gene"],
+                "repression": [{"from": 1, "at": 5.0}]
+            }
+        ],
+        "reactions": [
+            {
+                "name": "named_reaction",
+                "from": [2],
+                "rates": [0.00001, 0.00002],
+                "to": [3]
+            },
+            {"from": [1, 2], "rate": 0.00001, "to": [2]}
+        ]
+    }}}
+]

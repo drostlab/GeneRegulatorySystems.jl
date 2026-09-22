@@ -328,8 +328,9 @@ In JSON, a V1 `Definition` is specified as a JSON object
     "reactions": [<Models.Reaction>...],
     "polymerases": <polymerases>,
     "ribosomes": <ribosomes>,
-    "proteasomes": <proteasomes>
-}}
+    "proteasomes": <proteasomes>,
+    "profile_reactions": <profile_reactions>
+}
 ```
 where `[<gene>...]` is a JSON array of [`Gene`](@ref) specifications,
 `[<reaction>...]` is a JSON array of [`Models.Reaction`](@ref)s, and
@@ -341,8 +342,14 @@ these mappings are optional, with the following defaults:
 - `<polymerases>`: `"polymerases"`
 - `<ribosomes>`: `"ribosomes"`
 - `<proteasomes>`: `"proteasomes"`
+- `<profile_reactions>`: `false`
 However, at least one gene or at least one reaction must be specified so that
 the system is not empty.
+
+If `<profile_reactions>` is set, all of the system's reaction specifications
+will be amended to produce additional "probe" species that can then be used to
+observe how often each reaction has occured. Their names are predefined for the
+default cascade but can be overridden for overlay reactions.
 """
 @kwdef struct Definition
     polymerases::Symbol = :polymerases
@@ -350,7 +357,14 @@ the system is not empty.
     proteasomes::Symbol = :proteasomes
     genes::Vector{Gene} = Gene[]
     reactions::Vector{Models.Reaction} = Models.Reaction[]
+
+    profile_reactions::Bool = false
 end
+
+Definition(d::Definition; overrides...) = Definition(;
+    (k => getfield(d, k) for k in fieldnames(Definition))...,
+    overrides...
+)
 
 cast(::Type{Vector{Gene}}, xs::AbstractVector; context) = [
     cast(
@@ -470,6 +484,7 @@ representation(x::Definition) = Dict{Symbol, Any}(
             :proteasomes => "proteasomes",
             :genes => [],
             :reactions => [],
+            :profile_reactions => false,
         ],
     )
 )
@@ -506,47 +521,38 @@ Models.describe(definition::Definition) = Models.Descriptions([
     Models.ReactionNetwork(definition.reactions)
 ])
 
-function cascade(
-    definition::Gene{ProkaryoteBaseRates};
-    polymerases,
-    ribosomes,
-    proteasomes,
-)
-    name = definition.name
+cascade(name::Symbol, polymerases, ribosomes, proteasomes) =
     @network_component $name begin
-        initiation, active + $polymerases --> active + elongations
-        transcription, elongations --> mrnas + $polymerases
-        translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
-        abortion, elongations --> $polymerases
-        mrna_decay, mrnas --> 0
-        protein_decay, proteins + $proteasomes --> $proteasomes
+        @parameters activation deactivation
+        initiation, active + $polymerases --> active + elongations,
+            [probe = :initiated]
+        abortion, elongations --> $polymerases, [probe = :aborted]
+        translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes,
+            [probe = :translated]
+        mrna_decay, mrnas --> 0, [probe = :mrnas_decayed]
+        protein_decay, proteins + $proteasomes --> $proteasomes,
+            [probe = :proteins_decayed]
     end
-end
 
-function cascade(
-    definition::Gene{EukaryoteBaseRates};
-    polymerases,
-    ribosomes,
-    proteasomes
-)
-    name = definition.name
-    @network_component $name begin
-        initiation, active + $polymerases --> active + elongations
-        transcription, elongations --> premrnas + $polymerases
-        processing, premrnas --> mrnas
-        translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes
-        abortion, elongations --> $polymerases
-        premrna_decay, premrnas --> 0
-        mrna_decay, mrnas --> 0
-        protein_decay, proteins + $proteasomes --> $proteasomes
-    end
-end
+cascade(g::Gene{ProkaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
+    cascade(g.name, polymerases, ribosomes, proteasomes) &
+        @network_component begin
+            transcription, elongations --> mrnas + $polymerases,
+                [probe = :transcribed]
+        end
 
-function gene(definition::Gene; polymerases, ribosomes, proteasomes, t)
-    result = cascade(definition; polymerases, ribosomes, proteasomes)
-    if !definition.unique
-        result = extend(result, @network_component (@species inactive(t);))
-    end
+cascade(g::Gene{EukaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
+    cascade(g.name, polymerases, ribosomes, proteasomes) &
+        @network_component begin
+            transcription, elongations --> premrnas + $polymerases,
+                [probe = :transcribed]
+            premrna_decay, premrnas --> 0, [probe = :premrnas_decayed]
+            processing, premrnas --> mrnas, [probe = :processed]
+        end
+
+function gene(g::Gene; polymerases, ribosomes, proteasomes, t)
+    result = cascade(g; polymerases, ribosomes, proteasomes)
+    g.unique || (result &= @network_component (@species inactive(t);))
     result
 end
 
@@ -575,19 +581,15 @@ function regulation(
     definition::Definition,
     t::Num,
 )
-    inactive(target::Gene) =
-        if target.unique
-            1 - genes[target.name].active
-        else
-            genes[target.name].inactive
-        end
+    @species active(t) inactive(t) proteins(t)
+    @parameters activation deactivation
 
     activation_rate(target::Gene) = (
-        inactive(target)
-        * target.base_rates.activation
+        (target.unique ? 1 - active : inactive)
+        * activation
         * target.repression(
             (  # ^ arguments and value go towards 0 as repression increases
-                hill2(species_reference(from; t, genes), 1.0, at, k)
+                hill2(ParentScope(species_reference(from; t, genes)), 1, at, k)
                 for (; from, k, at) in target.repression.slots
             );
             T = Num
@@ -595,11 +597,11 @@ function regulation(
     )
 
     deactivation_rate(target::Gene) = (
-        genes[target.name].active
-        * target.base_rates.deactivation
+        active
+        * deactivation
         * target.activation(
             (  # ^ arguments and value go towards 0 as activation increases
-                hill2(species_reference(from; t, genes), 1.0, at, k)
+                hill2(ParentScope(species_reference(from; t, genes)), 1, at, k)
                 for (; from, k, at) in target.activation.slots
             );
             T = Num
@@ -607,38 +609,44 @@ function regulation(
     )
 
     # Regulation for the whole network:
-    [
+    Dict([
         # For each gene...
-        mapreduce(vcat, definition.genes, init = Reaction[]) do target::Gene
-            [
+        map(definition.genes) do target::Gene
+            target.name => [
                 # ...activation (by tempering promoter deactivation)
                 Reaction(
                     deactivation_rate(target),
-                    [genes[target.name].active],
-                    target.unique ? nothing : [genes[target.name].inactive],
-                    only_use_rate = true
+                    [active],
+                    target.unique ? nothing : [inactive],
+                    only_use_rate = true,
+                    metadata = [:probe => :deactivated],
                 )
 
                 # ...repression (by tempering promoter activation)
                 Reaction(
                     activation_rate(target),
-                    target.unique ? nothing : [genes[target.name].inactive],
-                    [genes[target.name].active],
-                    only_use_rate = true
+                    target.unique ? nothing : [inactive],
+                    [active],
+                    only_use_rate = true,
+                    metadata = [:probe => :activated],
                 )
 
                 # ...repression (by proteolysis)
                 map(target.proteolysis.slots) do (; from, k)
-                    proteases = species_reference(from; t, genes)
-                    proteins = genes[target.name].proteins
-
+                    proteases = ParentScope(species_reference(from; t, genes))
+                    metadata = [:probe => Symbol("proteolyzed_by_$(from)")]
                     if from == target.name
                         # This is a loop in the proteolysis repression network
                         # and means that the protein decays without another
                         # protease.
-                        Reaction(k, [proteins], [proteins], [2], [1])
+                        Reaction(k, [proteins], [proteins], [2], [1]; metadata)
                     else
-                        Reaction(k, [proteases, proteins], [proteases])
+                        Reaction(
+                            k,
+                            [proteases, proteins],
+                            [proteases];
+                            metadata,
+                        )
                     end
                 end
             ]
@@ -647,31 +655,64 @@ function regulation(
         # Additionally, we add arbitrary mass-action reactions as specified.
         # Bidirectional pairs are broken up, and reactions are only included if
         # their rate is nonzero.
-        [
-            Reaction(
-                k₊,
-                species_reference.(keys(from.counts); t, genes),
-                species_reference.(keys(to.counts); t, genes),
-                collect(values(from.counts)),
-                collect(values(to.counts)),
+        nothing => mapreduce(vcat, definition.reactions, init = Reaction[]) do r
+            (; from, k₊, k₋, to, probe) = r
+            result = Reaction[]
+            probe_forward = k₋ == 0.0 ? probe : Symbol("$(probe)_forward")
+            probe_reverse = k₊ == 0.0 ? probe : Symbol("$(probe)_reverse")
+            k₊ > 0.0 && push!(
+                result,
+                Reaction(
+                    k₊,
+                    species_reference.(keys(from.counts); t, genes),
+                    species_reference.(keys(to.counts); t, genes),
+                    collect(values(from.counts)),
+                    collect(values(to.counts)),
+                    metadata = [:probe => probe_forward],
+                ),
             )
-            for (; from, k₊, to) in definition.reactions
-            if k₊ > 0.0
-        ]
-
-        [
-            Reaction(
-                k₋,
-                species_reference.(keys(to.counts); t, genes),
-                species_reference.(keys(from.counts); t, genes),
-                collect(values(to.counts)),
-                collect(values(from.counts)),
+            k₋ > 0.0 && push!(
+                result,
+                Reaction(
+                    k₋,
+                    species_reference.(keys(to.counts); t, genes),
+                    species_reference.(keys(from.counts); t, genes),
+                    collect(values(to.counts)),
+                    collect(values(from.counts)),
+                    metadata = [:probe => probe_reverse],
+                )
             )
-            for (; from, k₋, to) in definition.reactions
-            if k₋ > 0.0
-        ]
-    ]
+            result
+        end
+    ])
 end
+
+instrument(rs::AbstractVector{Reaction}; t) = map(rs) do r
+    (; probe) = (; r.metadata...)
+    Reaction(
+        r.rate,
+        r.substrates,
+        append!(copy(r.products), @species $probe(t)),
+        r.substoich,
+        vcat(r.prodstoich, [1]);
+        netstoich = nothing,
+        r.metadata,
+        r.only_use_rate,
+    )
+end
+
+instrument(rs::ReactionSystem) = ReactionSystem(
+    instrument(Catalyst.get_rxs(rs); rs.t),
+    rs.t,
+    systems = map(ModelingToolkitBase.get_systems(rs)) do rs′
+        ReactionSystem(
+            instrument(Catalyst.get_rxs(rs′); rs′.t),
+            rs′.t,
+            name = nameof(rs′),
+        )
+    end,
+    name = Symbol("$(nameof(rs))_instrumented")
+)
 
 const JUMP_PROCESSES_METHODS = Dict(
     :Direct => Direct,
@@ -752,20 +793,25 @@ function build(definition::Definition; method::Symbol = :default)
         )
         for g in definition.genes
     )
-    @named reaction_system = ReactionSystem(
-        regulation(genes; definition, t),
+    reactions = regulation(genes; definition, t)
+    reaction_system = ReactionSystem(
+        reactions[nothing],
         t,
-        systems = collect(values(genes)),
+        systems = map(collect(genes)) do (name, component)
+            component & ReactionSystem(reactions[name], name = :_)
+        end,
+        name = :regulation
     )
-    reaction_system = complete(reaction_system)
+    if definition.profile_reactions
+        reaction_system = instrument(reaction_system)
+    end
 
-    system = complete(jump_model(reaction_system))
+    system = complete(jump_model(complete(reaction_system)))
     method = pick_method(reaction_system; method)()
     parameters = [
         getproperty(genes[g.name], kind) => getfield(g.base_rates, kind)
         for g in definition.genes
         for kind in fieldnames(typeof(g.base_rates))
-        if kind ∉ (:activation, :deactivation)
     ]
 
     # JumpProcesses has an undocumented assumption that all rate functions are

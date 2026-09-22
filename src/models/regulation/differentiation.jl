@@ -291,6 +291,7 @@ function make_timer!(
     # If specified, add a dimerization buffer reaction for the timer gene's
     # proteins.
     if !isempty(buffer_rates)
+        name = Symbol("$(timer.name)_buffering")
         if length(buffer_rates) == 1
             k₊ = k₋ = only(buffer_rates)
         elseif length(buffer_rates) == 2
@@ -300,7 +301,7 @@ function make_timer!(
         end
         from = Models.Reagents(Dict(timer.name => 2))
         to = Models.Reagents(Dict(Symbol("$(timer.name)_buffer") => 1))
-        push!(reactions, Models.Reaction(; from, to, k₊, k₋))
+        push!(reactions, Models.Reaction(; name, from, to, k₊, k₋))
     end
 
     genes[timer.name] = timer
@@ -522,6 +523,7 @@ function build(definition::Definition; method::Symbol)
             definition.peripheral.ribosomes,
             definition.peripheral.proteasomes,
             reactions,
+            definition.peripheral.profile_reactions,
         );
         method,
     )

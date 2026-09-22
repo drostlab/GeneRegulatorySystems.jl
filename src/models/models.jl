@@ -264,6 +264,7 @@ part of a model.
 In JSON, a `Reaction` is specified as a JSON object
 ```
 {
+    "name": <name>,
     "from": <from>,
     "to": <to>,
     "rates": [<forward>, <reverse>]
@@ -272,7 +273,9 @@ In JSON, a `Reaction` is specified as a JSON object
 where `<from>` and `<to>` each specify [`Reagents`](@ref) defining the (integer)
 stoichiometries respectively for the reactants and products (of the forward
 reaction), and `<forward>` and `<reverse>` must be JSON numbers defining the
-corresponding rate constants.
+corresponding rate constants. The `<name>` is optional when the reaction is
+specified as part of an `Array`, and when unspecified it will then just be
+chosen automatically by its index.
 
 For example,
 ```
@@ -288,11 +291,19 @@ As a convenience, `"rates": [<forward>, <reverse>]` may alternatively by written
 as `"rate": <forward>`, setting `<reverse>` to zero.
 """
 @kwdef struct Reaction
+    name::Symbol
     from::Reagents = Reagents()
     to::Reagents = Reagents()
     k₊::Float64 = 0.0
     k₋::Float64 = 0.0
+    probe::Symbol = name
 end
+
+Specifications.cast(::Type{Vector{Reaction}}, xs::AbstractVector; context) =
+    map(enumerate(xs)) do (i, x)
+        name = "reaction_$(lpad(i, ndigits(length(xs)), '0'))"
+        Specifications.cast(Reaction, merge(Dict(:name => name), x); context)
+    end
 
 Specifications.cast(::Type{Reaction}, x::AbstractDict{Symbol}; context) =
     @invoke Specifications.cast(
