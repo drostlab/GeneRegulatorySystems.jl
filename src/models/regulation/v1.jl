@@ -729,6 +729,55 @@ pick_method(system; method) = get(JUMP_PROCESSES_METHODS, method) do
     end
 end
 
+function assemble_reaction_system(definition::Definition)
+    allequal(typeof.(definition.genes)) ||
+        error("mixing eukaryotic and prokaryotic genes is forbidden")
+
+    t = default_t()
+    polymerases = species_variable(definition.polymerases; t)
+    ribosomes = species_variable(definition.ribosomes; t)
+    proteasomes = species_variable(definition.proteasomes; t)
+
+    genes = Dict{Symbol, ReactionSystem}(
+        g.name => gene(
+            g,
+            polymerases = ParentScope(polymerases),
+            ribosomes = ParentScope(ribosomes),
+            proteasomes = ParentScope(proteasomes);
+            t,
+        )
+        for g in definition.genes
+    )
+    reactions = regulation(genes; definition, t)
+    reaction_system = ReactionSystem(
+        reactions[nothing],
+        t,
+        systems = map(collect(genes)) do (name, component)
+            component & ReactionSystem(reactions[name], name = :_)
+        end,
+        name = :regulation
+    )
+    if definition.profile_reactions
+        reaction_system = instrument(reaction_system)
+    end
+
+    reaction_system
+end
+
+function assemble_parameters(
+    reaction_system::ReactionSystem;
+    definition::Definition,
+)
+    rates_by_gene = Dict(g.name => g.base_rates for g in definition.genes)
+    mapreduce(vcat, ModelingToolkitBase.get_systems(reaction_system)) do gene
+        rates = rates_by_gene[nameof(gene)]
+        [
+            getproperty(gene, kind) => getfield(rates, kind)
+            for kind in fieldnames(typeof(rates))
+        ]
+    end
+end
+
 """
     build(specification::AbstractDict{Symbol})
     build(definition::Definition; method::Symbol = :default)
@@ -775,44 +824,10 @@ build(specification::AbstractDict{Symbol}) = build(
 )
 
 function build(definition::Definition; method::Symbol = :default)
-    allequal(typeof.(definition.genes)) ||
-        error("mixing eukaryotic and prokaryotic genes is forbidden")
-
-    t = default_t()
-    polymerases = species_variable(definition.polymerases; t)
-    ribosomes = species_variable(definition.ribosomes; t)
-    proteasomes = species_variable(definition.proteasomes; t)
-
-    genes = Dict{Symbol, ReactionSystem}(
-        g.name => gene(
-            g,
-            polymerases = ParentScope(polymerases),
-            ribosomes = ParentScope(ribosomes),
-            proteasomes = ParentScope(proteasomes);
-            t,
-        )
-        for g in definition.genes
-    )
-    reactions = regulation(genes; definition, t)
-    reaction_system = ReactionSystem(
-        reactions[nothing],
-        t,
-        systems = map(collect(genes)) do (name, component)
-            component & ReactionSystem(reactions[name], name = :_)
-        end,
-        name = :regulation
-    )
-    if definition.profile_reactions
-        reaction_system = instrument(reaction_system)
-    end
-
+    reaction_system = assemble_reaction_system(definition)
+    parameters = assemble_parameters(reaction_system; definition)
     system = complete(jump_model(complete(reaction_system)))
     method = pick_method(reaction_system; method)()
-    parameters = [
-        getproperty(genes[g.name], kind) => getfield(g.base_rates, kind)
-        for g in definition.genes
-        for kind in fieldnames(typeof(g.base_rates))
-    ]
 
     # JumpProcesses has an undocumented assumption that all rate functions are
     # monotonic in all of their arguments in the same direction. The promoter
