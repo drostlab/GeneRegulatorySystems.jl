@@ -12,7 +12,14 @@
                     {"$": ["defaults", "gene"]},
                     {
                         "$": ["defaults", "gene"],
-                        "repression": [{"from": 1, "at": 5.0}]
+                        "repression": [{"from": 1, "at": 5.0}],
+                        "reactions": [
+                            {
+                                "from": {"proteins": 2},
+                                "rates": [0.00001, 0.00002],
+                                "to": ["dimer"]
+                            }
+                        ]
                     }
                 ],
                 "reactions": [

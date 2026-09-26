@@ -219,7 +219,8 @@ In JSON, a V1 `Gene` is specified as a JSON object
     "unique": <unique>,
     "activation": <activation>,
     "repression": <repression>,
-    "proteolysis": <proteolysis>
+    "proteolysis": <proteolysis>,
+    "reactions": [<Models.Reaction>...]
 }
 ```
 where only `<base_rates>` is required and the other mappings are optional.
@@ -286,6 +287,11 @@ and `<repression>`.
 
 If present, `<proteolysis>` must specify inbound regulation by
 [`Proteolysis`](@ref).
+
+The reactions [<Models.Reaction>...] are defined like in the main definition,
+but are scoped to this `Gene`: all referenced species are fully enclosed by it.
+This can e.g. be used to define custom splicing cascades or dimerization
+buffers.
 """
 @kwdef struct Gene{BaseRates}
     name::Symbol
@@ -294,6 +300,7 @@ If present, `<proteolysis>` must specify inbound regulation by
     activation::Activation = Activation()
     repression::Repression = Repression()
     proteolysis::Proteolysis = Proteolysis()
+    reactions::Vector{Models.Reaction} = Models.Reaction[]
 end
 
 Gene(gene::Gene{BaseRates}; name) where {BaseRates} =
@@ -564,8 +571,15 @@ function species_variable(name::Symbol; t)
     only(@species $name(t))
 end
 
-species_reference(name::Symbol; t, genes) =
-    haskey(genes, name) ? genes[name].proteins : species_variable(name; t)
+function species_reference(name::Symbol; t, genes)
+    if genes === nothing
+        species_variable(name; t)
+    elseif haskey(genes, name)
+        genes[name].proteins
+    else
+        species_variable(name; t)
+    end
+end
 
 # Catalyst.hill returns NaN if either both X and K are 0, or if X is 0 and
 # n < 0. Since X may become (and often initially is) 0, this restricts what both
@@ -575,6 +589,44 @@ species_reference(name::Symbol; t, genes) =
 # would not work correctly if K were symbolic (because then
 # iszero(K) === false), but in our case it isn't.
 hill2(X, v, K, n) = v / (1.0 + ifelse(iszero(K), 0.0, K / X) ^ n)
+
+function assemble_reactions(
+    reactions::AbstractVector{Models.Reaction};
+    t,
+    genes = nothing,
+)
+    # Bidirectional pairs are broken up, and reactions are only included if
+    # their rate is nonzero.
+    mapreduce(vcat, reactions, init = Reaction[]) do r
+        (; from, k₊, k₋, to, probe) = r
+        result = Reaction[]
+        probe_forward = k₋ == 0.0 ? probe : Symbol("$(probe)_forward")
+        probe_reverse = k₊ == 0.0 ? probe : Symbol("$(probe)_reverse")
+        k₊ > 0.0 && push!(
+            result,
+            Reaction(
+                k₊,
+                species_reference.(keys(from.counts); t, genes),
+                species_reference.(keys(to.counts); t, genes),
+                collect(values(from.counts)),
+                collect(values(to.counts)),
+                metadata = [:probe => probe_forward],
+            ),
+        )
+        k₋ > 0.0 && push!(
+            result,
+            Reaction(
+                k₋,
+                species_reference.(keys(to.counts); t, genes),
+                species_reference.(keys(from.counts); t, genes),
+                collect(values(to.counts)),
+                collect(values(from.counts)),
+                metadata = [:probe => probe_reverse],
+            )
+        )
+        result
+    end
+end
 
 function regulation(
     genes::Dict{Symbol,<:ModelingToolkit.AbstractSystem};
@@ -649,41 +701,14 @@ function regulation(
                         )
                     end
                 end
+
+                # ...additional reactios scoped to this gene
+                assemble_reactions(target.reactions; t)
             ]
         end
 
         # Additionally, we add arbitrary mass-action reactions as specified.
-        # Bidirectional pairs are broken up, and reactions are only included if
-        # their rate is nonzero.
-        nothing => mapreduce(vcat, definition.reactions, init = Reaction[]) do r
-            (; from, k₊, k₋, to, probe) = r
-            result = Reaction[]
-            probe_forward = k₋ == 0.0 ? probe : Symbol("$(probe)_forward")
-            probe_reverse = k₊ == 0.0 ? probe : Symbol("$(probe)_reverse")
-            k₊ > 0.0 && push!(
-                result,
-                Reaction(
-                    k₊,
-                    species_reference.(keys(from.counts); t, genes),
-                    species_reference.(keys(to.counts); t, genes),
-                    collect(values(from.counts)),
-                    collect(values(to.counts)),
-                    metadata = [:probe => probe_forward],
-                ),
-            )
-            k₋ > 0.0 && push!(
-                result,
-                Reaction(
-                    k₋,
-                    species_reference.(keys(to.counts); t, genes),
-                    species_reference.(keys(from.counts); t, genes),
-                    collect(values(to.counts)),
-                    collect(values(from.counts)),
-                    metadata = [:probe => probe_reverse],
-                )
-            )
-            result
-        end
+        nothing => assemble_reactions(definition.reactions; t, genes)
     ])
 end
 
@@ -734,18 +759,12 @@ function assemble_reaction_system(definition::Definition)
         error("mixing eukaryotic and prokaryotic genes is forbidden")
 
     t = default_t()
-    polymerases = species_variable(definition.polymerases; t)
-    ribosomes = species_variable(definition.ribosomes; t)
-    proteasomes = species_variable(definition.proteasomes; t)
+    polymerases = ParentScope(species_variable(definition.polymerases; t))
+    ribosomes = ParentScope(species_variable(definition.ribosomes; t))
+    proteasomes = ParentScope(species_variable(definition.proteasomes; t))
 
     genes = Dict{Symbol, ReactionSystem}(
-        g.name => gene(
-            g,
-            polymerases = ParentScope(polymerases),
-            ribosomes = ParentScope(ribosomes),
-            proteasomes = ParentScope(proteasomes);
-            t,
-        )
+        g.name => gene(g; polymerases, ribosomes, proteasomes, t)
         for g in definition.genes
     )
     reactions = regulation(genes; definition, t)
