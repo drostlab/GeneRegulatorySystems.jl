@@ -269,9 +269,8 @@ function make_timer!(
     duration,
     buffer_rates,
     genes,
-    reactions,
 )
-    name = gene.name == Symbol() ? Symbol(default_name) : gene.name
+    name = gene.name == Symbol("") ? Symbol(default_name) : gene.name
     timing = timing_factor(duration)
     timer = V1.Gene(;
         name,
@@ -286,12 +285,13 @@ function make_timer!(
         activation = deepcopy(gene.activation),
         repression = deepcopy(gene.repression),
         proteolysis = deepcopy(gene.proteolysis),
+        reactions = deepcopy(gene.reactions),
     )
 
     # If specified, add a dimerization buffer reaction for the timer gene's
     # proteins.
     if !isempty(buffer_rates)
-        name = Symbol("$(timer.name)_buffering")
+        name = :buffering
         if length(buffer_rates) == 1
             k₊ = k₋ = only(buffer_rates)
         elseif length(buffer_rates) == 2
@@ -299,9 +299,9 @@ function make_timer!(
         else
             error("timer dimerization buffer reaction has too many rates")
         end
-        from = Models.Reagents(Dict(timer.name => 2))
-        to = Models.Reagents(Dict(Symbol("$(timer.name)_buffer") => 1))
-        push!(reactions, Models.Reaction(; name, from, to, k₊, k₋))
+        from = Models.Reagents(Dict(:proteins => 2))
+        to = Models.Reagents(Dict(:buffer => 1))
+        push!(timer.reactions, Models.Reaction(; name, from, to, k₊, k₋))
     end
 
     genes[timer.name] = timer
@@ -335,7 +335,6 @@ function descend!(
     trigger,
     brake = nothing,
     genes,
-    reactions,
     deposit,
 )
     # Obtain or create genes for timing and downstream differentiators:
@@ -345,7 +344,6 @@ function descend!(
         transient.duration,
         buffer_rates = transient.buffer,
         genes,
-        reactions,
     )
     next = obtain_differentiator!(
         transient.next,
@@ -431,7 +429,7 @@ function descend!(
         deposit[Symbol("$(timer.name).$kind")] = value
     end
     if !isempty(transient.buffer)
-        deposit[Symbol("$(timer.name)_buffer")] = transient.buffer_deposit
+        deposit[Symbol("$(timer.name).buffer")] = transient.buffer_deposit
     end
 
     # Recurse for any nested differentiations:
@@ -440,7 +438,6 @@ function descend!(
         trigger = next.name,
         brake = alternative.name;
         genes,
-        reactions,
         deposit,
     )
     descend!(
@@ -448,7 +445,6 @@ function descend!(
         trigger = alternative.name,
         brake = next.name;
         genes,
-        reactions,
         deposit,
     )
 end
@@ -493,9 +489,8 @@ build(specification::AbstractDict{Symbol}) = build(
 )
 
 function build(definition::Definition; method::Symbol)
-    # Shallow-copy genes, reactions and deposit:
+    # Shallow-copy genes and deposit:
     genes = Dict(gene.name => gene for gene in definition.peripheral.genes)
-    reactions = copy(definition.peripheral.reactions)
     deposit = copy(definition.deposit)
 
     # Extend them according to the differentiation definition:
@@ -513,7 +508,7 @@ function build(definition::Definition; method::Symbol)
             # because they will be transcriptionally regulated.)
             root
         end
-    descend!(definition.differentiation; trigger, genes, reactions, deposit)
+    descend!(definition.differentiation; trigger, genes, deposit)
 
     # Compile down to a V1 model:
     model = V1.build(
@@ -522,7 +517,7 @@ function build(definition::Definition; method::Symbol)
             definition.peripheral.polymerases,
             definition.peripheral.ribosomes,
             definition.peripheral.proteasomes,
-            reactions,
+            definition.peripheral.reactions,
             definition.peripheral.profile_reactions,
         );
         method,
