@@ -736,7 +736,8 @@ instrument(rs::ReactionSystem) = ReactionSystem(
             name = nameof(rs′),
         )
     end,
-    name = Symbol("$(nameof(rs))_instrumented")
+    initial_conditions = copy(ModelingToolkitBase.get_initial_conditions(rs)),
+    name = Symbol("$(nameof(rs))_instrumented"),
 )
 
 const JUMP_PROCESSES_METHODS = Dict(
@@ -774,6 +775,11 @@ function assemble_reaction_system(definition::Definition)
         systems = map(collect(genes)) do (name, component)
             component & ReactionSystem(reactions[name], name = :_)
         end,
+        initial_conditions = [
+            getproperty(genes[g.name], kind) => getfield(g.base_rates, kind)
+            for g in definition.genes
+            for kind in fieldnames(typeof(g.base_rates))
+        ],
         name = :regulation
     )
     if definition.profile_reactions
@@ -781,20 +787,6 @@ function assemble_reaction_system(definition::Definition)
     end
 
     reaction_system
-end
-
-function assemble_parameters(
-    reaction_system::ReactionSystem;
-    definition::Definition,
-)
-    rates_by_gene = Dict(g.name => g.base_rates for g in definition.genes)
-    mapreduce(vcat, ModelingToolkitBase.get_systems(reaction_system)) do gene
-        rates = rates_by_gene[nameof(gene)]
-        [
-            getproperty(gene, kind) => getfield(rates, kind)
-            for kind in fieldnames(typeof(rates))
-        ]
-    end
 end
 
 """
@@ -844,7 +836,6 @@ build(specification::AbstractDict{Symbol}) = build(
 
 function build(definition::Definition; method::Symbol = :default)
     reaction_system = assemble_reaction_system(definition)
-    parameters = assemble_parameters(reaction_system; definition)
     system = complete(jump_model(complete(reaction_system)))
     method = pick_method(reaction_system; method)()
 
@@ -865,15 +856,16 @@ function build(definition::Definition; method::Symbol = :default)
         bracketed .* prototype.Δu,
     )
 
-    model = (; system, method, parameters)
     Models.Wrapped(;
         definition,
         model = Models.Wrapped(
             definition = reaction_system,
-            model = SciML.JumpModel(;
-                model...,
-                problem = SciML.JumpProblem(; model..., bracket_data),
-            ),
+            model = SciML.JumpModel(SciML.customized_jump_problem(;
+                # JumpProblem compilation fastpath ^
+                system,
+                method,
+                bracket_data,
+            )),
         ),
     )
 end

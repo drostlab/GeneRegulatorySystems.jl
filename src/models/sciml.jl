@@ -3,8 +3,8 @@ module SciML
 import ....GeneRegulatorySystems
 import ..Models: Models, Model, FlatState
 import Catalyst
+using ModelingToolkit: ModelingToolkitBase, SymbolicIndexingInterface
 import JumpProcesses
-using ModelingToolkit: ModelingToolkit, SymbolicIndexingInterface
 
 import Random
 using Logging: LogLevel, @logmsg
@@ -12,7 +12,7 @@ using Logging: LogLevel, @logmsg
 Progress = LogLevel(-2)
 
 normalize_name(s) =
-    Symbol(replace(String(ModelingToolkit.getname(s)), '₊' => '.'))
+    Symbol(replace(String(SymbolicIndexingInterface.getname(s)), '₊' => '.'))
 
 @kwdef mutable struct TriggerProgress
     i::Int = 0
@@ -84,6 +84,10 @@ corresponding `f!`.
 end
 
 Models.t(x::JumpState) = x.integrator.t
+Models.counts(x::JumpState) = Dict(
+    normalize_name(s) => x.integrator[s]
+    for s in SymbolicIndexingInterface.variable_symbols(x.integrator)
+)
 Models.randomness(x::JumpState) = x.integrator.cb.affect!.rng
 
 function Models.empty_trajectory!(x::JumpState)
@@ -93,21 +97,15 @@ end
 
 FlatState(x::JumpState) = FlatState(
     t = Models.t(x),
-    counts = Dict(
-        normalize_name(s) => x.integrator[s]
-        for s in SymbolicIndexingInterface.variable_symbols(x.integrator)
-    ),
+    counts = Models.counts(x),
     randomness = copy(Models.randomness(x)),
 )
 
-JumpProblem(; system, method, parameters, more...) =
-    ModelingToolkit.JumpProblem(
+JumpProblem(; system, method, more...) =
+    ModelingToolkitBase.JumpProblem(
         system,
-        vcat(
-            parameters,
-            [s => 0 for s in ModelingToolkit.unknowns(system)],
-            # ^ We will initialize these directly on the integrator.
-        ),
+        # We will initialize these directly on the integrator:
+        [s => 0 for s in ModelingToolkitBase.unknowns(system)],
         (0.0, Inf),
         aggregator = method,
         # Weirdly, constructing a `JumpProblem` consumes entropy. But everything
@@ -124,15 +122,13 @@ JumpProblem(; system, method, parameters, more...) =
         more...,
     )
 
+include("sciml_hacks.jl")
+
 """
     JumpModel <: Model{JumpState}
 
-Represents the stochastic dynamics of applying a
-`JumpProcesses.AbstractAggregatorAlgorithm` `method` to a
-`ModelingToolkit.System` `system` with a set of `parameters`.
-
-Gene regulation models in this package ultimately get compiled to `JumpModel`s.
-An appropriate (but incomplete) `JumpProblem` is opportunistically built here.
+Wraps a SciML JumpProblem. Gene regulation models in this package ultimately get
+compiled to `JumpModel`s.
 
 # Specification
 
@@ -161,18 +157,14 @@ the recorded trajectory information is highly redundant and needs to be filtered
 by `each_event` for output in sparse long format. 
 """
 @kwdef struct JumpModel <: Model{JumpState}
-    system::ModelingToolkit.System
-    method::JumpProcesses.AbstractAggregatorAlgorithm
-    parameters
-    problem::JumpProcesses.JumpProblem =
-        JumpProblem(; system, method, parameters)
+    problem::JumpProcesses.JumpProblem
 end
 
 Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")
 
 function JumpState(x::FlatState; f!::JumpModel)
     problem = deepcopy(f!.problem)
-    # ^ Given that ModelingToolkit.init below with alias_jump = false would just
+    # ^ Given that JumpProcesses.init below with alias_jump = false would just
     # deepcopy the whole JumpProblem anyway, we will do it ourselves here so we
     # can rest easy in the knowledge that f!.problem is never mutated.
 
@@ -188,7 +180,7 @@ function JumpState(x::FlatState; f!::JumpModel)
     # type because we ensured that at construction. The Models.randomness(x)
     # instance will no longer be carried forward.
 
-    integrator = ModelingToolkit.init(
+    integrator = JumpProcesses.init(
         problem,
         JumpProcesses.SSAStepper(),
         save_start = false,
@@ -265,11 +257,11 @@ function (f!::JumpModel)(
     verbose && @logmsg Progress :advancing at = "JumpModel" todo = Δt
     x.integrator.save_everystep = record
     if record
-        ModelingToolkit.savevalues!(x.integrator, true)
-        ModelingToolkit.step!(x.integrator, Δt, true)
+        JumpProcesses.savevalues!(x.integrator, true)
+        JumpProcesses.step!(x.integrator, Δt, true)
     else
-        ModelingToolkit.step!(x.integrator, Δt, true)
-        ModelingToolkit.savevalues!(x.integrator, true)
+        JumpProcesses.step!(x.integrator, Δt, true)
+        JumpProcesses.savevalues!(x.integrator, true)
     end
     verbose && @logmsg Progress :done at = "JumpModel"
 

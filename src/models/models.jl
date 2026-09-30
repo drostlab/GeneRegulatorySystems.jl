@@ -39,6 +39,15 @@ function t end
 t(x::FlatState) = x.t
 
 """
+    counts(x)
+
+Copy the current counts of state `x` to a new `Dict` keyed by qualified species
+name, equivalently to `FlatState` behavior.
+"""
+function counts end
+counts(x::FlatState) = x.counts
+
+"""
     randomness(x)
 
 Access the random number generator instance of state `x`.
