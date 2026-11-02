@@ -152,6 +152,12 @@ function quantiles(samples)
     (at(0.5), at(0.25), at(0.75))
 end
 
+function value_at(series, cursor, t, sampled)
+    sampled && cursor < length(series.ts) || return series.ys[cursor]
+    fraction = (t - series.ts[cursor]) / (series.ts[cursor + 1] - series.ts[cursor])
+    series.ys[cursor] + fraction * (series.ys[cursor + 1] - series.ys[cursor])
+end
+
 function aggregate(::Type{CountSeries}, grouped; from, to, width)
     bin_count = max(1, cld(max(round(Int, width), 1), PIXELS_PER_BIN))
     step = (to - from) / bin_count
@@ -181,27 +187,21 @@ function aggregate(::Type{CountSeries}, grouped; from, to, width)
         for t in ts
             count = 0
             live = 0.0
-            right = t + step / 2
 
             for (position, (branch, series)) in enumerate(windows)
+                within = branch.sampled ?
+                    first(series.ts) <= t <= last(series.ts) :
+                    branch.from <= t <= branch.to
+                within || continue
                 cursor = cursors[position]
-                if branch.sampled
-                    while cursor < length(series.ts) && series.ts[cursor + 1] < right
-                        cursor += 1
-                    end
-                    cursors[position] = cursor
-                    right - step <= series.ts[cursor] < right || continue
-                else
-                    branch.from <= t <= branch.to || continue
-                    while cursor < length(series.ts) && series.ts[cursor + 1] <= t
-                        cursor += 1
-                    end
-                    cursors[position] = cursor
-                    series.ts[cursor] <= t || continue
+                while cursor < length(series.ts) && series.ts[cursor + 1] <= t
+                    cursor += 1
                 end
+                cursors[position] = cursor
+                series.ts[cursor] <= t || continue
                 count += 1
                 live += branch.weight
-                samples[count] = series.ys[cursor]
+                samples[count] = value_at(series, cursor, t, branch.sampled)
             end
 
             push!(nlive, round(Int, live))

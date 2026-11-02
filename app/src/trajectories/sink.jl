@@ -113,7 +113,7 @@ function instants(sink::Sink; path="", channel=nothing)
         segment.instant || continue
         isnothing(channel) || segment.into == channel || continue
         Scheduling.ispathprefix(branch(segment.path), path) || continue
-        entry = isempty(segment.label) ? segment.description : "$(segment.description) ($(segment.label))"
+        entry = isempty(segment.label) ? segment.description : "$(segment.label)\n$(segment.description)"
         push!(get!(Vector{String}, marks, segment.from), entry)
     end
     sort!([(; t, entries) for (t, entries) in marks]; by = mark -> mark.t)

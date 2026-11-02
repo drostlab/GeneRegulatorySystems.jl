@@ -166,12 +166,13 @@ specification_key(::typeof(+)) = :add
 specification_key(::typeof(*)) = :multiply
 specification_key(::typeof(last ∘ Pair)) = :set
 
-Models.describe(f!::Adjust) = Models.Label(
-    "{$(specification_key(f!.adjust))} " * join(
-        ("$species = $value" for (species, value) in sort!(collect(f!.adjustment); by = first)),
-        ", ",
-    ),
-)
+Models.describe(f!::Adjust) = Models.Label(join(
+    [
+        "{$(specification_key(f!.adjust))}";
+        ["  $species = $value" for (species, value) in sort!(collect(f!.adjustment); by = first)]
+    ],
+    "\n",
+))
 
 Specifications.constructor(::Val{:set}) = setter
 Specifications.constructor(::Val{:add}) = adder
