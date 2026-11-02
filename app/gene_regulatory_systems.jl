@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v1.0.4
+# v1.1.0
 
 #> [frontmatter]
 #> title = "Gene Regulatory Systems"
@@ -26,12 +26,17 @@ begin
     Pkg.activate(@__DIR__)
     using Base64
     using HypertextLiteral
+    using PlutoUI
 end
 
 # ╔═╡ 29eb1509-3cea-4c50-9d8e-24bcd8a54bbb
 md"""
 ## Layout
 """
+
+# ╔═╡ 8eb4f0d7-ef76-4ca7-a117-a48685c12667
+show_notebook_control =
+    @bind show_notebook PlutoUI.Switch(default=false)
 
 # ╔═╡ 34a8deb2-0db9-456c-ba38-eabc3254ab50
 md"""
@@ -54,6 +59,9 @@ end;
 md"""
 ### Network
 """
+
+# ╔═╡ 6c1e4b90-2a77-4d3e-9f58-31b0c7ea52d4
+shared_species_control = @bind show_shared_species PlutoUI.Switch(default=false);
 
 # ╔═╡ 8d1f0c53-6a24-4e91-b7d5-2c9a04f61b38
 md"""
@@ -87,10 +95,43 @@ md"""
 ### Trajectory View
 """
 
+# ╔═╡ 4c9e2b71-3d8f-4a6e-b5c2-9f1d7e3a8b60
+instants_control = @bind show_instants PlutoUI.Switch(default=true);
+
+# ╔═╡ e1b7c3d4-6f2a-4b8e-9c01-5d7a2e9f3b46
+connect_samples_control = @bind connect_samples PlutoUI.Switch(default=false);
+
+# ╔═╡ 7afe83d0-f91c-4d6d-80bb-82d634af59ed
+trajectory_display_control = @bind aggregate_mode PlutoUI.Select(
+	[
+        :raw => "individual branches",
+        :aggregate => "branch aggregate",
+    ];
+    default=:aggregate,
+);
+
 # ╔═╡ 76d9a00b-10fa-4248-b460-6c5abb2424dd
 md"""
 ### Phase space
 """
+
+# ╔═╡ 2f83b1d6-9c07-4e58-a3f1-64d0b8ea7c19
+analysis_control = @bind analysis PlutoUI.Select(
+    ["none" => "none", "phase" => "phase", "distribution" => "distribution"];
+    default="phase",
+);
+
+# ╔═╡ be5ca395-d977-4082-a700-60730ba278df
+phase_components_control = @bind phase_components PlutoUI.Select(
+    [2 => "2D", 3 => "3D"];
+    default=2,
+);
+
+# ╔═╡ 6d1f40a8-5b72-4c93-8e14-2a07c9f3bd65
+phase_coloring_control = @bind phase_coloring PlutoUI.Select(
+    [:genes => "genes", :time => "time"];
+    default=:genes,
+);
 
 # ╔═╡ 35e4e15a-e1f7-42c1-8ded-5714234811c6
 md"""
@@ -355,9 +396,9 @@ montserrat_face = let
 end
 
 # ╔═╡ b3f27a51-6c84-4d19-9f52-8e1c47a0d6b2
-reload_control = @bind reload_count @htl("""
-<span class="grs-reload">
-<input type="button" value="↻" title="reload">
+reload_control = @htl("""
+<span class="grs-reload" title="reload">
+$(@bind reload_count PlutoUI.CounterButton("↻"))
 <style>
     .grs-reload input {
         background: none;
@@ -374,17 +415,6 @@ reload_control = @bind reload_count @htl("""
         opacity: 1;
     }
 </style>
-<script>
-    const root = currentScript.parentElement
-    const button = root.querySelector("input")
-    let count = 0
-    root.value = count
-
-    button.addEventListener("click", () => {
-        root.value = ++count
-        root.dispatchEvent(new CustomEvent("input"))
-    })
-</script>
 </span>
 """);
 
@@ -551,7 +581,6 @@ begin
     const Vis = GRS.Visualisation
 
     using CytoscapeJS
-    using PlutoUI
     const Layout = PlutoUI.ExperimentalLayout
     import JSON
     import Colors
@@ -578,10 +607,6 @@ dashboard_area(name, children...) = Layout.DOMElement(
         attributes=Dict("key" => name, "class" => "dashboard area-$(name)"),
         children=collect(Iterators.filter(!isnothing, children)),
     )
-
-# ╔═╡ 8eb4f0d7-ef76-4ca7-a117-a48685c12667
-show_notebook_control =
-    @bind show_notebook PlutoUI.Switch(default=false)
 
 # ╔═╡ a2866674-5e4e-4738-b18e-90d122d2d161
 schedule_options = let
@@ -743,6 +768,19 @@ end
 # ╔═╡ 5f81c7aa-273c-49e2-ae61-f473f810d6c3
 default_tracks = string.(filter(in((:activity, :mrnas, :proteins)), track_options))
 
+# ╔═╡ 3c9f5be6-70a4-4d82-8e13-b0681c429df1
+trajectory_tracks_control = @bind selected_tracks PlutoUI.MultiSelect(
+    string.(track_options);
+    default=default_tracks,
+    size=4,
+);
+
+# ╔═╡ 4a1c8e77-2d95-4f3a-b0e6-1c7d9f2a4b58
+analysis_track_control = @bind analysis_track PlutoUI.Select(
+    string.(track_options);
+    default=in("proteins", string.(track_options)) ? "proteins" : first(string.(track_options)),
+);
+
 # ╔═╡ 8bff584c-2987-4584-aaed-b1ce4104d891
 group_colors = merge(
     Vis.group_colors(network.groups).colors,
@@ -751,9 +789,6 @@ group_colors = merge(
 
 # ╔═╡ 5e2c8a17-4b39-4f6d-9c81-7d0a3b5e62f4
 model_options = Vis.paths(network)
-
-# ╔═╡ 6c1e4b90-2a77-4d3e-9f58-31b0c7ea52d4
-shared_species_control = @bind show_shared_species PlutoUI.Switch(default=false);
 
 # ╔═╡ d9a6e3c2-7fb4-4156-ac83-4eb21f9d6a05
 model_control = @bind selected_model PlutoUI.Select(
@@ -860,181 +895,6 @@ simulation = let
     (; sink, error, calls = calls[], fractions, elapsed = (time_ns() - started) / 1e9)
 end
 
-# ╔═╡ 83d377c1-e52b-49fb-a475-e8e208b25960
-channel_options = [
-    nothing => "all channels"
-    (channel => (isempty(channel) ? "default" : channel) for channel in Trajectories.channels(simulation.sink))...
-]
-
-# ╔═╡ 3a3dc65c-312c-4e7b-9fbc-1edf324b4a63
-trajectory_channel_control = @bind selected_channel PlutoUI.Select(channel_options; default=nothing);
-
-# ╔═╡ fc7d5237-870d-4549-9b95-d6eb7d508203
-path_options = let
-    records = filter(
-        record -> isnothing(selected_channel) || record.into == selected_channel,
-        simulation.sink.records,
-    )
-    labels = Vis.path_labels(records)
-    [
-        "" => "all paths"
-        (
-            path => Vis.describe(path, get(labels, path, ""))
-            for path in Vis.paths(records)
-        )...
-    ]
-end
-
-# ╔═╡ 1f6b30ca-8d47-4e52-9a03-6c8e1d47b259
-distribution_path_control = @bind secondary_path PlutoUI.Select(
-    [nothing => "none"; path_options];
-    default=nothing,
-);
-
-# ╔═╡ 1a7f39c4-5d82-4e60-b3a1-8c46f207de92
-trajectory_path_control = @bind selected_path PlutoUI.Select(path_options);
-
-# ╔═╡ 4c9e2b71-3d8f-4a6e-b5c2-9f1d7e3a8b60
-instants_control = @bind show_instants PlutoUI.Switch(default=true);
-
-# ╔═╡ 8d2f6a39-1c4e-4b7a-9e05-6a3c8f2d1b74
-instant_marks = show_instants ?
-    Trajectories.instants(simulation.sink; path=selected_path, channel=selected_channel) : []
-
-# ╔═╡ e1b7c3d4-6f2a-4b8e-9c01-5d7a2e9f3b46
-connect_samples_control = @bind connect_samples PlutoUI.Switch(default=false);
-
-# ╔═╡ 7afe83d0-f91c-4d6d-80bb-82d634af59ed
-trajectory_display_control = @bind aggregate_mode PlutoUI.Select(
-	[
-        :raw => "individual branches",
-        :aggregate => "branch aggregate",
-    ];
-    default=:aggregate,
-);
-
-# ╔═╡ 3c9f5be6-70a4-4d82-8e13-b0681c429df1
-trajectory_tracks_control = @bind selected_tracks PlutoUI.MultiSelect(
-    string.(track_options);
-    default=default_tracks,
-    size=4,
-);
-
-# ╔═╡ 5b1e9c47-3a82-4d0f-9e61-7c2f8a4d6b30
-trace = Trajectories.catenate(simulation.sink; channel=selected_channel)
-
-# ╔═╡ 24d5d19e-c9fd-4b4d-b90d-b2cc144586ce
-levels = Trajectories.lod(trace)
-
-# ╔═╡ 9c4e17ab-2f60-4d83-b915-6e0a7d3c81f4
-trajectories = Trajectories.select(levels, selected_path)
-
-# ╔═╡ 2f83b1d6-9c07-4e58-a3f1-64d0b8ea7c19
-analysis_control = @bind analysis PlutoUI.Select(
-    ["none" => "none", "phase" => "phase", "distribution" => "distribution"];
-    default="phase",
-);
-
-# ╔═╡ 4a1c8e77-2d95-4f3a-b0e6-1c7d9f2a4b58
-analysis_track_control = @bind analysis_track PlutoUI.Select(
-    string.(track_options);
-    default=in("proteins", string.(track_options)) ? "proteins" : first(string.(track_options)),
-);
-
-# ╔═╡ 5a2d84f7-1c39-4b68-8e70-9f3a52c1d704
-distribution_samples = if run_simulation && analysis == "distribution"
-    Trajectories.counts(
-        Trajectories.select(trace, selected_path),
-        visible_genes,
-        analysis_track,
-    )
-end
-
-# ╔═╡ 8c40e91b-6f25-4d3a-97b1-4e08d5a2f637
-distribution_reference =
-    if !isnothing(distribution_samples) && !isnothing(secondary_path)
-        Trajectories.counts(
-            Trajectories.select(trace, secondary_path),
-            visible_genes,
-            analysis_track,
-        )
-    end
-
-# ╔═╡ 2e79f5a8-b013-4c96-85d2-7a1fc6039e48
-distribution_header = isnothing(distribution_samples) ? nothing : @htl("""
-<div class="dashboard-header">
-    <label class="dashboard-option">
-        <span>track:</span>
-        $(analysis_track_control)
-    </label>
-
-    <label class="dashboard-option">
-        <span>compare:</span>
-        $(distribution_path_control)
-    </label>
-
-    <span style="opacity: 0.5; font-size: 0.75rem;">
-        $(size(distribution_samples.X, 2)) samples
-    </span>
-</div>
-""");
-
-# ╔═╡ be5ca395-d977-4082-a700-60730ba278df
-phase_components_control = @bind phase_components PlutoUI.Select(
-    [2 => "2D", 3 => "3D"];
-    default=2,
-);
-
-# ╔═╡ 6d1f40a8-5b72-4c93-8e14-2a07c9f3bd65
-phase_coloring_control = @bind phase_coloring PlutoUI.Select(
-    [:genes => "genes", :time => "time"];
-    default=:genes,
-);
-
-# ╔═╡ 9e8abb2f-4531-4c57-a15f-547938cbd6e4
-phase_snapshot = if run_simulation && analysis == "phase"
-    Trajectories.snapshots(
-        Trajectories.select(trace, selected_path),
-        visible_genes,
-        analysis_track,
-    )
-end
-
-# ╔═╡ ffa07386-4884-4f9d-9e2d-29da604aec87
-phase_projection = if !isnothing(phase_snapshot)
-    Trajectories.project(
-        phase_snapshot;
-        components=phase_components,
-        group_colors,
-        coloring=phase_coloring,
-    )
-end
-
-# ╔═╡ 7f2b6c14-8a03-4d51-9e27-3b5c0a8f61d9
-phase_header = !(run_simulation && analysis == "phase") ? nothing : @htl("""
-<div class="dashboard-header">
-    <label class="dashboard-option">
-        <span>track:</span>
-        $(analysis_track_control)
-    </label>
-
-    <label class="dashboard-option">
-        $(phase_components_control)
-    </label>
-
-    <label class="dashboard-option">
-        <span>colour:</span>
-        $(phase_coloring_control)
-    </label>
-
-    $(isnothing(phase_projection) ? nothing : @htl("""
-    <span style="opacity: 0.5; font-size: 0.75rem;">
-        $(string(phase_projection.method))
-    </span>
-    """))
-</div>
-""");
-
 # ╔═╡ a4bcea34-2ee9-48ee-bf1a-6d1fd6256c91
 begin
     docs_url = "http://localhost:8001"
@@ -1138,6 +998,135 @@ end;
 
 # ╔═╡ 2b6e0f41-8d59-4033-a4e7-19f5b308620d
 dashboard_area("header", app_header)
+
+# ╔═╡ 83d377c1-e52b-49fb-a475-e8e208b25960
+channel_options = [
+    nothing => "all channels"
+    (channel => (isempty(channel) ? "default" : channel) for channel in Trajectories.channels(simulation.sink))...
+]
+
+# ╔═╡ 3a3dc65c-312c-4e7b-9fbc-1edf324b4a63
+trajectory_channel_control = @bind selected_channel PlutoUI.Select(channel_options; default=nothing);
+
+# ╔═╡ fc7d5237-870d-4549-9b95-d6eb7d508203
+path_options = let
+    records = filter(
+        record -> isnothing(selected_channel) || record.into == selected_channel,
+        simulation.sink.records,
+    )
+    labels = Vis.path_labels(records)
+    [
+        "" => "all paths"
+        (
+            path => Vis.describe(path, get(labels, path, ""))
+            for path in Vis.paths(records)
+        )...
+    ]
+end
+
+# ╔═╡ 1f6b30ca-8d47-4e52-9a03-6c8e1d47b259
+distribution_path_control = @bind secondary_path PlutoUI.Select(
+    [nothing => "none"; path_options];
+    default=nothing,
+);
+
+# ╔═╡ 1a7f39c4-5d82-4e60-b3a1-8c46f207de92
+trajectory_path_control = @bind selected_path PlutoUI.Select(path_options);
+
+# ╔═╡ 8d2f6a39-1c4e-4b7a-9e05-6a3c8f2d1b74
+instant_marks = show_instants ?
+    Trajectories.instants(simulation.sink; path=selected_path, channel=selected_channel) : []
+
+# ╔═╡ 5b1e9c47-3a82-4d0f-9e61-7c2f8a4d6b30
+trace = Trajectories.catenate(simulation.sink; channel=selected_channel)
+
+# ╔═╡ 5a2d84f7-1c39-4b68-8e70-9f3a52c1d704
+distribution_samples = if run_simulation && analysis == "distribution"
+    Trajectories.counts(
+        Trajectories.select(trace, selected_path),
+        visible_genes,
+        analysis_track,
+    )
+end
+
+# ╔═╡ 2e79f5a8-b013-4c96-85d2-7a1fc6039e48
+distribution_header = isnothing(distribution_samples) ? nothing : @htl("""
+<div class="dashboard-header">
+    <label class="dashboard-option">
+        <span>track:</span>
+        $(analysis_track_control)
+    </label>
+
+    <label class="dashboard-option">
+        <span>compare:</span>
+        $(distribution_path_control)
+    </label>
+
+    <span style="opacity: 0.5; font-size: 0.75rem;">
+        $(size(distribution_samples.X, 2)) samples
+    </span>
+</div>
+""");
+
+# ╔═╡ 8c40e91b-6f25-4d3a-97b1-4e08d5a2f637
+distribution_reference =
+    if !isnothing(distribution_samples) && !isnothing(secondary_path)
+        Trajectories.counts(
+            Trajectories.select(trace, secondary_path),
+            visible_genes,
+            analysis_track,
+        )
+    end
+
+# ╔═╡ 24d5d19e-c9fd-4b4d-b90d-b2cc144586ce
+levels = Trajectories.lod(trace)
+
+# ╔═╡ 9c4e17ab-2f60-4d83-b915-6e0a7d3c81f4
+trajectories = Trajectories.select(levels, selected_path)
+
+# ╔═╡ 9e8abb2f-4531-4c57-a15f-547938cbd6e4
+phase_snapshot = if run_simulation && analysis == "phase"
+    Trajectories.snapshots(
+        Trajectories.select(trace, selected_path),
+        visible_genes,
+        analysis_track,
+    )
+end
+
+# ╔═╡ ffa07386-4884-4f9d-9e2d-29da604aec87
+phase_projection = if !isnothing(phase_snapshot)
+    Trajectories.project(
+        phase_snapshot;
+        components=phase_components,
+        group_colors,
+        coloring=phase_coloring,
+    )
+end
+
+# ╔═╡ 7f2b6c14-8a03-4d51-9e27-3b5c0a8f61d9
+phase_header = !(run_simulation && analysis == "phase") ? nothing : @htl("""
+<div class="dashboard-header">
+    <label class="dashboard-option">
+        <span>track:</span>
+        $(analysis_track_control)
+    </label>
+
+    <label class="dashboard-option">
+        $(phase_components_control)
+    </label>
+
+    <label class="dashboard-option">
+        <span>colour:</span>
+        $(phase_coloring_control)
+    </label>
+
+    $(isnothing(phase_projection) ? nothing : @htl("""
+    <span style="opacity: 0.5; font-size: 0.75rem;">
+        $(string(phase_projection.method))
+    </span>
+    """))
+</div>
+""");
 
 # ╔═╡ b17ffd5a-f47d-4865-9d3e-7914441c2a38
 themed_view(content) = Bonito.App() do

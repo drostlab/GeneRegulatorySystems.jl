@@ -90,7 +90,6 @@ function CytoscapeJS.Cytoscape(
     height="100vh",
     min_height="0",
     attributes=graph_attributes(; height, min_height),
-    wheelSensitivity=0.1,
     selectionType="additive",
     include_shared=false,
     physics=DEFAULT_PHYSICS,
@@ -121,7 +120,6 @@ function CytoscapeJS.Cytoscape(
         setup=network_setup(
             gene_elements, species_elements, layout, physics, edge_lengths, simplified,
         ),
-        wheelSensitivity,
         selectionType,
         tooltip_attributes,
         attributes,
