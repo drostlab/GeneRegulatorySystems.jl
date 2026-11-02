@@ -107,10 +107,6 @@ function assemble(records, catenation::Catenation)
     Catenation(catenation.segments, trajectories)
 end
 
-channels(sink::Sink) = sort!(unique(
-    segment.into for segment in sink.records if segment.count > 0 && !isnothing(segment.into)
-))
-
 function instants(sink::Sink; path="", channel=nothing)
     marks = Dict{Float64, Vector{String}}()
     for segment in sink.records

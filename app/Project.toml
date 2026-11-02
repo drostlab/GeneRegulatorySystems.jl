@@ -22,7 +22,7 @@ WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 [sources]
 GeneRegulatorySystems = {path = ".."}
 JumpProcesses = {rev = "cb8b9a0914eb319c91d74ceb9d6d02a9d01632c7", url = "https://github.com/nifets/JumpProcesses.jl"}
-Pluto = {rev = "d80aaa7956fa0e43593d474ce73095d294cd0ba9", url = "https://github.com/nifets/Pluto.jl"}
+Pluto = {rev = "6a4e77781463513f40f1a84c90924021cd461ce0", url = "https://github.com/nifets/Pluto.jl"}
 
 [compat]
 CytoscapeJS = "0.1.3"

@@ -2190,8 +2190,8 @@ version = "1.5.1"
 
 [[deps.Pluto]]
 deps = ["Base64", "Configurations", "Dates", "Downloads", "ExpressionExplorer", "FileWatching", "GracefulPkg", "HTTP", "HypertextLiteral", "InteractiveUtils", "LRUCache", "Logging", "LoggingExtras", "MIMEs", "Malt", "Markdown", "MsgPack", "Pkg", "PlutoDependencyExplorer", "PrecompileSignatures", "PrecompileTools", "REPL", "Random", "RegistryInstances", "RelocatableFolders", "SHA", "Scratch", "Sockets", "TOML", "Tables", "URIs", "UUIDs"]
-git-tree-sha1 = "5f464fcb9e1f535c98eff01c08a4340f32d797ad"
-repo-rev = "d80aaa7956fa0e43593d474ce73095d294cd0ba9"
+git-tree-sha1 = "4952545baae96302a8b843cc012a061175c7cfdc"
+repo-rev = "6a4e77781463513f40f1a84c90924021cd461ce0"
 repo-url = "https://github.com/nifets/Pluto.jl"
 uuid = "c3e4b0f8-55cb-11ea-2926-15256bba5781"
 version = "1.1.0"

@@ -35,8 +35,73 @@ md"""
 """
 
 # ╔═╡ 8eb4f0d7-ef76-4ca7-a117-a48685c12667
-show_notebook_control =
-    @bind show_notebook PlutoUI.Switch(default=false)
+dev_toggle = @htl("""
+<label class="notebook-toggle" title="show notebook internals">
+    <span>dev</span>
+    <input type="checkbox" class="pui-switch">
+    <script>
+        const input = currentScript.parentElement.querySelector("input")
+        input.checked = document.body.classList.contains("grs-dev")
+        input.addEventListener("change", () => {
+            document.body.classList.toggle("grs-dev", input.checked)
+            for (const other of document.querySelectorAll(".notebook-toggle input")) {
+                other.checked = input.checked
+            }
+        })
+    </script>
+    <style>
+        .notebook-toggle {
+            display: flex;
+            gap: 0.35rem;
+            opacity: 0.3;
+            font-family: Montserrat, sans-serif;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: opacity 120ms ease;
+        }
+
+        .notebook-toggle:hover,
+        .notebook-toggle:has(input:checked) {
+            opacity: 0.8;
+        }
+
+        .notebook-toggle .pui-switch {
+            --width: 2.2em;
+            --height: 1em;
+            appearance: none;
+            width: var(--width);
+            height: var(--height);
+            margin: 0;
+            background: #707070;
+            border-radius: calc(var(--height) / 2);
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .notebook-toggle .pui-switch:checked {
+            background: #4caf50;
+        }
+
+        .notebook-toggle .pui-switch::before {
+            content: "";
+            position: absolute;
+            --inset: .2em;
+            top: var(--inset);
+            left: var(--inset);
+            width: calc(var(--height) - 2 * var(--inset));
+            height: calc(var(--height) - 2 * var(--inset));
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+
+        .notebook-toggle .pui-switch:checked::before {
+            transform: translateX(calc(var(--width) - var(--height)));
+        }
+    </style>
+</label>
+""")
 
 # ╔═╡ 34a8deb2-0db9-456c-ba38-eabc3254ab50
 md"""
@@ -110,16 +175,16 @@ trajectory_display_control = @bind aggregate_mode PlutoUI.Select(
     default=:aggregate,
 );
 
-# ╔═╡ 76d9a00b-10fa-4248-b460-6c5abb2424dd
-md"""
-### Phase space
-"""
-
 # ╔═╡ 2f83b1d6-9c07-4e58-a3f1-64d0b8ea7c19
 analysis_control = @bind analysis PlutoUI.Select(
     ["none" => "none", "phase" => "phase", "distribution" => "distribution"];
     default="phase",
 );
+
+# ╔═╡ 76d9a00b-10fa-4248-b460-6c5abb2424dd
+md"""
+### Phase space
+"""
 
 # ╔═╡ be5ca395-d977-4082-a700-60730ba278df
 phase_components_control = @bind phase_components PlutoUI.Select(
@@ -133,6 +198,11 @@ phase_coloring_control = @bind phase_coloring PlutoUI.Select(
     default=:genes,
 );
 
+# ╔═╡ cb485959-3fa7-412f-9a5a-0ffe40ad3605
+md"""
+### Distributions
+"""
+
 # ╔═╡ 35e4e15a-e1f7-42c1-8ded-5714234811c6
 md"""
 ## Styling
@@ -141,7 +211,7 @@ md"""
 # ╔═╡ 6a3d1f28-04bc-4e7a-9c15-8b2f70d6ae41
 hide_notebook_styles = @htl("""
 <style id="grs-hide-notebook">
-    body:not(:has(.notebook-toggle input:checked)) {
+    body:not(.grs-dev) {
         & header#pluto-nav,
         & #helpbox-wrapper,
         & footer,
@@ -160,7 +230,7 @@ hide_notebook_styles = @htl("""
         }
     }
 
-    body:has(.dashboard):not(:has(.notebook-toggle input:checked)) {
+    body:has(.dashboard):not(.grs-dev) {
         & pluto-cell:not(:has(.dashboard)):not(:has(.grs-splash)):not(:has(pluto-logs-container)) {
             display: none !important;
         }
@@ -175,7 +245,7 @@ hide_notebook_styles = @htl("""
 # ╔═╡ 375349c2-33bb-45fb-b412-672c678b93b3
 dashboard_styles = @htl("""
 <style id="grs-dashboard-styles">
-    body:not(:has(.notebook-toggle input:checked)) {
+    body:not(.grs-dev) {
         & pluto-notebook {
             display: grid;
             grid-template-columns:
@@ -211,7 +281,7 @@ dashboard_styles = @htl("""
     }
 
     @media (max-width: 900px) {
-        body:not(:has(.notebook-toggle input:checked)) pluto-notebook {
+        body:not(.grs-dev) pluto-notebook {
             grid-template-columns: minmax(0, 1fr);
             grid-template-areas:
                 "header" "schedule-header" "progress"
@@ -424,9 +494,8 @@ begin
         base64encode(read(joinpath(@__DIR__, "assets", "logo.png")))
 
     splash_screen = @htl("""
+<div class="grs-splash-dev">$(dev_toggle)</div>
 <div class="grs-splash">
-    <button class="grs-splash-dismiss" type="button" title="dismiss"
-            onclick="document.body.classList.add('grs-ready')">&times;</button>
     <div class="grs-splash-content">
         <div class="grs-splash-title">Gene Regulatory Systems</div>
         <div class="grs-splash-logo">
@@ -473,11 +542,19 @@ begin
 </script>
 
 <style>
-    body:not(.grs-ready) pluto-cell {
+    body:not(.grs-ready):not(.grs-dev) pluto-cell {
         visibility: hidden !important;
     }
 
-    body:not(.grs-ready) loading-bar {
+    body:not(.grs-ready):not(.grs-dev) loading-bar {
+        z-index: 100000;
+    }
+
+    .grs-splash-dev {
+        visibility: visible;
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
         z-index: 100000;
     }
 
@@ -489,22 +566,6 @@ begin
         display: grid;
         place-items: center;
         background: var(--main-bg-color);
-    }
-
-    .grs-splash-dismiss {
-        position: absolute;
-        top: 1rem;
-        right: 1rem;
-        border: none;
-        background: transparent;
-        color: inherit;
-        font-size: 1.25rem;
-        opacity: 0.4;
-        cursor: pointer;
-    }
-
-    .grs-splash-dismiss:hover {
-        opacity: 1;
     }
 
     .grs-splash-content {
@@ -540,7 +601,7 @@ begin
         font-family: Montserrat, sans-serif;
     }
 
-    body.grs-ready .grs-splash,
+    body.grs-dev .grs-splash,
     body.grs-ready pluto-cell:has(.grs-splash) {
         display: none;
     }
@@ -781,53 +842,28 @@ analysis_track_control = @bind analysis_track PlutoUI.Select(
     default=in("proteins", string.(track_options)) ? "proteins" : first(string.(track_options)),
 );
 
+# ╔═╡ f3e30836-cb2e-4f7f-9f31-701ff59c1a74
+schedule_segments = isnothing(schedule!) ? [] : Vis.segments(schedule!)
+
+# ╔═╡ 83d377c1-e52b-49fb-a475-e8e208b25960
+channel_options = [
+    nothing => "all channels"
+    (
+        channel => (isempty(channel) ? "default" : channel)
+        for channel in sort!(unique(
+            segment.into for segment in schedule_segments if !isnothing(segment.into)
+        ))
+    )...
+]
+
+# ╔═╡ 3a3dc65c-312c-4e7b-9fbc-1edf324b4a63
+trajectory_channel_control = @bind selected_channel PlutoUI.Select(channel_options; default=nothing);
+
 # ╔═╡ 8bff584c-2987-4584-aaed-b1ce4104d891
 group_colors = merge(
     Vis.group_colors(network.groups).colors,
     something(gene_colors, Dict())
 );
-
-# ╔═╡ 5e2c8a17-4b39-4f6d-9c81-7d0a3b5e62f4
-model_options = Vis.paths(network)
-
-# ╔═╡ d9a6e3c2-7fb4-4156-ac83-4eb21f9d6a05
-model_control = @bind selected_model PlutoUI.Select(
-    model_options;
-    default=length(model_options) == 1 ? only(model_options) : nothing,
-);
-
-# ╔═╡ c8f5d2b1-6ea3-4045-9b72-3da10e8c5f94
-network_description = let
-    lines = get(provenance_lines, something(selected_model, ""), String[])
-    @htl("""
-    <div class="network-provenance">
-        $((@htl("<div>$(line)</div>") for line in lines))
-    </div>
-    """)
-end;
-
-# ╔═╡ 0d5a9f31-8e46-4c02-b7d1-9a2f6c48e713
-network_header = @htl("""
-<div class="dashboard-header stacked">
-    <div class="dashboard-controls">
-        <label class="dashboard-option">
-            <span>model:</span>
-            $(model_control)
-        </label>
-        <label class="dashboard-option">
-            <span>shared species:</span>
-            $(shared_species_control)
-        </label>
-    </div>
-    $(network_description)
-</div>
-""");
-
-# ╔═╡ 4d802163-af7b-4255-a6a9-3b17d52a842f
-dashboard_area(
-    "network-header",
-    network_header
-)
 
 # ╔═╡ 4d8d901f-d3c2-4b0a-b2c7-4ed8b2a5280d
 cytoscape_graph = let
@@ -839,9 +875,6 @@ cytoscape_graph = let
     )
     graph
 end;
-
-# ╔═╡ 27655a09-73a0-4370-933b-2e4fe2e2ecf3
-CytoscapeJS.set_filter!(cytoscape_graph, :presentIn, selected_model);
 
 # ╔═╡ 5f0c8a71-93de-4b02-a6c4-1e78d3520fb9
 gene_selection = PageState.Shared("genes")
@@ -917,10 +950,7 @@ begin
         docs <span class="external-link">↗</span>
     </a>
     $(reload_control)
-    <label class="notebook-toggle" title="show notebook internals">
-        <span>dev</span>
-        $(show_notebook_control)
-    </label>
+    $(dev_toggle)
 </header>
 
 <style>
@@ -977,21 +1007,6 @@ begin
         color: inherit;
         transition: opacity 120ms ease;
     }
-
-    .notebook-toggle {
-        display: flex;
-        gap: 0.35rem;
-        opacity: 0.3;
-        font-family: Montserrat, sans-serif;
-        font-size: 0.7rem;
-        cursor: pointer;
-        transition: opacity 120ms ease;
-    }
-
-    .notebook-toggle:hover,
-    .notebook-toggle:has(input:checked) {
-        opacity: 0.8;
-    }
 </style>
 """);
 end;
@@ -999,30 +1014,75 @@ end;
 # ╔═╡ 2b6e0f41-8d59-4033-a4e7-19f5b308620d
 dashboard_area("header", app_header)
 
-# ╔═╡ 83d377c1-e52b-49fb-a475-e8e208b25960
-channel_options = [
-    nothing => "all channels"
-    (channel => (isempty(channel) ? "default" : channel) for channel in Trajectories.channels(simulation.sink))...
-]
-
-# ╔═╡ 3a3dc65c-312c-4e7b-9fbc-1edf324b4a63
-trajectory_channel_control = @bind selected_channel PlutoUI.Select(channel_options; default=nothing);
-
 # ╔═╡ fc7d5237-870d-4549-9b95-d6eb7d508203
 path_options = let
-    records = filter(
-        record -> isnothing(selected_channel) || record.into == selected_channel,
-        simulation.sink.records,
+    segments = filter(
+        segment -> isnothing(selected_channel) || segment.into == selected_channel,
+        schedule_segments,
     )
-    labels = Vis.path_labels(records)
+    labels = Vis.path_labels(segments)
     [
         "" => "all paths"
         (
             path => Vis.describe(path, get(labels, path, ""))
-            for path in Vis.paths(records)
+            for path in Vis.paths(segments)
         )...
     ]
 end
+
+# ╔═╡ 1a7f39c4-5d82-4e60-b3a1-8c46f207de92
+trajectory_path_control = @bind selected_path PlutoUI.Select(path_options);
+
+# ╔═╡ 5e2c8a17-4b39-4f6d-9c81-7d0a3b5e62f4
+model_options = let
+    models = Set(
+        segment.model for segment in schedule_segments
+        if GRS.Models.Scheduling.ispathprefix(selected_path, segment.path)
+    )
+    filter(in(models), Vis.paths(network))
+end
+
+# ╔═╡ d9a6e3c2-7fb4-4156-ac83-4eb21f9d6a05
+model_control = @bind selected_model PlutoUI.Select(
+    model_options;
+    default=length(model_options) == 1 ? only(model_options) : nothing,
+);
+
+# ╔═╡ c8f5d2b1-6ea3-4045-9b72-3da10e8c5f94
+network_description = let
+    lines = get(provenance_lines, something(selected_model, ""), String[])
+    @htl("""
+    <div class="network-provenance">
+        $((@htl("<div>$(line)</div>") for line in lines))
+    </div>
+    """)
+end;
+
+# ╔═╡ 0d5a9f31-8e46-4c02-b7d1-9a2f6c48e713
+network_header = @htl("""
+<div class="dashboard-header stacked">
+    <div class="dashboard-controls">
+        <label class="dashboard-option">
+            <span>model:</span>
+            $(model_control)
+        </label>
+        <label class="dashboard-option">
+            <span>shared species:</span>
+            $(shared_species_control)
+        </label>
+    </div>
+    $(network_description)
+</div>
+""");
+
+# ╔═╡ 4d802163-af7b-4255-a6a9-3b17d52a842f
+dashboard_area(
+    "network-header",
+    network_header
+)
+
+# ╔═╡ 27655a09-73a0-4370-933b-2e4fe2e2ecf3
+CytoscapeJS.set_filter!(cytoscape_graph, :presentIn, selected_model);
 
 # ╔═╡ 1f6b30ca-8d47-4e52-9a03-6c8e1d47b259
 distribution_path_control = @bind secondary_path PlutoUI.Select(
@@ -1030,53 +1090,12 @@ distribution_path_control = @bind secondary_path PlutoUI.Select(
     default=nothing,
 );
 
-# ╔═╡ 1a7f39c4-5d82-4e60-b3a1-8c46f207de92
-trajectory_path_control = @bind selected_path PlutoUI.Select(path_options);
-
 # ╔═╡ 8d2f6a39-1c4e-4b7a-9e05-6a3c8f2d1b74
 instant_marks = show_instants ?
     Trajectories.instants(simulation.sink; path=selected_path, channel=selected_channel) : []
 
 # ╔═╡ 5b1e9c47-3a82-4d0f-9e61-7c2f8a4d6b30
 trace = Trajectories.catenate(simulation.sink; channel=selected_channel)
-
-# ╔═╡ 5a2d84f7-1c39-4b68-8e70-9f3a52c1d704
-distribution_samples = if run_simulation && analysis == "distribution"
-    Trajectories.counts(
-        Trajectories.select(trace, selected_path),
-        visible_genes,
-        analysis_track,
-    )
-end
-
-# ╔═╡ 2e79f5a8-b013-4c96-85d2-7a1fc6039e48
-distribution_header = isnothing(distribution_samples) ? nothing : @htl("""
-<div class="dashboard-header">
-    <label class="dashboard-option">
-        <span>track:</span>
-        $(analysis_track_control)
-    </label>
-
-    <label class="dashboard-option">
-        <span>compare:</span>
-        $(distribution_path_control)
-    </label>
-
-    <span style="opacity: 0.5; font-size: 0.75rem;">
-        $(size(distribution_samples.X, 2)) samples
-    </span>
-</div>
-""");
-
-# ╔═╡ 8c40e91b-6f25-4d3a-97b1-4e08d5a2f637
-distribution_reference =
-    if !isnothing(distribution_samples) && !isnothing(secondary_path)
-        Trajectories.counts(
-            Trajectories.select(trace, secondary_path),
-            visible_genes,
-            analysis_track,
-        )
-    end
 
 # ╔═╡ 24d5d19e-c9fd-4b4d-b90d-b2cc144586ce
 levels = Trajectories.lod(trace)
@@ -1128,25 +1147,49 @@ phase_header = !(run_simulation && analysis == "phase") ? nothing : @htl("""
 </div>
 """);
 
+# ╔═╡ 5a2d84f7-1c39-4b68-8e70-9f3a52c1d704
+distribution_samples = if run_simulation && analysis == "distribution"
+    Trajectories.counts(
+        Trajectories.select(trace, selected_path),
+        visible_genes,
+        analysis_track,
+    )
+end
+
+# ╔═╡ 2e79f5a8-b013-4c96-85d2-7a1fc6039e48
+distribution_header = isnothing(distribution_samples) ? nothing : @htl("""
+<div class="dashboard-header">
+    <label class="dashboard-option">
+        <span>track:</span>
+        $(analysis_track_control)
+    </label>
+
+    <label class="dashboard-option">
+        <span>compare:</span>
+        $(distribution_path_control)
+    </label>
+
+    <span style="opacity: 0.5; font-size: 0.75rem;">
+        $(size(distribution_samples.X, 2)) samples
+    </span>
+</div>
+""");
+
+# ╔═╡ 8c40e91b-6f25-4d3a-97b1-4e08d5a2f637
+distribution_reference =
+    if !isnothing(distribution_samples) && !isnothing(secondary_path)
+        Trajectories.counts(
+            Trajectories.select(trace, secondary_path),
+            visible_genes,
+            analysis_track,
+        )
+    end
+
 # ╔═╡ 4a29ccba-5cdc-47e1-953c-5eee6d1edbe7
 dark_mode_probe = @bind dark_mode DarkMode()
 
 # ╔═╡ 46e6e139-ddd4-4388-bf10-6ee496a1374a
 plot_theme = dark_mode ? theme_dark() : Theme()
-
-# ╔═╡ 9b1c47e3-5a82-4f07-b3e6-08d27f4a5169
-distribution_view =
-    if !isnothing(distribution_samples)
-        Trajectories.embed(plot_theme) do
-            isnothing(distribution_reference) ?
-                Trajectories.render(distribution_samples; group_colors) :
-                Trajectories.render(
-                    distribution_samples,
-                    distribution_reference;
-                    group_colors,
-                )
-        end
-    end
 
 # ╔═╡ 68f213e4-a64b-4aa1-bf77-9b131e657193
 trajectory_view = if run_simulation
@@ -1172,7 +1215,7 @@ trajectory_header = isnothing(trajectory_view) ? nothing : @htl("""
             $(trajectory_channel_control)
         </label>
         <label class="dashboard-option">
-            <span>path:</span>
+            <span>branch:</span>
             $(trajectory_path_control)
         </label>
 
@@ -1221,6 +1264,20 @@ phase_view = if !isnothing(phase_projection)
     end
 end
 
+# ╔═╡ 9b1c47e3-5a82-4f07-b3e6-08d27f4a5169
+distribution_view =
+    if !isnothing(distribution_samples)
+        Trajectories.embed(plot_theme) do
+            isnothing(distribution_reference) ?
+                Trajectories.render(distribution_samples; group_colors) :
+                Trajectories.render(
+                    distribution_samples,
+                    distribution_reference;
+                    group_colors,
+                )
+        end
+    end
+
 # ╔═╡ 3c7f1052-9e6a-4144-b5f8-2a06c419731e
 dashboard_area(
     "left",
@@ -1232,15 +1289,10 @@ dashboard_area(
 )
 
 # ╔═╡ Cell order:
+# ╠═2b6e0f41-8d59-4033-a4e7-19f5b308620d
 # ╟─29eb1509-3cea-4c50-9d8e-24bcd8a54bbb
 # ╠═032084a8-991a-4eeb-a5e9-78110b2b7cbe
 # ╠═116c3c09-d5b1-4c86-8c08-c470df26099b
-# ╠═2b6e0f41-8d59-4033-a4e7-19f5b308620d
-# ╠═1f6b30ca-8d47-4e52-9a03-6c8e1d47b259
-# ╠═5a2d84f7-1c39-4b68-8e70-9f3a52c1d704
-# ╠═8c40e91b-6f25-4d3a-97b1-4e08d5a2f637
-# ╠═2e79f5a8-b013-4c96-85d2-7a1fc6039e48
-# ╠═9b1c47e3-5a82-4f07-b3e6-08d27f4a5169
 # ╠═3c7f1052-9e6a-4144-b5f8-2a06c419731e
 # ╠═b7e4c1a0-5d92-4f3e-8a61-2c9f0d7b4e83
 # ╠═c8f5d2b1-6ea3-4045-9b72-3da10e8c5f94
@@ -1264,6 +1316,7 @@ dashboard_area(
 # ╠═69993fb8-daca-4b61-a711-907009dbee24
 # ╠═e2b7f4a3-8c15-4d67-9e02-5fa31c7b8d46
 # ╠═ea610eb8-caa3-4639-8d25-58904e600e52
+# ╠═f3e30836-cb2e-4f7f-9f31-701ff59c1a74
 # ╟─16d523e4-ebec-4d6e-b5e1-7aaf949ec5fc
 # ╠═8bff584c-2987-4584-aaed-b1ce4104d891
 # ╠═5e2c8a17-4b39-4f6d-9c81-7d0a3b5e62f4
@@ -1299,8 +1352,8 @@ dashboard_area(
 # ╠═9c4e17ab-2f60-4d83-b915-6e0a7d3c81f4
 # ╠═68f213e4-a64b-4aa1-bf77-9b131e657193
 # ╠═b81a8c99-9653-4288-846a-f56c873698cc
-# ╟─76d9a00b-10fa-4248-b460-6c5abb2424dd
 # ╠═2f83b1d6-9c07-4e58-a3f1-64d0b8ea7c19
+# ╟─76d9a00b-10fa-4248-b460-6c5abb2424dd
 # ╠═4a1c8e77-2d95-4f3a-b0e6-1c7d9f2a4b58
 # ╠═be5ca395-d977-4082-a700-60730ba278df
 # ╠═6d1f40a8-5b72-4c93-8e14-2a07c9f3bd65
@@ -1308,6 +1361,12 @@ dashboard_area(
 # ╠═ffa07386-4884-4f9d-9e2d-29da604aec87
 # ╠═b8a9bd86-5abc-48ed-87f5-534fe604bfb3
 # ╠═7f2b6c14-8a03-4d51-9e27-3b5c0a8f61d9
+# ╟─cb485959-3fa7-412f-9a5a-0ffe40ad3605
+# ╠═1f6b30ca-8d47-4e52-9a03-6c8e1d47b259
+# ╠═5a2d84f7-1c39-4b68-8e70-9f3a52c1d704
+# ╠═8c40e91b-6f25-4d3a-97b1-4e08d5a2f637
+# ╠═2e79f5a8-b013-4c96-85d2-7a1fc6039e48
+# ╠═9b1c47e3-5a82-4f07-b3e6-08d27f4a5169
 # ╟─35e4e15a-e1f7-42c1-8ded-5714234811c6
 # ╠═6a3d1f28-04bc-4e7a-9c15-8b2f70d6ae41
 # ╠═a4bcea34-2ee9-48ee-bf1a-6d1fd6256c91
