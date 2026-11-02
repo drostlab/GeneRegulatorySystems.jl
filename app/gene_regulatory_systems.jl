@@ -249,7 +249,7 @@ dashboard_styles = @htl("""
         & pluto-notebook {
             display: grid;
             grid-template-columns:
-                minmax(160px, 0.75fr) minmax(0, 0.25fr) minmax(0, 2fr);
+                max-content minmax(0, 1fr) minmax(0, calc((100% - 2rem) * 2 / 3));
             grid-template-areas:
                 "header          header   header"
                 "schedule-header progress network-header"
@@ -329,8 +329,27 @@ dashboard_styles = @htl("""
             display: none;
         }
 
+        & pluto-progress-name {
+            font-family: Montserrat, sans-serif;
+            font-size: 0.75rem;
+            opacity: 0.5;
+            white-space: nowrap;
+            order: 1;
+            padding: 0 0 0 0.5rem;
+        }
+
+        &.queued pluto-progress-name {
+            visibility: hidden;
+        }
+
+        &.queued pluto-progress-bar {
+            background-size: 0% 100% !important;
+            color: transparent;
+        }
+
         & pluto-progress-bar-container {
             flex: 1;
+            min-width: 3rem;
             outline: 1px solid color-mix(in srgb, currentColor 15%, transparent);
             outline-offset: -1px;
         }
@@ -487,6 +506,85 @@ $(@bind reload_count PlutoUI.CounterButton("↻"))
 </style>
 </span>
 """);
+
+# ╔═╡ a4bcea34-2ee9-48ee-bf1a-6d1fd6256c91
+begin
+    docs_url = get(ENV, "GRS_DOCS_URL", "http://localhost:8001")
+    app_header = @htl("""
+<header class="grs-header">
+    <div class="logo-wrapper">
+        <a href="/" title="Pluto home">
+            $(PlutoUI.LocalResource(joinpath(@__DIR__, "assets", "logo.png")))
+        </a>
+    </div>
+
+    <div>
+        <div class="grs-title">Gene Regulatory Systems</div>
+    </div>
+    <a class="docs-link" href="$(docs_url)" target="_blank">
+        docs <span class="external-link">↗</span>
+    </a>
+    $(reload_control)
+    $(dev_toggle)
+</header>
+
+<style>
+    .grs-header {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        width: 100%;
+        height: 60px;
+        padding: 0 1rem;
+        border-bottom: 1px solid color-mix(
+            in srgb,
+            currentColor 15%,
+            transparent
+        );
+        font-family: Montserrat, sans-serif;
+    }
+    .logo-wrapper {
+        filter: drop-shadow(-1.4px 2px 2px rgba(150, 150, 150, 0.3));
+    }
+    .logo-wrapper a {
+        display: block;
+        line-height: 0;
+    }
+    .logo-wrapper img {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+    }
+    @keyframes grs-logo-spin {
+        to {
+            transform: rotate(-360deg);
+        }
+    }
+
+    .logo-wrapper:hover img {
+        animation: grs-logo-spin 0.6s ease-in-out;
+    }
+
+    pluto-editor:has(pluto-cell.running, pluto-cell.queued)
+        .grs-header img {
+        animation: grs-logo-spin 0.3s linear infinite;
+    }
+
+    .grs-title {
+        font-size: 1.15rem;
+        font-weight: 400;
+        line-height: 1.2;
+    }
+
+    .docs-link {
+        margin-left: auto;
+        color: inherit;
+        transition: opacity 120ms ease;
+    }
+</style>
+""");
+end;
 
 # ╔═╡ 0187c445-f7a0-4eae-b55d-2bd955df2c2c
 begin
@@ -668,6 +766,9 @@ dashboard_area(name, children...) = Layout.DOMElement(
         attributes=Dict("key" => name, "class" => "dashboard area-$(name)"),
         children=collect(Iterators.filter(!isnothing, children)),
     )
+
+# ╔═╡ 2b6e0f41-8d59-4033-a4e7-19f5b308620d
+dashboard_area("header", app_header)
 
 # ╔═╡ a2866674-5e4e-4738-b18e-90d122d2d161
 schedule_options = let
@@ -910,16 +1011,16 @@ simulation = let
     started = time_ns();
     if run_simulation && !isnothing(schedule!)
         try
-            ProgressLogging.@withprogress begin
-                schedule!(;
-                    trace=sink,
-                    consolidated_progress = fraction_reporter(total_duration) do fraction
-                        calls[] += 1
-                        push!(fractions, fraction)
-                        ProgressLogging.@logprogress fraction
-                    end,
-                )
-            end
+            progress_id = Base.UUID(rand(UInt128))
+            schedule!(;
+                trace=sink,
+                consolidated_progress = fraction_reporter(total_duration) do fraction
+                    calls[] += 1
+                    push!(fractions, fraction)
+                    Base.@logmsg ProgressLogging.ProgressLevel "" progress=fraction _id=progress_id
+                end,
+            )
+            Base.@logmsg ProgressLogging.ProgressLevel "ran in $(round((time_ns() - started) / 1e9; digits=2))s" progress="done" _id=progress_id
         catch exception
             error = sprint(showerror, exception)
         end
@@ -927,92 +1028,6 @@ simulation = let
 
     (; sink, error, calls = calls[], fractions, elapsed = (time_ns() - started) / 1e9)
 end
-
-# ╔═╡ a4bcea34-2ee9-48ee-bf1a-6d1fd6256c91
-begin
-    docs_url = get(ENV, "GRS_DOCS_URL", "http://localhost:8001")
-    app_header = @htl("""
-<header class="grs-header">
-    <div class="logo-wrapper">
-        <a href="/" title="Pluto home">
-            $(PlutoUI.LocalResource(joinpath(@__DIR__, "assets", "logo.png")))
-        </a>
-    </div>
-
-    <div>
-        <div class="grs-title">Gene Regulatory Systems</div>
-    </div>
-    <span style="opacity:0.6; font-size:0.85em">
-        $(run_simulation ? "ran in $(round(simulation.elapsed; digits=2))s" : "")
-    </span>
-
-    <a class="docs-link" href="$(docs_url)" target="_blank">
-        docs <span class="external-link">↗</span>
-    </a>
-    $(reload_control)
-    $(dev_toggle)
-</header>
-
-<style>
-    .grs-header {
-        box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        gap: 0.85rem;
-        width: 100%;
-        height: 60px;
-        padding: 0 1rem;
-        border-bottom: 1px solid color-mix(
-            in srgb,
-            currentColor 15%,
-            transparent
-        );
-        font-family: Montserrat, sans-serif;
-    }
-    .logo-wrapper {
-        filter: drop-shadow(-1.4px 2px 2px rgba(150, 150, 150, 0.3));
-    }
-    .logo-wrapper a {
-        display: block;
-        line-height: 0;
-    }
-    .logo-wrapper img {
-        width: 40px;
-        height: 40px;
-        object-fit: contain;
-    }
-    @keyframes grs-logo-spin {
-        to {
-            transform: rotate(-360deg);
-        }
-    }
-
-    .logo-wrapper:hover img {
-        animation: grs-logo-spin 0.6s ease-in-out;
-    }
-
-    pluto-editor:has(pluto-cell.running, pluto-cell.queued)
-        .grs-header img {
-        animation: grs-logo-spin 0.3s linear infinite;
-    }
-
-    .grs-title {
-        font-size: 1.15rem;
-        font-weight: 400;
-        line-height: 1.2;
-    }
-
-    .docs-link {
-        margin-left: auto;
-        color: inherit;
-        transition: opacity 120ms ease;
-    }
-</style>
-""");
-end;
-
-# ╔═╡ 2b6e0f41-8d59-4033-a4e7-19f5b308620d
-dashboard_area("header", app_header)
 
 # ╔═╡ fc7d5237-870d-4549-9b95-d6eb7d508203
 path_options = let
@@ -1030,8 +1045,24 @@ path_options = let
     ]
 end
 
+# ╔═╡ 1f6b30ca-8d47-4e52-9a03-6c8e1d47b259
+distribution_path_control = @bind secondary_path PlutoUI.Select(
+    [nothing => "none"; path_options];
+    default=nothing,
+);
+
+# ╔═╡ 23004711-34a4-4b14-a3d2-4d8b065b76ad
+path_selection = PageState.Shared("path")
+
 # ╔═╡ 1a7f39c4-5d82-4e60-b3a1-8c46f207de92
-trajectory_path_control = @bind selected_path PlutoUI.Select(path_options);
+trajectory_path_control = PageState.choice(path_selection, path_options);
+
+# ╔═╡ b0d2bc5f-5d1b-4fc3-98cd-a7121f2bc913
+path_selection_bridge = @bind selected_path_values PageState.bridge(path_selection)
+
+# ╔═╡ edb84978-4aa7-461a-93c5-1a1ac94a233a
+selected_path = selected_path_values isa AbstractVector && !isempty(selected_path_values) ?
+    String(first(selected_path_values)) : ""
 
 # ╔═╡ 5e2c8a17-4b39-4f6d-9c81-7d0a3b5e62f4
 model_options = let
@@ -1084,12 +1115,6 @@ dashboard_area(
 # ╔═╡ 27655a09-73a0-4370-933b-2e4fe2e2ecf3
 CytoscapeJS.set_filter!(cytoscape_graph, :presentIn, selected_model);
 
-# ╔═╡ 1f6b30ca-8d47-4e52-9a03-6c8e1d47b259
-distribution_path_control = @bind secondary_path PlutoUI.Select(
-    [nothing => "none"; path_options];
-    default=nothing,
-);
-
 # ╔═╡ 8d2f6a39-1c4e-4b7a-9e05-6a3c8f2d1b74
 instant_marks = show_instants ?
     Trajectories.instants(simulation.sink; path=selected_path, channel=selected_channel) : []
@@ -1106,7 +1131,7 @@ trajectories = Trajectories.select(levels, selected_path)
 # ╔═╡ 9e8abb2f-4531-4c57-a15f-547938cbd6e4
 phase_snapshot = if run_simulation && analysis == "phase"
     Trajectories.snapshots(
-        Trajectories.select(trace, selected_path),
+        Trajectories.select(trace, ""),
         visible_genes,
         analysis_track,
     )
@@ -1259,8 +1284,9 @@ dashboard_area(
 
 # ╔═╡ b8a9bd86-5abc-48ed-87f5-534fe604bfb3
 phase_view = if !isnothing(phase_projection)
-    Trajectories.embed(plot_theme) do
-        Trajectories.render(phase_projection; connect_samples)
+    phase_selection = Observable("")
+    Trajectories.embed(plot_theme, PageState.link(path_selection, phase_selection)) do
+        Trajectories.render(phase_projection; connect_samples, selection=phase_selection)
     end
 end
 
@@ -1291,6 +1317,7 @@ dashboard_area(
 # ╔═╡ Cell order:
 # ╠═2b6e0f41-8d59-4033-a4e7-19f5b308620d
 # ╟─29eb1509-3cea-4c50-9d8e-24bcd8a54bbb
+# ╠═b4f7c2d9-1e58-4a63-9c07-8d5e21f4a3b6
 # ╠═032084a8-991a-4eeb-a5e9-78110b2b7cbe
 # ╠═116c3c09-d5b1-4c86-8c08-c470df26099b
 # ╠═3c7f1052-9e6a-4144-b5f8-2a06c419731e
@@ -1308,7 +1335,6 @@ dashboard_area(
 # ╠═a2866674-5e4e-4738-b18e-90d122d2d161
 # ╠═d4a916c8-7b52-49f6-a8e3-1c06d5b74f29
 # ╠═e57c02d3-9f18-4a6b-b30c-6d2e81f45c93
-# ╠═b4f7c2d9-1e58-4a63-9c07-8d5e21f4a3b6
 # ╠═7abbbe81-3d0b-4d94-a69f-32c66514687f
 # ╠═8392f056-369c-45fb-9c00-719172e82616
 # ╠═cdbda6eb-b5b9-4e9e-bac0-f334c19ae28e
@@ -1341,7 +1367,10 @@ dashboard_area(
 # ╠═83d377c1-e52b-49fb-a475-e8e208b25960
 # ╠═3a3dc65c-312c-4e7b-9fbc-1edf324b4a63
 # ╠═fc7d5237-870d-4549-9b95-d6eb7d508203
+# ╠═23004711-34a4-4b14-a3d2-4d8b065b76ad
 # ╠═1a7f39c4-5d82-4e60-b3a1-8c46f207de92
+# ╠═b0d2bc5f-5d1b-4fc3-98cd-a7121f2bc913
+# ╠═edb84978-4aa7-461a-93c5-1a1ac94a233a
 # ╠═4c9e2b71-3d8f-4a6e-b5c2-9f1d7e3a8b60
 # ╠═8d2f6a39-1c4e-4b7a-9e05-6a3c8f2d1b74
 # ╠═e1b7c3d4-6f2a-4b8e-9c01-5d7a2e9f3b46

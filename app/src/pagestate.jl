@@ -1,14 +1,13 @@
 module PageState
 
 using HypertextLiteral
+import Bonito
 
 struct Shared
     key::String
 end
 
-const RUNTIME = @htl("""
-<span>
-<script>
+const STORE = """
     if (!window.__grs_page_state?.connect) {
         const values = new Map()
         const listeners = new Map()
@@ -55,7 +54,11 @@ const RUNTIME = @htl("""
 
         window.__grs_page_state = store
     }
-</script>
+"""
+
+const RUNTIME = @htl("""
+<span>
+<script>$(HypertextLiteral.JavaScript(STORE))</script>
 </span>
 """)
 
@@ -71,14 +74,7 @@ $(RUNTIME)
     const same = (a, b) =>
         a !== null && a.length === b.length && a.every((value, i) => value === b[i])
 
-    const busy = () =>
-        document.querySelector("pluto-cell.running, pluto-cell.queued") !== null
-
     const emit = () => {
-        if (busy()) {
-            timer = setTimeout(emit, 200)
-            return
-        }
         if (same(sent, state.get())) return
 
         sent = [...state.get()]
@@ -136,6 +132,44 @@ $(RUNTIME)
 </span>
 """)
 
+choice(shared::Shared, options) = @htl("""
+<span>
+$(RUNTIME)
+<select>
+    $((@htl("<option value=$(first(option))>$(last(option))</option>") for option in options))
+</select>
+<script>
+    const select = currentScript.parentElement.querySelector("select")
+    const state = window.__grs_page_state.connect($(shared.key), "choice")
+
+    state.changed(values => {
+        select.value = values[0] ?? ""
+        if (select.value !== (values[0] ?? "")) state.set([])
+    })
+    select.addEventListener("change", () =>
+        state.set(select.value === "" ? [] : [select.value])
+    )
+
+    invalidation.then(state.dispose)
+</script>
+</span>
+""")
+
+function link(shared::Shared, observable)
+    anchor = Bonito.DOM.span()
+    Bonito.DOM.span(anchor, Bonito.js"""
+        $(Bonito.JSString(STORE))
+        const state = window.__grs_page_state.connect($(shared.key), "makie")
+        const alive = () => $(anchor).isConnected || (state.dispose(), false)
+        state.changed(values => {
+            if (!alive()) return
+            const value = values[0] ?? ""
+            if (value !== $(observable).value) $(observable).notify(value)
+        })
+        $(observable).on(value => alive() && state.set(value === "" ? [] : [value]))
+    """)
+end
+
 sync(shared::Shared, view) = @htl("""
 <span>
 $(RUNTIME)
@@ -144,21 +178,17 @@ $(view)
     const root = currentScript.parentElement
     const state = window.__grs_page_state.connect($(shared.key), "cytoscape")
 
-    const api = () =>
-        [...root.querySelectorAll("div")]
-            .find(node => node.cytoscape?.selection)?.cytoscape.selection
+    let selection = null
 
-    const adopt = selection => selection.set(state.get())
-
-    root.addEventListener("cytoscape:ready", event => adopt(event.detail.selection))
+    root.addEventListener("cytoscape:ready", event => {
+        selection = event.detail.selection
+        selection.set(state.get())
+    })
     root.addEventListener("cytoscape:selection", event =>
         state.set(event.detail.selection)
     )
 
-    state.changed(values => api()?.set(values))
-
-    const existing = api()
-    if (existing) adopt(existing)
+    state.changed(values => selection?.set(values))
 
     invalidation.then(state.dispose)
 </script>

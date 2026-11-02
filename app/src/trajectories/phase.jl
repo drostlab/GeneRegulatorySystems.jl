@@ -246,7 +246,14 @@ function polyline(projection::Projection, n; budget, sampled)
     (; points, colors, sources, spans, blank)
 end
 
-function render(projection::Projection; emphasis=3, dimming=0.4, budget=20_000, connect_samples=false)
+function render(
+    projection::Projection;
+    emphasis=3,
+    dimming=0.4,
+    budget=20_000,
+    connect_samples=false,
+    selection=Observable(""),
+)
     n = min(size(projection.coords, 1), 3)
     figure = Figure()
     axis = phase_axis(figure, projection, max(n, 2))
@@ -266,82 +273,28 @@ function render(projection::Projection; emphasis=3, dimming=0.4, budget=20_000, 
     discrete = polyline(projection, n; budget, sampled=true)
     blank = continuous.blank
 
-    pickable = IdDict{Any, Any}()
-    pickable[lines!(axis, continuous.points; color=continuous.colors, alpha=dimming)] = continuous
-    connect_samples && (pickable[lines!(
-        axis,
-        discrete.points;
-        color=discrete.colors,
-        alpha=dimming,
-        linewidth=0.75,
-    )] = discrete)
-    pickable[scatter!(
-        axis,
-        discrete.points;
-        color=discrete.colors,
-        alpha=dimming,
-        markersize=3,
-    )] = discrete
-
     highlight_points = Observable(typeof(blank)[])
     highlight_colors = Observable(RGBf[])
-    lines!(
-        axis,
-        highlight_points;
-        color=highlight_colors,
-        linewidth=emphasis,
-        depth_shift=-0.05f0,
-    )
-
-    overlay = Scene(figure.scene; clear=false)
-    campixel!(overlay)
-    tip_position = Observable(Point2f(0, 0))
-    tip_text = Observable("")
-    tip_visible = Observable(false)
-    tooltip!(
-        overlay,
-        tip_position,
-        tip_text;
-        visible=tip_visible,
-        fontsize=12,
-        overdraw=true,
-        depth_shift=-0.1f0,
-    )
-
+    highlighted = (; sources=Int[])
     hovered = Ref{Union{Nothing, String}}(nothing)
 
-    on(events(axis.scene).mouseposition) do _
-        picked, i = pick(axis.scene)
-        source = get(pickable, picked, nothing)
-        hit = !isnothing(source) &&
-            checkbounds(Bool, source.points, i) && !iszero(source.sources[i])
-        state = hit ? projection.states[source.sources[i]] : nothing
-
-        if hit
-            tip_position[] = Point2f(events(axis.scene).mouseposition[])
-            tip_text[] = join([
-                "branch: $(projection.descriptions[source.sources[i]])",
-                "time: $(round(state.t; digits=2))",
-            ], "\n")
-        end
-        tip_visible[] == hit || (tip_visible[] = hit)
-
-        current = hit ? get(projection.lineages, state.catenation, "") : nothing
-        hovered[] == current && return
-        hovered[] = current
-
+    function emphasise()
+        current = something(hovered[], selection[])
         highlight = typeof(blank)[]
         shades = RGBf[]
+        empty!(highlighted.sources)
 
-        if !isnothing(current)
+        if !isnothing(hovered[]) || !isempty(current)
             for polyline in (continuous, discrete), (key, range) in polyline.spans
                 related(current, key) || continue
                 if !isempty(highlight)
                     push!(highlight, blank)
                     push!(shades, RGBf(0, 0, 0))
+                    push!(highlighted.sources, 0)
                 end
                 append!(highlight, @view polyline.points[range])
                 append!(shades, @view polyline.colors[range])
+                append!(highlighted.sources, @view polyline.sources[range])
             end
         end
 
@@ -349,5 +302,67 @@ function render(projection::Projection; emphasis=3, dimming=0.4, budget=20_000, 
         highlight_colors[] = shades
     end
 
+    on(_ -> emphasise(), selection)
+
+    register_interaction!(axis, :select_branch) do event, axis
+        if event isa MouseEvent && event.type == WGLMakie.Makie.MouseEventTypes.leftclick
+            selection[] = something(hovered[], "")
+        end
+        Consume(false)
+    end
+
+    background = Colors.color(to_color(WGLMakie.Makie.theme(:backgroundcolor)[]))
+    halo = Colors.gray(Colors.Gray(background)) < 0.5 ? :white : :black
+
+    hover_with(source) = (inspector, plot, i) -> begin
+        j = get(source.sources, i, 0)
+        iszero(j) && return false
+        current = get(projection.lineages, projection.states[j].catenation, "")
+        hovered[] == current || (hovered[] = current; emphasise())
+        WGLMakie.Makie.show_data(inspector, plot, i)
+    end
+    tooltip_for(source) = (_, i, _) -> begin
+        j = source.sources[i]
+        "branch: $(projection.descriptions[j])\ntime: $(round(projection.states[j].t; digits=2))"
+    end
+    inspection(source) = (; inspector_hover=hover_with(source), inspector_label=tooltip_for(source))
+
+    lines!(axis, continuous.points; color=continuous.colors, alpha=dimming, inspection(continuous)...)
+    connect_samples && lines!(
+        axis,
+        discrete.points;
+        color=discrete.colors,
+        alpha=dimming,
+        linewidth=0.75,
+        inspection(discrete)...,
+    )
+    scatter!(
+        axis,
+        discrete.points;
+        color=discrete.colors,
+        alpha=dimming,
+        markersize=3,
+        inspection(discrete)...,
+    )
+    lines!(
+        axis,
+        highlight_points;
+        color=halo,
+        linewidth=emphasis + 3,
+        inspection(highlighted)...,
+    )
+    lines!(
+        axis,
+        highlight_points;
+        color=highlight_colors,
+        linewidth=emphasis,
+        inspection(highlighted)...,
+    )
+
+    emphasise()
+    inspector = DataInspector(figure; fontsize=12)
+    on(inspector.plot.visible) do visible
+        visible || isnothing(hovered[]) || (hovered[] = nothing; emphasise())
+    end
     figure
 end

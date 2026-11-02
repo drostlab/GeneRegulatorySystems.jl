@@ -22,10 +22,11 @@ include("render.jl")
 include("phase.jl")
 include("distributions.jl")
 
-embed(render, theme::Theme) = Bonito.App() do
+embed(render, theme::Theme, children...) = Bonito.App() do
     with_theme(theme) do
         Bonito.DOM.div(
-            WGLMakie.WithConfig(render(); resize_to = (:parent, nothing));
+            WGLMakie.WithConfig(render(); resize_to = (:parent, nothing)),
+            children...;
             style = "width: 100%; height: 100%;",
         )
     end
