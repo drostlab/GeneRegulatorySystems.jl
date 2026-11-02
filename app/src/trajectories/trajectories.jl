@@ -1,6 +1,7 @@
 module Trajectories
 
 using WGLMakie
+import Bonito
 using GeneRegulatorySystems: Models, Scheduling
 using GeneRegulatorySystems.Visualisation:
     Catenation,
@@ -20,5 +21,14 @@ include("lod.jl")
 include("render.jl")
 include("phase.jl")
 include("distributions.jl")
+
+embed(render, theme::Theme) = Bonito.App() do
+    with_theme(theme) do
+        Bonito.DOM.div(
+            WGLMakie.WithConfig(render(); resize_to = (:parent, nothing));
+            style = "width: 100%; height: 100%;",
+        )
+    end
+end
 
 end

@@ -589,7 +589,7 @@ begin
     using Bonito
     using WGLMakie
     WGLMakie.activate!()
-    using GRSApp: Trajectories, PageState, JSONEditor
+    using GRSApp: Trajectories, PageState, JSONEditor, DarkMode
 end;
 
 # ╔═╡ 032084a8-991a-4eeb-a5e9-78110b2b7cbe
@@ -1128,52 +1128,37 @@ phase_header = !(run_simulation && analysis == "phase") ? nothing : @htl("""
 </div>
 """);
 
-# ╔═╡ b17ffd5a-f47d-4865-9d3e-7914441c2a38
-themed_view(content) = Bonito.App() do
-    dark = Observable{Union{Nothing,Bool}}(nothing)
-    probe = js"""
-        const media = window.matchMedia("(prefers-color-scheme: dark)")
-        $(dark).notify(media.matches)
-        media.addEventListener("change", event => $(dark).notify(event.matches))
-    """
-    view = map(dark) do is_dark
-        isnothing(is_dark) ? DOM.div() : DOM.div(
-            with_theme(content, is_dark ? theme_dark() : Theme());
-            style = "width: 100%; height: 100%;",
-        )
-    end
-    DOM.div(view, probe; style = "width: 100%; height: 100%;")
-end
+# ╔═╡ 4a29ccba-5cdc-47e1-953c-5eee6d1edbe7
+dark_mode_probe = @bind dark_mode DarkMode()
+
+# ╔═╡ 46e6e139-ddd4-4388-bf10-6ee496a1374a
+plot_theme = dark_mode ? theme_dark() : Theme()
 
 # ╔═╡ 9b1c47e3-5a82-4f07-b3e6-08d27f4a5169
 distribution_view =
     if !isnothing(distribution_samples)
-        themed_view() do
-            figure = isnothing(distribution_reference) ?
+        Trajectories.embed(plot_theme) do
+            isnothing(distribution_reference) ?
                 Trajectories.render(distribution_samples; group_colors) :
                 Trajectories.render(
                     distribution_samples,
                     distribution_reference;
                     group_colors,
                 )
-            WGLMakie.WithConfig(figure; resize_to = (:parent, nothing))
         end
     end
 
 # ╔═╡ 68f213e4-a64b-4aa1-bf77-9b131e657193
 trajectory_view = if run_simulation
-    themed_view() do
-        WGLMakie.WithConfig(
-            Trajectories.render(
-                trajectories;
-                tracks=selected_tracks,
-                selected_genes=visible_genes,
-                group_colors,
-                aggregate_mode,
-                connect_samples,
-                instants=instant_marks,
-            );
-            resize_to = (:parent, nothing),
+    Trajectories.embed(plot_theme) do
+        Trajectories.render(
+            trajectories;
+            tracks=selected_tracks,
+            selected_genes=visible_genes,
+            group_colors,
+            aggregate_mode,
+            connect_samples,
+            instants=instant_marks,
         )
     end
 end;
@@ -1231,11 +1216,8 @@ dashboard_area(
 
 # ╔═╡ b8a9bd86-5abc-48ed-87f5-534fe604bfb3
 phase_view = if !isnothing(phase_projection)
-    themed_view() do
-        WGLMakie.WithConfig(
-            Trajectories.render(phase_projection; connect_samples);
-            resize_to = (:parent, nothing),
-        )
+    Trajectories.embed(plot_theme) do
+        Trajectories.render(phase_projection; connect_samples)
     end
 end
 
@@ -1330,7 +1312,8 @@ dashboard_area(
 # ╠═6a3d1f28-04bc-4e7a-9c15-8b2f70d6ae41
 # ╠═a4bcea34-2ee9-48ee-bf1a-6d1fd6256c91
 # ╠═375349c2-33bb-45fb-b412-672c678b93b3
-# ╠═b17ffd5a-f47d-4865-9d3e-7914441c2a38
+# ╠═4a29ccba-5cdc-47e1-953c-5eee6d1edbe7
+# ╠═46e6e139-ddd4-4388-bf10-6ee496a1374a
 # ╠═fca91735-9e3a-4f6d-a6a0-9d3dd0f3d9be
 # ╠═b3f27a51-6c84-4d19-9f52-8e1c47a0d6b2
 # ╠═0187c445-f7a0-4eae-b55d-2bd955df2c2c

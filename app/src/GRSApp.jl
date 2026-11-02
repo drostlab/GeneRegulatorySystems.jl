@@ -12,8 +12,9 @@ const Vis = GeneRegulatorySystems.Visualisation
 include("trajectories/trajectories.jl")
 include("pagestate.jl")
 include("JSONEditor.jl")
+include("DarkMode.jl")
 
-export Trajectories, PageState, JSONEditor
+export Trajectories, PageState, JSONEditor, DarkMode
 
 function serve(; port = nothing, docs_port = 8001)
     app = pkgdir(GRSApp)
