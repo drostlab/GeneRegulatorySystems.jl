@@ -6,6 +6,7 @@ using CytoscapeJS
 using GeneRegulatorySystems
 using GeneRegulatorySystems: Models, SPECIFICATION_EXAMPLES
 using Pluto
+import Bonito
 
 const Vis = GeneRegulatorySystems.Visualisation
 
@@ -19,17 +20,22 @@ export Trajectories, PageState, JSONEditor, DarkMode
 function serve(; port = nothing, docs_port = 8001)
     app = pkgdir(GRSApp)
     root = normpath(joinpath(app, ".."))
-    docs = joinpath(root, "docs")
-    build = joinpath(docs, "build")
+    build = joinpath(root, "docs", "build")
 
-    code = isdir(build) ?
-        "using LiveServer; serve(dir=$(repr(build)), port=$(docs_port))" :
-        "using LiveServer; cd($(repr(root))) do; servedocs(port=$(docs_port)); end"
-
-    docs_process = run(
-        Cmd(`$(Base.julia_cmd()) --project=$(docs) -e $(code)`; detach = true);
+    isdir(build) || run(
+        Cmd(`$(Base.julia_cmd()) --project=docs docs/make.jl`; dir = root);
         wait = false,
     )
+
+    docs = try
+        server = Bonito.Server("127.0.0.1", docs_port)
+        Bonito.route!(server, r".*" => Bonito.FolderServer(build))
+        server
+    catch exception
+        @warn "Could not serve the docs on port $docs_port." exception
+        nothing
+    end
+    isnothing(docs) || (ENV["GRS_DOCS_URL"] = "http://localhost:$(docs.port)")
 
     try
         notebook = joinpath(app, "gene_regulatory_systems.jl")
@@ -37,7 +43,7 @@ function serve(; port = nothing, docs_port = 8001)
             Pluto.run(; notebook) :
             Pluto.run(; notebook, port)
     finally
-        process_running(docs_process) && kill(docs_process)
+        isnothing(docs) || close(docs)
     end
 end
 

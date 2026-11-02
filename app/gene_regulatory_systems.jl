@@ -930,7 +930,7 @@ end
 
 # ╔═╡ a4bcea34-2ee9-48ee-bf1a-6d1fd6256c91
 begin
-    docs_url = "http://localhost:8001"
+    docs_url = get(ENV, "GRS_DOCS_URL", "http://localhost:8001")
     app_header = @htl("""
 <header class="grs-header">
     <div class="logo-wrapper">
