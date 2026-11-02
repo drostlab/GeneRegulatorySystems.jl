@@ -544,6 +544,11 @@ function node_variants(node::Node, network::Network, views = path_views(network)
     end for path in keys(network.parameters) if present_at(node, path))
 end
 
+parameter_values(item, network, path) = (; (
+    label => get(network.parameters[path], parameter, item.properties[label])
+    for (label, parameter) in get(item.properties, :parameters, Dict{Symbol, Symbol}())
+)...)
+
 function link_variants(link::Link, network::Network, views = path_views(network))
     Dict(path => begin
         view = views[path]
@@ -551,6 +556,7 @@ function link_variants(link::Link, network::Network, views = path_views(network)
         (;
             label=isempty(parameters) ? link_label(link) : join(parameters, " "),
             tooltip=link_tooltip(link, view),
+            parameter_values(link, network, path)...,
         )
     end for path in keys(network.parameters) if present_at(link, path))
 end

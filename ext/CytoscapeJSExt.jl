@@ -190,10 +190,17 @@ function node_element(node::Vis.Node, network::Vis.Network, ::Val{:species}, gro
     (; data, classes="$(node.kind)$orphan")
 end
 
+strength_norm(at, reference) = clamp(log(reference * 10 / at) / log(100), 0, 1)
+
 function link_element(link::Vis.Link, network::Vis.Network, ::Val{V}, strength_reference, views) where V
     loop = link.from === link.to ? " loop" : ""
     regulation = get(link.properties, :regulation, link.kind)
     label = Vis.link_label(link)
+    variants = Dict(
+        path => haskey(variant, :at) ?
+            (; variant..., strengthNorm = strength_norm(variant.at, strength_reference)) : variant
+        for (path, variant) in Vis.link_variants(link, network, views)
+    )
     data=(;
         id="$V:$(link.kind):$(link.from):$(link.to)",
         source=string(link.from),
@@ -205,12 +212,12 @@ function link_element(link::Vis.Link, network::Vis.Network, ::Val{V}, strength_r
         view=string(V),
         tooltip=Vis.link_tooltip(link, network),
         presentIn=present_in(link),
-        variants=(; presentIn=Vis.link_variants(link, network, views)),
+        variants=(; presentIn=variants),
     )
     isnothing(label) || (data = merge(data, (; label)))
     if haskey(link.properties, :at)
         at = Float64(get(link.properties, :at, 1))
-        data = merge(data, (; at, strengthNorm=clamp(log(strength_reference * 10 / at) / log(100), 0, 1)))
+        data = merge(data, (; at, strengthNorm=strength_norm(at, strength_reference)))
     end
     if haskey(link.properties, :w)
         w = Float64(get(link.properties, :w, 1))
