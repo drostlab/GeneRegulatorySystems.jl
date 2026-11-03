@@ -72,11 +72,48 @@ end
 
         snapshot = Trajectories.snapshots(
             Trajectories.select(trace, ""), groups, "proteins")
-        for components in (2, 3), coloring in (:genes, :time)
-            Trajectories.project(
-                snapshot; components, group_colors = colors, coloring)
+        projections = [
+            Trajectories.project(snapshot; components, group_colors = colors, coloring)
+            for components in (2, 3) for coloring in (:genes, :time)
+        ]
+        samples = Trajectories.counts(Trajectories.select(trace, ""), groups, "proteins")
+        instants = Trajectories.instants(sink; path = "", channel = nothing)
+
+        for theme in (Trajectories.WGLMakie.Theme(), Trajectories.WGLMakie.theme_dark())
+            selection = Trajectories.WGLMakie.Observable("")
+            apps = [
+                [
+                    Trajectories.embed(theme) do
+                        Trajectories.render(
+                            Trajectories.select(levels, "");
+                            tracks = ["activity", "mrnas", "proteins"],
+                            selected_genes = groups,
+                            group_colors = colors,
+                            aggregate_mode,
+                            instants,
+                        )
+                    end
+                    for aggregate_mode in (:raw, :aggregate)
+                ];
+                [
+                    Trajectories.embed(theme, PageState.link(PageState.Shared("path"), selection)) do
+                        Trajectories.render(projection; selection)
+                    end
+                    for projection in projections
+                ];
+                Trajectories.embed(theme) do
+                    Trajectories.render(samples; group_colors = colors)
+                end
+            ]
+            for app in apps
+                session = Bonito.Session()
+                show(IOBuffer(), Bonito.session_dom(session, app))
+                close(session)
+            end
         end
     end
+    Bonito.cleanup_globals()
+    Trajectories.WGLMakie.Makie.cleanup_globals()
 end
 
 end

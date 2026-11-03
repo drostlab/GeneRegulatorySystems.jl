@@ -1,4 +1,9 @@
-function sampling_window(axis; interval=0.05)
+opacity(branches) = clamp(1.5 / sqrt(max(branches, 1)), 0.2, 0.9)
+
+contrast(background) =
+    Colors.gray(Colors.Gray(Colors.color(to_color(background)))) < 0.5 ? :white : :black
+
+function sampling_window(axis)
     window = map(
         axis.finallimits,
         axis.scene.viewport;
@@ -9,7 +14,11 @@ function sampling_window(axis; interval=0.05)
         width = max(widths(viewport)[1], 1)
         (; from, to, width)
     end
-    WGLMakie.Makie.Observables.throttle(interval, window)
+    sampled = Observable(window[])
+    on(events(axis.scene).tick) do _
+        sampled[] == window[] || (sampled[] = window[])
+    end
+    sampled
 end
 
 function bounded_xlimits(limits, from, to)
@@ -103,6 +112,7 @@ function branches_by_dimension(::Type{T}, catenations; records, selected_genes, 
             to::Float64,
             weight::Float64,
             sampled::Bool,
+            key::String,
         }},
     }()
 
@@ -110,6 +120,7 @@ function branches_by_dimension(::Type{T}, catenations; records, selected_genes, 
         detail_from = rows[first(catenation.segments)].from
         detail_to = rows[last(catenation.segments)].to
         sampled = all(i -> rows[i].from == rows[i].to, catenation.segments)
+        key = branch(rows[first(catenation.segments)].path)
 
         for (dimension, detail) in catenation.trajectories
             detail isa T || continue
@@ -122,6 +133,7 @@ function branches_by_dimension(::Type{T}, catenations; records, selected_genes, 
                     to=Float64(detail_to),
                     weight=1.0,
                     sampled,
+                    key,
                 ),
             )
         end
@@ -304,6 +316,7 @@ function render!(
     selected_genes,
     window,
     max_branches,
+    hovered,
 )
     grouped = branches_by_dimension(
         FractionIntegral,
@@ -312,8 +325,12 @@ function render!(
         selected_genes,
         max_branches,
     )
-    rows = map(window) do view
-        aggregate(FractionSeries, grouped; view...)
+    rows = map(window, hovered) do view, current
+        focused = isnothing(current) ? grouped : Dict(
+            dimension => filter(entry -> related(current, entry.key), entries)
+            for (dimension, entries) in grouped
+        )
+        aggregate(FractionSeries, focused; view...)
     end
     dimensions = sort!(collect(keys(rows[])); by=dimension -> dimension.group)
     row_numbers = Dict(
@@ -388,13 +405,17 @@ function render!(
     selected_genes,
     window,
     max_branches,
-    dimming,
+    thickness,
+    hovered,
+    halo,
+    emphasis,
     connect_samples=false,
 )
     strands = Dict{Tuple{String, Bool}, Vector{NamedTuple}}()
 
     for catenation in values(catenations)
         describe_at = describer(records, catenation)
+        key = lineage(records, catenation)
         from = records[first(catenation.segments)].from
         to = records[last(catenation.segments)].to
         sampled = all(i -> records[i].from == records[i].to, catenation.segments)
@@ -404,17 +425,56 @@ function render!(
             dimension.group in selected_genes || continue
             push!(
                 get!(Vector{NamedTuple}, strands, (dimension.group, sampled)),
-                (; detail, from, to, describe_at),
+                (; detail, from, to, describe_at, key),
             )
         end
     end
 
-    buffers = Ref[]
+    dimming = opacity(length(unique(entry.key for entries in values(strands) for entry in entries)))
+    buffers = Pair{String, Any}[]
+    highlight = Observable((; points=Point2f[], colors=RGBAf[], sources=Tuple{Int, Int}[]))
+
+    function label_at(strand, i)
+        iszero(strand) && return ""
+        gene, buffer = buffers[strand]
+        (; points, owners) = buffer[]
+        checkbounds(Bool, points, i) && isfinite(points[i][1]) || return ""
+        join([
+            "gene: $gene";
+            isempty(owners[i]) ? String[] : ["path: $(owners[i])"];
+            "time: $(round(points[i][1]; digits=2))";
+            "value: $(round(points[i][2]; digits=2))"
+        ], "\n")
+    end
+
+    function emphasise()
+        points = Point2f[]
+        colors = RGBAf[]
+        sources = Tuple{Int, Int}[]
+        current = hovered[]
+        for (strand, (gene, buffer)) in enumerate(buffers)
+            isnothing(current) && break
+            color = to_color(get(group_colors, gene, :gray))
+            for (i, (point, key)) in enumerate(zip(buffer[].points, buffer[].keys))
+                isfinite(point[1]) && related(current, key) || continue
+                if !isempty(sources) && last(sources) != (strand, i - 1)
+                    push!(points, Point2f(NaN, NaN))
+                    push!(colors, color)
+                    push!(sources, (0, 0))
+                end
+                push!(points, point)
+                push!(colors, color)
+                push!(sources, (strand, i))
+            end
+        end
+        highlight[] = (; points, colors, sources)
+    end
 
     for ((gene, sampled), entries) in strands
         data = map(window) do view
             points = Point2f[]
             owners = String[]
+            keys = String[]
 
             for entry in entries
                 (entry.to < view.from || entry.from > view.to) && continue
@@ -424,35 +484,35 @@ function render!(
                 if !isempty(points)
                     push!(points, Point2f(NaN, NaN))
                     push!(owners, "")
+                    push!(keys, "")
                 end
                 for (t, y) in zip(series.ts, series.ys)
                     push!(points, Point2f(t, y))
                     push!(owners, entry.describe_at(t))
+                    push!(keys, entry.key)
                 end
 
                 display_to = min(entry.to, view.to)
                 if !sampled && last(series.ts) < display_to
                     push!(points, Point2f(display_to, last(series.ys)))
                     push!(owners, entry.describe_at(display_to))
+                    push!(keys, entry.key)
                 end
             end
 
-            (; points, owners)
+            (; points, owners, keys)
         end
 
         current = Ref(data[])
-        push!(buffers, current)
+        push!(buffers, gene => current)
+        strand = length(buffers)
 
-        inspector_label = (_, i, _) -> begin
-            buffer = current[]
-            checkbounds(Bool, buffer.points, i) && !isempty(buffer.owners[i]) || return ""
-            point = buffer.points[i]
-            join([
-                "gene: $gene",
-                "path: $(buffer.owners[i])",
-                "time: $(round(point[1]; digits=2))",
-                "value: $(round(point[2]; digits=2))",
-            ], "\n")
+        inspector_label = (_, i, _) -> label_at(strand, i)
+        inspector_hover = (inspector, plot, i) -> begin
+            label = label_at(strand, i)
+            isempty(label) && return false
+            hovered[] == current[].keys[i] || (hovered[] = current[].keys[i])
+            WGLMakie.Makie.show_data(inspector, plot, i)
         end
         color = get(group_colors, gene, :gray)
         plot = sampled && !connect_samples ?
@@ -461,25 +521,18 @@ function render!(
                 current[].points;
                 color,
                 alpha=dimming,
-                markersize=3,
+                markersize=thickness,
                 inspector_label,
-            ) :
-            sampled ?
-            scatterlines!(
-                axis,
-                current[].points;
-                color,
-                alpha=dimming,
-                linewidth=0.75,
-                markersize=3,
-                inspector_label,
+                inspector_hover,
             ) :
             lines!(
                 axis,
                 current[].points;
                 color,
                 alpha=dimming,
+                linewidth=thickness,
                 inspector_label,
+                inspector_hover,
             )
 
         on(data) do updated
@@ -488,13 +541,21 @@ function render!(
         end
     end
 
+    highlight_label = (_, i, _) -> label_at(get(highlight[].sources, i, (0, 0))...)
+    for (linewidth, color) in ((emphasis + 3, halo), (emphasis, lift(current -> current.colors, highlight)))
+        lines!(axis, lift(current -> current.points, highlight); color, linewidth, inspector_label=highlight_label)
+    end
+
+    on(_ -> emphasise(), hovered)
+    on(_ -> emphasise(), window)
+
     update_y = function (_...)
         view = window[]
         fit_y!(
             axis,
             (
                 point[2]
-                for buffer in buffers
+                for (_, buffer) in buffers
                 for point in buffer[].points
                 if isfinite(point[2]) && view.from <= point[1] <= view.to
             ),
@@ -515,7 +576,10 @@ function render!(
     selected_genes,
     window,
     max_branches,
-    dimming,
+    thickness,
+    hovered,
+    halo,
+    emphasis,
     connect_samples=false,
 )
     grouped = branches_by_dimension(
@@ -610,7 +674,8 @@ function render(
     aggregate_mode=:raw,
     gene_limit=10,
     max_branches=400,
-    dimming=0.7,
+    thickness=2,
+    emphasis=3,
     connect_samples=false,
     instants=(),
 )
@@ -628,6 +693,8 @@ function render(
     from, to = extent(trajectories)
     margin = 0.005 * (to - from)
     from, to = from - margin, to + margin
+    hovered = Observable{Union{Nothing, String}}(nothing)
+    halo = contrast(WGLMakie.Makie.theme(:backgroundcolor)[])
 
     for (row, kind) in enumerate(tracks)
         type = seriestype(kind)
@@ -667,7 +734,10 @@ function render(
                 selected_genes,
                 window,
                 max_branches,
-                dimming,
+                thickness,
+                hovered,
+                halo,
+                emphasis,
                 connect_samples,
             )
         else
@@ -680,6 +750,7 @@ function render(
                 selected_genes,
                 window,
                 max_branches,
+                hovered,
             )
         end
     end
@@ -698,6 +769,9 @@ function render(
 
     length(axes) > 1 && linkxaxes!(axes...)
 
-    DataInspector(figure; fontsize=12, show_bbox_indicators=false)
+    inspector = DataInspector(figure; fontsize=12, show_bbox_indicators=false)
+    on(inspector.plot.visible) do visible
+        visible || isnothing(hovered[]) || (hovered[] = nothing)
+    end
     figure
 end

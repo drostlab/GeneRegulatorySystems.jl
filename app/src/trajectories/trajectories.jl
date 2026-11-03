@@ -22,11 +22,31 @@ include("render.jl")
 include("phase.jl")
 include("distributions.jl")
 
+# TODO: add this upstream to Makie
+function dismiss_on_leave(figure)
+    on(events(figure).entered_window) do inside
+        inspector = figure.scene.data_inspector
+        inside || isnothing(inspector) || (inspector.plot.visible[] = false)
+    end
+end
+
 embed(render, theme::Theme, children...) = Bonito.App() do
-    with_theme(theme) do
-        Bonito.DOM.div(
-            WGLMakie.WithConfig(render(); resize_to = (:parent, nothing)),
+    with_theme(theme; Lines = (; linecap = :round, joinstyle = :round)) do
+        figure = render()
+        entered = events(figure).entered_window
+        dismiss_on_leave(figure)
+        container = Bonito.DOM.div(
+            WGLMakie.WithConfig(figure; resize_to = (:parent, nothing)),
             children...;
+            style = "width: 100%; height: 100%;",
+        )
+        Bonito.DOM.div(
+            container,
+            Bonito.js"""
+                const container = $(container)
+                container.addEventListener("mouseenter", () => $(entered).notify(true))
+                container.addEventListener("mouseleave", () => $(entered).notify(false))
+            """;
             style = "width: 100%; height: 100%;",
         )
     end

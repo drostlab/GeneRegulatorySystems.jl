@@ -160,7 +160,8 @@ function link(shared::Shared, observable)
     Bonito.DOM.span(anchor, Bonito.js"""
         $(Bonito.JSString(STORE))
         const state = window.__grs_page_state.connect($(shared.key), "makie")
-        const alive = () => $(anchor).isConnected || (state.dispose(), false)
+        const anchor = $(anchor)
+        const alive = () => anchor.isConnected || (state.dispose(), false)
         state.changed(values => {
             if (!alive()) return
             const value = values[0] ?? ""

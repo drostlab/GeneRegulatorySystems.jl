@@ -249,7 +249,7 @@ end
 function render(
     projection::Projection;
     emphasis=3,
-    dimming=0.4,
+    thickness=2,
     budget=20_000,
     connect_samples=false,
     selection=Observable(""),
@@ -311,52 +311,61 @@ function render(
         Consume(false)
     end
 
-    background = Colors.color(to_color(WGLMakie.Makie.theme(:backgroundcolor)[]))
-    halo = Colors.gray(Colors.Gray(background)) < 0.5 ? :white : :black
+    halo = contrast(WGLMakie.Makie.theme(:backgroundcolor)[])
+    dimming = opacity(length(unique(values(projection.lineages))))
 
-    hover_with(source) = (inspector, plot, i) -> begin
+    hover_with(source; follow=true) = (inspector, plot, i) -> begin
         j = get(source.sources, i, 0)
         iszero(j) && return false
         current = get(projection.lineages, projection.states[j].catenation, "")
-        hovered[] == current || (hovered[] = current; emphasise())
+        follow && hovered[] != current && (hovered[] = current; emphasise())
         WGLMakie.Makie.show_data(inspector, plot, i)
     end
     tooltip_for(source) = (_, i, _) -> begin
         j = source.sources[i]
         "branch: $(projection.descriptions[j])\ntime: $(round(projection.states[j].t; digits=2))"
     end
-    inspection(source) = (; inspector_hover=hover_with(source), inspector_label=tooltip_for(source))
+    inspection(source; follow=true) =
+        (; inspector_hover=hover_with(source; follow), inspector_label=tooltip_for(source))
 
-    lines!(axis, continuous.points; color=continuous.colors, alpha=dimming, inspection(continuous)...)
-    connect_samples && lines!(
+    lines!(
         axis,
-        discrete.points;
-        color=discrete.colors,
+        continuous.points;
+        color=continuous.colors,
         alpha=dimming,
-        linewidth=0.75,
-        inspection(discrete)...,
+        linewidth=thickness,
+        inspection(continuous)...,
     )
-    scatter!(
-        axis,
-        discrete.points;
-        color=discrete.colors,
-        alpha=dimming,
-        markersize=3,
-        inspection(discrete)...,
-    )
+    connect_samples ?
+        lines!(
+            axis,
+            discrete.points;
+            color=discrete.colors,
+            alpha=dimming,
+            linewidth=thickness,
+            inspection(discrete)...,
+        ) :
+        scatter!(
+            axis,
+            discrete.points;
+            color=discrete.colors,
+            alpha=dimming,
+            markersize=thickness,
+            inspection(discrete)...,
+        )
     lines!(
         axis,
         highlight_points;
         color=halo,
         linewidth=emphasis + 3,
-        inspection(highlighted)...,
+        inspection(highlighted; follow=false)...,
     )
     lines!(
         axis,
         highlight_points;
         color=highlight_colors,
         linewidth=emphasis,
-        inspection(highlighted)...,
+        inspection(highlighted; follow=false)...,
     )
 
     emphasise()
