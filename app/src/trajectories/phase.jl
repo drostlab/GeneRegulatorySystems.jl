@@ -247,6 +247,7 @@ function render(
     budget=20_000,
     connect_samples=false,
     selection=Observable(""),
+    hovered=Observable{Union{Nothing, String}}(nothing),
 )
     n = min(size(projection.coords, 1), 3)
     figure = Figure()
@@ -270,7 +271,6 @@ function render(
     highlight_points = Observable(typeof(blank)[])
     highlight_colors = Observable(RGBf[])
     highlighted = (; sources=Int[])
-    hovered = Ref{Union{Nothing, String}}(nothing)
 
     function emphasise()
         current = something(hovered[], selection[])
@@ -296,14 +296,10 @@ function render(
         highlight_colors[] = shades
     end
 
-    on(_ -> emphasise(), selection)
+    on(_ -> emphasise(), axis.scene, selection)
+    on(_ -> emphasise(), axis.scene, hovered)
 
-    register_interaction!(axis, :select_branch) do event, axis
-        if event isa MouseEvent && event.type == WGLMakie.Makie.MouseEventTypes.leftclick
-            selection[] = something(hovered[], "")
-        end
-        Consume(false)
-    end
+    selectable!(axis, hovered, selection)
 
     halo = contrast(WGLMakie.Makie.theme(:backgroundcolor)[])
     dimming = opacity(length(unique(values(projection.lineages))))
@@ -312,7 +308,9 @@ function render(
         j = get(source.sources, i, 0)
         iszero(j) && return false
         current = get(projection.lineages, projection.states[j].catenation, "")
-        follow && hovered[] != current && (hovered[] = current; emphasise())
+        isempty(selection[]) || related(selection[], current) || return false
+        deeper = Scheduling.ispathprefix(something(hovered[], selection[]), current)
+        (follow || deeper) && hovered[] != current && (hovered[] = current)
         WGLMakie.Makie.show_data(inspector, plot, i)
     end
     tooltip_for(source) = (_, i, _) -> begin
@@ -365,7 +363,7 @@ function render(
     emphasise()
     inspector = DataInspector(figure; fontsize=12)
     on(inspector.plot.visible) do visible
-        visible || isnothing(hovered[]) || (hovered[] = nothing; emphasise())
+        visible || isnothing(hovered[]) || (hovered[] = nothing)
     end
     figure
 end

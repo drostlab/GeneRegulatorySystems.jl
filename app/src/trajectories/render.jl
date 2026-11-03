@@ -43,6 +43,25 @@ function bounded_interaction(interaction, from, to; stop_at_extent=false)
     end
 end
 
+focus(grouped, ::Nothing) = grouped
+
+function focus(grouped, current::String)
+    focused = Dict(
+        dimension => filter(entry -> related(current, entry.key), entries)
+        for (dimension, entries) in grouped
+    )
+    all(isempty, values(focused)) ? grouped : focused
+end
+
+function selectable!(axis, hovered, selection)
+    register_interaction!(axis, :select_branch) do event, axis
+        if event isa MouseEvent && event.type == WGLMakie.Makie.MouseEventTypes.leftclick
+            selection[] = something(hovered[], "")
+        end
+        Consume(false)
+    end
+end
+
 function constrain_x!(axis, from, to)
     from < to || return
 
@@ -325,12 +344,8 @@ function render!(
         selected_genes,
         max_branches,
     )
-    rows = map(window, hovered) do view, current
-        focused = isnothing(current) ? grouped : Dict(
-            dimension => filter(entry -> related(current, entry.key), entries)
-            for (dimension, entries) in grouped
-        )
-        aggregate(FractionSeries, focused; view...)
+    rows = map(axis.scene, window, hovered) do view, current
+        aggregate(FractionSeries, focus(grouped, current); view...)
     end
     dimensions = sort!(collect(keys(rows[])); by=dimension -> dimension.group)
     row_numbers = Dict(
@@ -546,7 +561,7 @@ function render!(
         lines!(axis, lift(current -> current.points, highlight); color, linewidth, inspector_label=highlight_label)
     end
 
-    on(_ -> emphasise(), hovered)
+    on(_ -> emphasise(), axis.scene, hovered)
     on(_ -> emphasise(), window)
 
     update_y = function (_...)
@@ -589,8 +604,8 @@ function render!(
         selected_genes,
         max_branches,
     )
-    rows = map(window) do view
-        aggregate(CountSeries, grouped; view...)
+    rows = map(axis.scene, window, hovered) do view, current
+        aggregate(CountSeries, focus(grouped, current); view...)
     end
     dimensions = sort!(collect(keys(rows[])); by=dimension -> dimension.group)
 
@@ -678,6 +693,8 @@ function render(
     emphasis=3,
     connect_samples=false,
     instants=(),
+    hovered=Observable{Union{Nothing, String}}(nothing),
+    selection=Observable(""),
 )
     aggregate_mode = Symbol(aggregate_mode)
     aggregate_mode in (:raw, :aggregate) || throw(
@@ -693,7 +710,6 @@ function render(
     from, to = extent(trajectories)
     margin = 0.005 * (to - from)
     from, to = from - margin, to + margin
-    hovered = Observable{Union{Nothing, String}}(nothing)
     halo = contrast(WGLMakie.Makie.theme(:backgroundcolor)[])
 
     for (row, kind) in enumerate(tracks)
@@ -708,7 +724,6 @@ function render(
             yzoomlock=true,
             xpanlock=false,
             ypanlock=true,
-            panbutton=Mouse.left,
             (type === CountSeries ? (ytickformat = values -> [
                 v == round(v) ? string(round(Int, v)) : string(v)
                 for v in values
@@ -716,6 +731,7 @@ function render(
         )
         push!(axes, axis)
         constrain_x!(axis, from, to)
+        aggregate_mode === :raw && selectable!(axis, hovered, selection)
 
         catenations = get(
             trajectories.catenations,

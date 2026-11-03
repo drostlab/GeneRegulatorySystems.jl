@@ -253,9 +253,10 @@ dashboard_styles = @htl("""
             grid-template-areas:
                 "header          header   header"
                 "schedule-header progress network-header"
+                "left            left     network-header"
                 "left            left     network"
                 "left            left     trajectory";
-            grid-template-rows: auto auto auto 1fr;
+            grid-template-rows: auto auto auto auto 1fr;
             align-items: start;
             gap: 1rem;
             max-width: none;
@@ -1227,9 +1228,27 @@ dark_mode_probe = @bind dark_mode DarkMode()
 # ╔═╡ 46e6e139-ddd4-4388-bf10-6ee496a1374a
 plot_theme = dark_mode ? theme_dark() : Theme()
 
+# ╔═╡ 9b1c47e3-5a82-4f07-b3e6-08d27f4a5169
+distribution_view =
+    if !isnothing(distribution_samples)
+        Trajectories.embed(plot_theme) do
+            isnothing(distribution_reference) ?
+                Trajectories.render(distribution_samples; group_colors) :
+                Trajectories.render(
+                    distribution_samples,
+                    distribution_reference;
+                    group_colors,
+                )
+        end
+    end
+
+# ╔═╡ 7ef1651a-2d1f-4200-b5d5-3a95819aed9a
+hovered_branch = Bonito.Observable{Union{Nothing, String}}(nothing)
+
 # ╔═╡ 68f213e4-a64b-4aa1-bf77-9b131e657193
 trajectory_view = if run_simulation
-    Trajectories.embed(plot_theme) do
+    trajectory_selection = Bonito.Observable("")
+    Trajectories.embed(plot_theme, PageState.link(path_selection, trajectory_selection)) do
         Trajectories.render(
             trajectories;
             tracks=selected_tracks,
@@ -1238,6 +1257,8 @@ trajectory_view = if run_simulation
             aggregate_mode,
             connect_samples,
             instants=instant_marks,
+            hovered=hovered_branch,
+            selection=trajectory_selection,
         )
     end
 end;
@@ -1297,23 +1318,9 @@ dashboard_area(
 phase_view = if !isnothing(phase_projection)
     phase_selection = Observable("")
     Trajectories.embed(plot_theme, PageState.link(path_selection, phase_selection)) do
-        Trajectories.render(phase_projection; connect_samples, selection=phase_selection)
+        Trajectories.render(phase_projection; connect_samples, selection=phase_selection, hovered=hovered_branch)
     end
 end
-
-# ╔═╡ 9b1c47e3-5a82-4f07-b3e6-08d27f4a5169
-distribution_view =
-    if !isnothing(distribution_samples)
-        Trajectories.embed(plot_theme) do
-            isnothing(distribution_reference) ?
-                Trajectories.render(distribution_samples; group_colors) :
-                Trajectories.render(
-                    distribution_samples,
-                    distribution_reference;
-                    group_colors,
-                )
-        end
-    end
 
 # ╔═╡ 3c7f1052-9e6a-4144-b5f8-2a06c419731e
 dashboard_area(
@@ -1413,6 +1420,7 @@ dashboard_area(
 # ╠═375349c2-33bb-45fb-b412-672c678b93b3
 # ╠═4a29ccba-5cdc-47e1-953c-5eee6d1edbe7
 # ╠═46e6e139-ddd4-4388-bf10-6ee496a1374a
+# ╠═7ef1651a-2d1f-4200-b5d5-3a95819aed9a
 # ╠═fca91735-9e3a-4f6d-a6a0-9d3dd0f3d9be
 # ╠═b3f27a51-6c84-4d19-9f52-8e1c47a0d6b2
 # ╠═0187c445-f7a0-4eae-b55d-2bd955df2c2c

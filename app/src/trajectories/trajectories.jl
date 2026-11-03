@@ -30,11 +30,20 @@ function dismiss_on_leave(figure)
     end
 end
 
+function unsubscribe!(scene)
+    foreach(off, scene.deregister_callbacks)
+    empty!(scene.deregister_callbacks)
+    foreach(unsubscribe!, scene.children)
+end
+
 embed(render, theme::Theme, children...) = Bonito.App() do
     with_theme(theme; Lines = (; linecap = :round, joinstyle = :round)) do
         figure = render()
         entered = events(figure).entered_window
         dismiss_on_leave(figure)
+        on(events(figure).window_open) do open
+            open || unsubscribe!(figure.scene)
+        end
         container = Bonito.DOM.div(
             WGLMakie.WithConfig(figure; resize_to = (:parent, nothing)),
             children...;
