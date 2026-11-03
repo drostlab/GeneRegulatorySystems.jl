@@ -83,9 +83,14 @@ function describe(records, catenation::Catenation)
     describe(lineage(records, catenation), label)
 end
 
-function describer(records, catenation::Catenation)
+function record_at(records, catenation::Catenation)
     starts = [records[i].from for i in catenation.segments]
-    t -> let record = records[catenation.segments[max(1, searchsortedlast(starts, t))]]
+    t -> records[catenation.segments[max(1, searchsortedlast(starts, t))]]
+end
+
+function describer(records, catenation::Catenation)
+    at = record_at(records, catenation)
+    t -> let record = at(t)
         describe(branch(record.path), record.label)
     end
 end

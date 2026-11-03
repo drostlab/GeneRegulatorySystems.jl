@@ -15,8 +15,8 @@ function snapshots(trace::Trace{<:AbstractVector}, genes, track; resolution=200)
     column = Vector{Float64}(undef, length(dimensions))
     states = @NamedTuple{catenation::Int, t::Float64}[]
     descriptions = String[]
+    declared = String[]
     lineages = Dict{Int, String}()
-    colors = Dict{Int, String}()
     sampled = Dict{Int, Bool}()
 
     for (id, catenation) in enumerate(catenations)
@@ -25,8 +25,8 @@ function snapshots(trace::Trace{<:AbstractVector}, genes, track; resolution=200)
         snapshot = all(i -> records[i].from == records[i].to, catenation.segments)
         snapshot || from < to || continue
         describe_at = describer(records, catenation)
+        at = record_at(records, catenation)
         lineages[id] = lineage(records, catenation)
-        colors[id] = catenation_color(records, catenation)
         sampled[id] = snapshot
 
         times = snapshot ?
@@ -38,11 +38,12 @@ function snapshots(trace::Trace{<:AbstractVector}, genes, track; resolution=200)
             append!(values, column)
             push!(states, (; catenation=id, t))
             push!(descriptions, describe_at(t))
+            push!(declared, at(t).color)
         end
     end
 
     X = reshape(values, length(dimensions), :)
-    (; X, states, descriptions, lineages, colors, sampled, dimensions)
+    (; X, states, descriptions, declared, lineages, sampled, dimensions)
 end
 
 struct Projection
@@ -133,6 +134,11 @@ function palette(::Val{:time}, snapshot, _group_colors, _temperature)
     ]
 end
 
+palette(::Val{:schedule}, snapshot, _group_colors, _temperature) = [
+    isempty(color) ? RGBf(0.6, 0.6, 0.6) : RGBf(Colors.RGB(to_color(color)))
+    for color in snapshot.declared
+]
+
 Projection(::Nothing, components) = Projection(
     zeros(Float64, max(components, 2), 0),
     @NamedTuple{catenation::Int, t::Float64}[],
@@ -154,18 +160,6 @@ function project(
     size(snapshot.X, 2) < 3 && return Projection(nothing, components)
     coloring = Symbol(coloring)
     colors = palette(Val(coloring), snapshot, group_colors, temperature)
-    swatches = Dict(
-        id => try
-            isempty(declared) ? nothing : RGBf(Colors.RGB(to_color(declared)))
-        catch
-            nothing
-        end
-        for (id, declared) in snapshot.colors
-    )
-    for (i, state) in enumerate(snapshot.states)
-        declared = get(swatches, state.catenation, nothing)
-        isnothing(declared) || (colors[i] = declared)
-    end
     chosen = method(snapshot.X, components)
     coords = try
         project(chosen, snapshot.X, components)
@@ -349,8 +343,8 @@ function render(
             axis,
             discrete.points;
             color=discrete.colors,
-            alpha=dimming,
-            markersize=thickness,
+            alpha=min(2dimming, 0.9),
+            markersize=2thickness,
             inspection(discrete)...,
         )
     lines!(

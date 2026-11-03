@@ -164,7 +164,7 @@ md"""
 instants_control = @bind show_instants PlutoUI.Switch(default=true);
 
 # ╔═╡ e1b7c3d4-6f2a-4b8e-9c01-5d7a2e9f3b46
-connect_samples_control = @bind connect_samples PlutoUI.Switch(default=false);
+connect_samples_control = @bind connect_samples PlutoUI.Switch(default=true);
 
 # ╔═╡ 7afe83d0-f91c-4d6d-80bb-82d634af59ed
 trajectory_display_control = @bind aggregate_mode PlutoUI.Select(
@@ -194,7 +194,7 @@ phase_components_control = @bind phase_components PlutoUI.Select(
 
 # ╔═╡ 6d1f40a8-5b72-4c93-8e14-2a07c9f3bd65
 phase_coloring_control = @bind phase_coloring PlutoUI.Select(
-    [:genes => "genes", :time => "time"];
+    [:genes => "genes", :time => "time", :schedule => "schedule"];
     default=:genes,
 );
 
@@ -345,11 +345,21 @@ dashboard_styles = @htl("""
         &.queued pluto-progress-bar {
             background-size: 0% 100% !important;
             color: transparent;
+            position: relative;
+        }
+
+        &.queued pluto-progress-bar::before {
+            content: "0%";
+            color: var(--pluto-output-color, currentColor);
+            position: absolute;
+            inset: 0;
+            padding: inherit;
+            display: grid;
+            align-items: center;
         }
 
         & pluto-progress-bar-container {
-            flex: 1;
-            min-width: 3rem;
+            flex: 0 0 7rem;
             outline: 1px solid color-mix(in srgb, currentColor 15%, transparent);
             outline-offset: -1px;
         }
@@ -1012,6 +1022,7 @@ simulation = let
     if run_simulation && !isnothing(schedule!)
         try
             progress_id = Base.UUID(rand(UInt128))
+            Base.@logmsg ProgressLogging.ProgressLevel "" progress=0.0 _id=progress_id
             schedule!(;
                 trace=sink,
                 consolidated_progress = fraction_reporter(total_duration) do fraction

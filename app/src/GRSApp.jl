@@ -74,7 +74,7 @@ end
             Trajectories.select(trace, ""), groups, "proteins")
         projections = [
             Trajectories.project(snapshot; components, group_colors = colors, coloring)
-            for components in (2, 3) for coloring in (:genes, :time)
+            for components in (2, 3) for coloring in (:genes, :time, :schedule)
         ]
         samples = Trajectories.counts(Trajectories.select(trace, ""), groups, "proteins")
         instants = Trajectories.instants(sink; path = "", channel = nothing)

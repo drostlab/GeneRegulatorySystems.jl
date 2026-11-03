@@ -520,8 +520,8 @@ function render!(
                 axis,
                 current[].points;
                 color,
-                alpha=dimming,
-                markersize=thickness,
+                alpha=min(2dimming, 0.9),
+                markersize=2thickness,
                 inspector_label,
                 inspector_hover,
             ) :
