@@ -88,7 +88,7 @@ Models.counts(x::JumpState) = Dict(
     normalize_name(s) => x.integrator[s]
     for s in SymbolicIndexingInterface.variable_symbols(x.integrator)
 )
-Models.randomness(x::JumpState) = x.integrator.cb.affect!.rng
+Models.randomness(x::JumpState) = x.integrator.rng
 
 function Models.empty_trajectory!(x::JumpState)
     empty!(x.integrator.sol.u)
@@ -164,21 +164,8 @@ Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")
 
 function JumpState(x::FlatState; f!::JumpModel)
     problem = deepcopy(f!.problem)
-    # ^ Given that JumpProcesses.init below with alias_jump = false would just
-    # deepcopy the whole JumpProblem anyway, we will do it ourselves here so we
-    # can rest easy in the knowledge that f!.problem is never mutated.
-
-    Random.setstate!(
-        problem.jump_callback.discrete_callbacks[1].condition.rng,
-        Random.getstate(Models.randomness(x)),
-    )
-    # ^ The integrator below will alias this RNG instance, which will then
-    # become the returned JumpState's authoritative randomness. We need to
-    # control it here already because integrator initialization below will
-    # consume entropy! (Part of it will even taint problem, but we will then
-    # make no further reference to it.) We know that the two RNGs have the same
-    # type because we ensured that at construction. The Models.randomness(x)
-    # instance will no longer be carried forward.
+    # ^ The integrator below will alias components from problem; we copy it here
+    # to ensure f!.problem is never mutated.
 
     integrator = JumpProcesses.init(
         problem,
@@ -189,8 +176,7 @@ function JumpState(x::FlatState; f!::JumpModel)
             ReportProgress(),
             save_positions = (false, false),
         ),
-        alias_jump = true,
-        # ^ Might as well allow aliasing since we cloned the JumpProblem anyway.
+        rng = Models.randomness(x),
     )
     integrator.t = Models.t(x)
     for s in SymbolicIndexingInterface.variable_symbols(integrator)

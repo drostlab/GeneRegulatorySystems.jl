@@ -32,6 +32,9 @@ function customized_jump_problem(;
     )
     indices = Dict(reverse.(enumerate(ModelingToolkitBase.unknowns(system))))
     jumps = ModelingToolkitBase.jumps(system)
+    mass_action_jumps = JumpProcesses.MassActionJump[
+        x for x in jumps if x isa JumpProcesses.MassActionJump
+    ]
     ModelingToolkitBase.JumpProblem(
         SciMLBase.DiscreteProblem(
             SciMLBase.DiscreteFunction{true, true}(
@@ -48,18 +51,12 @@ function customized_jump_problem(;
         method,
         JumpProcesses.JumpSet(
             massaction_jumps = ModelingToolkitBase.assemble_maj(
-                JumpProcesses.MassActionJump[
-                    x
-                    for x in jumps
-                    if x isa JumpProcesses.MassActionJump
-                ],
+                mass_action_jumps,
                 indices,
                 ModelingToolkitBase.JumpSysMajParamMapper(
                     system,
-                    parameters;
-                    jseqs = jumps,
-                    rateconsttype = Float64,
-                )
+                    mass_action_jumps,
+                ),
             ),
             constant_jumps =
                 assemble_constant_rate_jumps(system; jumps, indices),
@@ -72,10 +69,8 @@ function customized_jump_problem(;
             reset_jumps = true,
             tspan = (0.0, Inf),
         ),
-        scale_rates = false,
         nocopy = true,
         save_positions = (false, false),
-        rng = Random.Xoshiro(),
     )
 end
 
