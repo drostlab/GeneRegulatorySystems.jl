@@ -94,9 +94,9 @@ You can export results from their native (long) format to a wide format using th
 
 When used as a library, the package can just be updated using Julia's package manager. If it was installed by cloning this repository as described in [Setup](#setup), you can update by checking out the new version using Git. The `tools/grs` wrapper script will automatically re-instantiate the changed tools' environments on first use.
 
-[docs]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/
-[docs-overview]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/overview/
-[docs-experiment]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/
-[docs-experiment-results]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/#Results-format
-[docs-inspect]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/inspect/
-[docs-export]: https://drostlab.github.io/GeneRegulatorySystems.jl/stable/tools/export/
+[docs]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/
+[docs-overview]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/overview/
+[docs-experiment]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/
+[docs-experiment-results]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/experiment/#Results-format
+[docs-inspect]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/inspect/
+[docs-export]: https://lmshk.github.io/GeneRegulatorySystems.jl/stable/tools/export/
