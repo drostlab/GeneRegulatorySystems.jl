@@ -496,65 +496,75 @@ representation(x::Definition) = Dict{Symbol, Any}(
     )
 )
 
-Models.describe(::ReactionSystem) = Models.Label("Catalyst ReactionSystem")
-
-Models.describe(definition::Definition) = Models.Descriptions([
-    Models.Label(
-        "'regulation/v1' network with $(length(definition.genes)) genes"
-    )
-    Models.Network(
-        species_groups = [gene.name for gene in definition.genes],
-        links = mapreduce(vcat, definition.genes) do gene
-            vcat(
-                map(gene.activation.slots) do (; from, at, k)
-                    properties = Dict(:at => at, :k => k)
-                    (; to = gene.name, from, kind = :activation, properties)
-                end,
-                map(gene.repression.slots) do (; from, at, k)
-                    properties = Dict(:at => at, :k => k)
-                    (; to = gene.name, from, kind = :repression, properties)
-                end,
-                map(gene.proteolysis.slots) do (; from, k)
-                    properties = Dict(:k => k)
-                    (; to = gene.name, from, kind = :proteolysis, properties)
-                end,
-            )
-        end,
-        aliases = Dict(
-            Symbol("$(gene.name).proteins") => gene.name
-            for gene in definition.genes
-        ),
-    )
-    Models.ReactionNetwork(definition.reactions)
-])
+function Models.describe(definition::Definition)
+    genes = Set(gene.name for gene in definition.genes)
+    regulator(name) = name in genes ? Symbol(name, ".proteins") : name
+    function modulation(gene, kind, from)
+        reaction = Symbol(gene, ".", kind === :activation ? :deactivation : :activation)
+        (; kind = :inhibits, from = regulator(from), to = reaction)
+    end
+    Models.Descriptions([
+        Models.Label(
+            "'regulation/v1' network with $(length(definition.genes)) genes"
+        )
+        Models.RegulatoryNetwork(
+            species_groups = [gene.name for gene in definition.genes],
+            links = mapreduce(vcat, definition.genes) do gene
+                vcat(
+                    [
+                        (;
+                            to = gene.name,
+                            slot.from,
+                            kind,
+                            modulation = modulation(gene.name, kind, slot.from),
+                            properties = Dict(:at => slot.at, :k => slot.k),
+                        )
+                        for (kind, regulation) in ((:activation, gene.activation), (:repression, gene.repression))
+                        for slot in regulation.slots
+                    ],
+                    map(gene.proteolysis.slots) do (; from, k)
+                        properties = Dict(:k => k)
+                        (; to = gene.name, from, kind = :proteolysis, properties)
+                    end,
+                )
+            end,
+            shared_species = Set([definition.polymerases, definition.ribosomes, definition.proteasomes]),
+        )
+        Models.ReactionNetwork(definition.reactions)
+    ])
+end
 
 cascade(name::Symbol, polymerases, ribosomes, proteasomes) =
     @network_component $name begin
         @parameters activation deactivation
         initiation, active + $polymerases --> active + elongations,
-            [probe = :initiated]
-        abortion, elongations --> $polymerases, [probe = :aborted]
+            [probe = :initiated, kind = :initiation, owner = $name]
+        abortion, elongations --> $polymerases,
+            [probe = :aborted, kind = :abortion, owner = $name]
         translation, mrnas + $ribosomes --> mrnas + proteins + $ribosomes,
-            [probe = :translated]
-        mrna_decay, mrnas --> 0, [probe = :mrnas_decayed]
+            [probe = :translated, kind = :translation, owner = $name]
+        mrna_decay, mrnas --> 0,
+            [probe = :mrnas_decayed, kind = :mrna_decay, owner = $name]
         protein_decay, proteins + $proteasomes --> $proteasomes,
-            [probe = :proteins_decayed]
+            [probe = :proteins_decayed, kind = :protein_decay, owner = $name]
     end
 
 cascade(g::Gene{ProkaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
     cascade(g.name, polymerases, ribosomes, proteasomes) &
         @network_component begin
             transcription, elongations --> mrnas + $polymerases,
-                [probe = :transcribed]
+                [probe = :transcribed, kind = :transcription, owner = $(g.name)]
         end
 
 cascade(g::Gene{EukaryoteBaseRates}; polymerases, ribosomes, proteasomes) =
     cascade(g.name, polymerases, ribosomes, proteasomes) &
         @network_component begin
             transcription, elongations --> premrnas + $polymerases,
-                [probe = :transcribed]
-            premrna_decay, premrnas --> 0, [probe = :premrnas_decayed]
-            processing, premrnas --> mrnas, [probe = :processed]
+                [probe = :transcribed, kind = :transcription, owner = $(g.name)]
+            premrna_decay, premrnas --> 0,
+                [probe = :premrnas_decayed, kind = :premrna_decay, owner = $(g.name)]
+            processing, premrnas --> mrnas,
+                [probe = :processed, kind = :processing, owner = $(g.name)]
         end
 
 function gene(g::Gene; polymerases, ribosomes, proteasomes, t)
@@ -594,11 +604,14 @@ function assemble_reactions(
     reactions::AbstractVector{Models.Reaction};
     t,
     genes = nothing,
+    owner = nothing,
 )
+    scope = isnothing(owner) ? Pair{Symbol, Any}[] : Pair{Symbol, Any}[:owner => owner]
     # Bidirectional pairs are broken up, and reactions are only included if
     # their rate is nonzero.
     mapreduce(vcat, reactions, init = Reaction[]) do r
         (; from, k₊, k₋, to, probe) = r
+        name = isnothing(owner) ? r.name : Symbol(owner, ".", r.name)
         result = Reaction[]
         probe_forward = k₋ == 0.0 ? probe : Symbol("$(probe)_forward")
         probe_reverse = k₊ == 0.0 ? probe : Symbol("$(probe)_reverse")
@@ -610,7 +623,7 @@ function assemble_reactions(
                 species_reference.(keys(to.counts); t, genes),
                 collect(values(from.counts)),
                 collect(values(to.counts)),
-                metadata = [:probe => probe_forward],
+                metadata = [:probe => probe_forward, :kind => :reaction, :name => name, :direction => :forward, scope...],
             ),
         )
         k₋ > 0.0 && push!(
@@ -621,7 +634,7 @@ function assemble_reactions(
                 species_reference.(keys(from.counts); t, genes),
                 collect(values(to.counts)),
                 collect(values(from.counts)),
-                metadata = [:probe => probe_reverse],
+                metadata = [:probe => probe_reverse, :kind => :reaction, :name => name, :direction => :reverse, scope...],
             )
         )
         result
@@ -671,7 +684,7 @@ function regulation(
                     [active],
                     target.unique ? nothing : [inactive],
                     only_use_rate = true,
-                    metadata = [:probe => :deactivated],
+                    metadata = [:probe => :deactivated, :kind => :deactivation, :owner => target.name],
                 )
 
                 # ...repression (by tempering promoter activation)
@@ -680,13 +693,18 @@ function regulation(
                     target.unique ? nothing : [inactive],
                     [active],
                     only_use_rate = true,
-                    metadata = [:probe => :activated],
+                    metadata = [:probe => :activated, :kind => :activation, :owner => target.name],
                 )
 
                 # ...repression (by proteolysis)
                 map(target.proteolysis.slots) do (; from, k)
                     proteases = ParentScope(species_reference(from; t, genes))
-                    metadata = [:probe => Symbol("proteolyzed_by_$(from)")]
+                    metadata = [
+                        :probe => Symbol("proteolyzed_by_$(from)"),
+                        :kind => :proteolysis,
+                        :owner => target.name,
+                        :from => from,
+                    ]
                     if from == target.name
                         # This is a loop in the proteolysis repression network
                         # and means that the protein decays without another
@@ -703,7 +721,7 @@ function regulation(
                 end
 
                 # ...additional reactios scoped to this gene
-                assemble_reactions(target.reactions; t)
+                assemble_reactions(target.reactions; t, owner = target.name)
             ]
         end
 
