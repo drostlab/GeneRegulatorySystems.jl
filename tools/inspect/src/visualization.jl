@@ -334,6 +334,9 @@ attach_model!(figure, ::Models.Description; tellheight = true, _...) =
 attach_model!(figure, label::Models.Label; tellheight = true, _...) =
     Label(figure, label.label, tellwidth = false; tellheight)
 
+attach_model!(figure, reactions::Models.ReactionNetwork; tellheight = true, _...) =
+    Label(figure, "$(length(reactions.reactions)) reactions", tellwidth = false; tellheight)
+
 function attach_model!(
     figure,
     provenance::Models.Provenance;
@@ -380,7 +383,7 @@ function attach_model!(
     components = Dict(typeof(d) => d for d in composite.descriptions)
     attach_model!(
         figure,
-        components[Models.Network],
+        components[Models.RegulatoryNetwork],
         get(Models.Label, components, Models.Label),
         get(Models.ReactionNetwork, components, Models.ReactionNetwork);
         group_colors,
@@ -389,7 +392,7 @@ end
 
 function attach_model!(
     figure,
-    network::Models.Network,
+    network::Models.RegulatoryNetwork,
     label::Models.Label,
     reactions::Models.ReactionNetwork;
     group_colors,
@@ -406,11 +409,13 @@ function attach_model!(
         :massaction => (color = :gray, linestyle = :solid),
     )
 
+    groups = Set(network.species_groups)
+
     ungrouped = Symbol[]
     for reaction in reactions.reactions
         reagents = Iterators.flatten((reaction.from.counts, reaction.to.counts))
         for (species, _count) in reagents
-            union!(ungrouped, (get(network.aliases, species, species),))
+            union!(ungrouped, (something(Models.gene_of(species, groups), species),))
         end
     end
     setdiff!(ungrouped, network.species_groups)
@@ -462,8 +467,9 @@ function attach_model!(
         (kind, node) => i
         for (i, (kind, node, _properties)) in enumerate(nodes)
     )
-    for (alias, species) in network.aliases
-        nodes_index[(:species, alias)] = nodes_index[(:species, species)]
+    for reaction in reactions.reactions, reagents in (reaction.from, reaction.to), species in keys(reagents.counts)
+        gene = Models.gene_of(species, groups)
+        isnothing(gene) || (nodes_index[(:species, species)] = nodes_index[(:species, gene)])
     end
 
     links_by_edge = reduce(network.links, init = Dict()) do by_edge, link

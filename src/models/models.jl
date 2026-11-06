@@ -29,6 +29,21 @@ FlatState(x::FlatState) = FlatState(;
     randomness = copy(x.randomness),
 )
 
+function split_species(species::Symbol, groups::AbstractSet)
+    name = String(species)
+    position = findfirst('.', name)
+    while !isnothing(position)
+        gene = Symbol(name[1:prevind(name, position)])
+        gene in groups && return (; gene, species = name[nextind(name, position):end])
+        position = findnext('.', name, nextind(name, position))
+    end
+    nothing
+end
+
+gene_of(species::Symbol, groups) = gene_of(species, Set(groups))
+gene_of(species::Symbol, groups::AbstractSet) =
+    something(split_species(species, groups), (; gene = nothing)).gene
+
 
 """
     t(x)
@@ -299,24 +314,25 @@ e.g. to be added to a `JumpModel`.
 As a convenience, `"rates": [<forward>, <reverse>]` may alternatively by written
 as `"rate": <forward>`, setting `<reverse>` to zero.
 """
-@kwdef struct Reaction
+@kwdef struct Reaction{FR, RR}
     name::Symbol
     from::Reagents = Reagents()
     to::Reagents = Reagents()
-    k₊::Float64 = 0.0
-    k₋::Float64 = 0.0
+    k₊::FR = 0.0
+    k₋::RR = 0.0
     probe::Symbol = name
+    properties::Dict{Symbol, Any} = Dict{Symbol, Any}()
 end
 
 Specifications.cast(::Type{Vector{Reaction}}, xs::AbstractVector; context) =
     map(enumerate(xs)) do (i, x)
         name = "reaction_$(lpad(i, ndigits(length(xs)), '0'))"
-        Specifications.cast(Reaction, merge(Dict(:name => name), x); context)
+        Specifications.cast(Reaction{Float64, Float64}, merge(Dict(:name => name), x); context)
     end
 
-Specifications.cast(::Type{Reaction}, x::AbstractDict{Symbol}; context) =
+Specifications.cast(T::Type{<:Reaction}, x::AbstractDict{Symbol}; context) =
     @invoke Specifications.cast(
-        Reaction::Type,
+        T::Type,
         if haskey(x, :rates)
             merge(x, Dict(zip((:k₊, :k₋), x[:rates])))
         elseif haskey(x, :rate)
@@ -343,6 +359,7 @@ end
 
 Specifications.representation(x::Reagents) = x.counts
 Specifications.representation(x::Reaction) = Dict{Symbol, Any}(
+    :name => Specifications.representation(x.name),
     :from => Specifications.representation(x.from),
     :to => Specifications.representation(x.to),
     :rates => [x.k₊, x.k₋]
@@ -365,10 +382,10 @@ end
     label::String = ""
 end
 
-@kwdef struct Network <: Description
+@kwdef struct RegulatoryNetwork <: Description
     species_groups::Vector{Symbol}
     links
-    aliases::Dict{Symbol, Symbol} = Dict{Symbol, Symbol}()
+    shared_species::Set{Symbol} = Set{Symbol}()
 end
 
 @kwdef struct ReactionNetwork <: Description
