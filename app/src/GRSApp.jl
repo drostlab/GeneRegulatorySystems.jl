@@ -105,10 +105,10 @@ end
                     Trajectories.render(samples; group_colors = colors)
                 end
             ]
-            for app in apps
-                session = Bonito.Session()
-                show(IOBuffer(), Bonito.session_dom(session, app))
-                close(session)
+            Bonito.force_connection(Bonito.PlutoConnection) do
+                Bonito.force_asset_server(Bonito.NoServer) do
+                    foreach(app -> show(IOBuffer(), MIME"text/html"(), app), apps)
+                end
             end
         end
     end
