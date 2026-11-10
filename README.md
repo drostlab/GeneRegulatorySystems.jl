@@ -90,6 +90,16 @@ and see [Inspect tool][docs-inspect] for details.
 
 You can export results from their native (long) format to a wide format using the `grs export` tool. Its default behavior is to include the values of all trajectory dimensions at the end of the last simulation segment for each unique label, although both the included dimensions and considered segments can be pre-filtered; run `grs export --help` for options, and see [Export tool][docs-export] for details.
 
+## Graphical User Interface
+
+We provide a web-based graphical user interface via [Pluto.jl](https://plutojl.org/) (currently available on the [`experimental`](https://github.com/drostlab/GeneRegulatorySystems.jl/tree/experimental) branch, requires Julia ≥ 1.12):
+```sh
+git clone -b experimental https://github.com/drostlab/GeneRegulatorySystems.jl
+cd GeneRegulatorySystems.jl
+julia --project=app -e 'using Pkg; Pkg.instantiate()'
+julia --project=app -m GRSApp
+```
+
 ## Updating
 
 When used as a library, the package can just be updated using Julia's package manager. If it was installed by cloning this repository as described in [Setup](#setup), you can update by checking out the new version using Git. The `tools/grs` wrapper script will automatically re-instantiate the changed tools' environments on first use.
