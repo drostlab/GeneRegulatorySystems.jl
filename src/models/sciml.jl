@@ -68,10 +68,10 @@ are all contained in the integrator, but many mutable properties are usually
 aliased from the problem, so we would typically consider both to be state.
 
 However, since `JumpProblem` construction is expensive, we instead instruct
-the `integrator` to perform a deepcopy of the whole `JumpProblem` before using
-any of its resources. Except for the `JumpProblem`'s RNG, which we will re-seed
-before `integrator` initialization, we can thus consider the `JumpProblem`s
-immutable. This is still faster than rebuilding the whole `JumpProblem`.
+the `integrator` to perform a copy of the `JumpProblem` before using any of its
+resources. The copy will share only those objects which are not modified when
+the integrator advances. We can thus treat the `JumpProblem` as immutable. This
+is still faster than rebuilding the whole `JumpProblem`.
 
 To be compatible with a `JumpModel` `f!`, the `integrator` must have been
 constructed for the same `f!.system` (i.e., from its `f!.problem`). To check
@@ -163,7 +163,7 @@ end
 Models.describe(::SciML.JumpModel) = Models.Label("SciML JumpSystem")
 
 function JumpState(x::FlatState; f!::JumpModel)
-    problem = deepcopy(f!.problem)
+    problem = JumpProcesses.isolated_copy(f!.problem)
     # ^ The integrator below will alias components from problem; we copy it here
     # to ensure f!.problem is never mutated.
 
