@@ -14,6 +14,76 @@ Progress = LogLevel(-2)
 normalize_name(s) =
     Symbol(replace(String(SymbolicIndexingInterface.getname(s)), '₊' => '.'))
 
+function Models.Reaction(reaction::Catalyst.Reaction)
+    function reagents(species, stoichiometries)
+        Models.Reagents(Dict(
+            normalize_name(species) => Int(stoichiometry)
+            for (species, stoichiometry) in zip(species, stoichiometries)
+        ))
+    end
+    function reaction_name(properties)
+        haskey(properties, :name) &&
+            return Symbol("reaction.", properties[:name])
+
+        kind = properties[:kind]
+        owner = properties[:owner]
+        kind === :proteolysis && return Symbol(owner, ".", kind, ".", properties[:from])
+
+        Symbol(owner, ".", kind)
+    end
+    properties = Dict{Symbol, Any}(reaction.metadata)
+    Models.Reaction(
+        name = reaction_name(properties),
+        from = reagents(reaction.substrates, reaction.substoich),
+        to = reagents(reaction.products, reaction.prodstoich),
+        k₊ = reaction.rate,
+        k₋ = zero(reaction.rate),
+        properties = properties
+    )
+end
+
+function Models.describe(system::Catalyst.ReactionSystem)
+    function merge_reactions(reactions)
+        rxs = Models.Reaction[]
+        groups = Dict{Symbol, Dict{Symbol, Models.Reaction}}()
+        for r in reactions
+            dir = get(r.properties, :direction, nothing)
+            if isnothing(r.name) || isnothing(dir)
+                push!(rxs, r)
+            else
+                directions = get!(groups, r.name) do
+                    Dict{Symbol, Models.Reaction}()
+                end
+                directions[dir] = r
+            end
+        end
+        for (name, directions) in groups
+            forward = get(directions, :forward, nothing)
+            reverse = get(directions, :reverse, nothing)
+            base = something(forward, reverse)
+            properties = copy(base.properties)
+            delete!(properties, :direction)
+            properties[:parameters] = merge(
+                isnothing(forward) ? Dict{Symbol,Symbol}() :
+                    get(forward.properties, :parameters, Dict{Symbol,Symbol}()),
+                isnothing(reverse) ? Dict{Symbol,Symbol}() :
+                    get(reverse.properties, :parameters, Dict{Symbol,Symbol}()),
+            )
+            push!(rxs, Models.Reaction(
+                name=name,
+                from=isnothing(forward) ? reverse.to : forward.from,
+                to = isnothing(forward) ? reverse.from : forward.to,
+                k₊ = isnothing(forward) ? zero(reverse.k₊) : forward.k₊,
+                k₋ = isnothing(reverse) ? zero(forward.k₊) : reverse.k₊,
+                properties=properties
+            ))
+        end
+        rxs
+    end
+    Models.ReactionNetwork(reactions = merge_reactions(Models.Reaction.(Catalyst.reactions(system))))
+end
+
+
 @kwdef mutable struct TriggerProgress
     i::Int = 0
 end
